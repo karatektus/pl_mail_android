@@ -62,8 +62,30 @@ object SearchQueryCompiler {
         if (query.isStarred) conditions += EmailFilter.HasKeyword(Keyword.FLAGGED)
 
         query.mailbox?.let { role ->
-            val mailboxId = resolveMailbox(role) ?: return CompiledSearch.MatchesNothing
-            conditions += EmailFilter.InMailbox(mailboxId)
+            // `in:archive` is not "carries the Archive label". In this product
+            // *archived means the Inbox label has been removed*, and nothing
+            // else: ThreadStatusController::archive performs exactly one label
+            // mutation, `removeLabel(inbox)`. It never adds an Archive label —
+            // the Archive binding it touches only re-points the IMAP folder
+            // pointer for plain-IMAP messages, which is a physical location.
+            //
+            // So filtering on the Archive binding finds only plain-IMAP mail
+            // that happens to sit in an Archive folder, and returns *nothing*
+            // for a Gmail or Outlook account, where archived messages carry no
+            // location label at all. Which is the common case.
+            val filter =
+                if (role == MailboxRole.ARCHIVE) {
+                    val inbox =
+                        resolveMailbox(MailboxRole.INBOX) ?: return CompiledSearch.MatchesNothing
+
+                    EmailFilter.Not(listOf(EmailFilter.InMailbox(inbox)))
+                } else {
+                    val mailboxId = resolveMailbox(role) ?: return CompiledSearch.MatchesNothing
+
+                    EmailFilter.InMailbox(mailboxId)
+                }
+
+            conditions += filter
         }
 
         // `after` is inclusive and `before` is strict, matching the server's

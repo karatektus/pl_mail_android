@@ -74,11 +74,47 @@ class SearchQueryCompilerTest {
 
     @Test
     fun `an unresolvable in role matches nothing rather than dropping the condition`() {
-        // The dangerous case: an account with no Archive binding would
-        // otherwise answer `in:archive is:unread` with all its unread mail.
-        val result = compile("in:archive is:unread", resolve = noMailboxes)
+        // The dangerous case: an account whose role cannot be resolved would
+        // otherwise answer `in:trash is:unread` with all its unread mail.
+        val result = compile("in:trash is:unread", resolve = noMailboxes)
 
         assertEquals(CompiledSearch.MatchesNothing, result)
+    }
+
+    @Test
+    fun `in archive means not in the inbox, not the Archive label`() {
+        // Archiving in this product removes the Inbox label and adds nothing:
+        // ThreadStatusController::archive does one label mutation,
+        // removeLabel(inbox). The Archive binding it touches only re-points an
+        // IMAP folder pointer for plain-IMAP messages.
+        //
+        // Filtering on the Archive binding therefore finds only plain-IMAP mail
+        // sitting in an Archive folder and returns nothing at all for Gmail or
+        // Outlook, where archived mail carries no location label — which is the
+        // case most users are in.
+        val mailboxes =
+            listOf(
+                Mailbox(id = MailboxId("1"), name = "Inbox", role = "inbox"),
+                Mailbox(id = MailboxId("9"), name = "Archive", role = "archive"),
+            )
+
+        val filter =
+            filterOf(compile("in:archive", resolve = SearchQueryCompiler.resolver(mailboxes)))
+
+        assertEquals(EmailFilter.Not(listOf(EmailFilter.InMailbox(MailboxId("1")))), filter)
+    }
+
+    @Test
+    fun `in archive needs the inbox binding, not the archive one`() {
+        // An account with an Archive label but no resolvable Inbox cannot
+        // answer the question, and must say so rather than returning
+        // everything.
+        val archiveOnly =
+            SearchQueryCompiler.resolver(
+                listOf(Mailbox(id = MailboxId("9"), name = "Archive", role = "archive"))
+            )
+
+        assertEquals(CompiledSearch.MatchesNothing, compile("in:archive", resolve = archiveOnly))
     }
 
     @Test
