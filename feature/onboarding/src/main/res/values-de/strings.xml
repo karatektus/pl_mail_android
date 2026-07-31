@@ -8,6 +8,12 @@
     <string name="onboarding_password_label">App-Passwort</string>
     <string name="onboarding_password_hint">plmail_…</string>
     <string name="onboarding_connect">Verbinden</string>
+    <string name="onboarding_scan">Code scannen</string>
+
+    <string name="scanner_hint">Richte die Kamera auf den Code aus Einstellungen \u2192 App-Passw\u00f6rter.</string>
+    <string name="scanner_enter_manually">Stattdessen Adresse eingeben</string>
+    <string name="scanner_no_camera_permission">Auch ohne Kamera kannst du dich verbinden, indem du Serveradresse und App-Passwort eingibst.</string>
+    <string name="scanner_requesting_camera">Warte auf Kameraberechtigung\u2026</string>
     <string name="onboarding_connecting">Server wird kontaktiert…</string>
 
     <string name="onboarding_address_scheme">Hier funktionieren nur http:// und https://, nicht %1$s://.</string>

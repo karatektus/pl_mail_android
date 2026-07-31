@@ -8,6 +8,16 @@
     <string name="onboarding_password_label">App password</string>
     <string name="onboarding_password_hint">plmail_…</string>
     <string name="onboarding_connect">Connect</string>
+    <string name="onboarding_scan">Scan the code</string>
+
+    <string name="scanner_hint">Point the camera at the code from Settings \u2192 App passwords.</string>
+    <string name="scanner_enter_manually">Enter the address instead</string>
+    <!--
+      Says what still works rather than what was denied. Refusing the camera is
+      a reasonable thing to do and there is a working route either way.
+    -->
+    <string name="scanner_no_camera_permission">Without the camera you can still pair by entering your server address and an app password.</string>
+    <string name="scanner_requesting_camera">Waiting for camera permission\u2026</string>
     <string name="onboarding_connecting">Contacting your server…</string>
 
     <!-- Shown under the address field, so each names the field rather than the server. -->

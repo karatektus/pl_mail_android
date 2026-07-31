@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      Pairing by QR is the good path: it removes 71 characters of base16 typed
+      onto a phone keyboard. It is not the only path, though. The deep link
+      skips the camera entirely and manual paste always works, so the camera is
+      requested at the moment it is used and a refusal falls back rather than
+      dead-ending.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!--
+      required=false: a tablet or a device with no rear camera must still be
+      able to install the app and pair by pasting.
+    -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
+</manifest>

@@ -101,12 +101,16 @@ Settled on 2026-07-31, because software rendering was never going to survive M3�
 |---|---|
 | Windows SDK | `C:\Users\mail\AppData\Local\Android\Sdk` — emulator 37.1.11, platform-tools 37.0.1, `system-images;android-36;google_apis;x86_64` |
 | Windows JDK | `C:\Users\mail\.jdks\temurin-21`, needed only to run `sdkmanager.bat` |
-| AVD | `plmail_win_api36`, `hw.gpu.mode=host`, 4 GB RAM |
+| AVD | `plmail_win_api36`, `hw.gpu.mode=host`, 4 GB RAM, `hw.camera.back=virtualscene` |
 | Helpers | `C:\Users\mail\plmail-emulator.bat`, `plmail-adb-server.bat`, `plmail-sdkmanager.bat` |
 
 WHPX was already installed and usable, so nothing had to be enabled for acceleration. The emulator
 renders through the machine's **RTX 3080** — confirmed from `dumpsys SurfaceFlinger`, which reports
 `Android Emulator OpenGL ES Translator (NVIDIA GeForce RTX 3080)` rather than SwiftShader.
+
+The back camera is `virtualscene`, not the `emulated` default `avdmanager` writes: the latter binds
+and streams perfectly while rendering nothing, so a QR scanner tested against it looks broken for a
+reason that has nothing to do with the app.
 
 Building still happens in WSL2. The only awkward part is adb, because WSL2 is in `nat` mode and does
 not share localhost with Windows:

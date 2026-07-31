@@ -70,13 +70,20 @@ constructor(
      */
     fun invitationReceived(uri: String) {
         when (val parsed = PairingUri.parse(uri)) {
-            is ParsedInvitation.Valid -> startPairing(parsed.invitation)
+            is ParsedInvitation.Valid -> invitationScanned(parsed.invitation)
             is ParsedInvitation.Incomplete,
             ParsedInvitation.NotAPairingUri -> Unit
         }
     }
 
-    private fun startPairing(scanned: PairingInvitation) {
+    /**
+     * The same entry point for a code that arrived through the camera.
+     *
+     * Takes the parsed invitation rather than a URI the scanner would have to rebuild: the scanner
+     * has already parsed it to decide the barcode was ours, and re-encoding it only to parse it
+     * again is a second place for the two to disagree.
+     */
+    fun invitationScanned(scanned: PairingInvitation) {
         invitation = scanned
         _state.update {
             it.copy(

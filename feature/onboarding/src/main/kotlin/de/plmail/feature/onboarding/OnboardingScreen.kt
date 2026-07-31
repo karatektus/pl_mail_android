@@ -20,6 +20,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -50,6 +53,7 @@ fun OnboardingScreen(
     viewModel: OnboardingViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var scanning by rememberSaveable { mutableStateOf(false) }
 
     // Keyed on the URI so a second tapped link during the same session is acted
     // on, and consumed immediately so a rotation does not redeem the code a
@@ -69,8 +73,24 @@ fun OnboardingScreen(
         if (state.step is OnboardingStep.Done) onFinished()
     }
 
+    if (scanning) {
+        QrScannerScreen(
+            onScanned = {
+                // Dismissed first: the scan starts a connection, and leaving the
+                // camera bound behind a dialog keeps a preview running through
+                // the whole handshake.
+                scanning = false
+                viewModel.invitationScanned(it)
+            },
+            onCancel = { scanning = false },
+        )
+
+        return
+    }
+
     OnboardingScreen(
         state = state,
+        onScan = { scanning = true },
         onAddressChanged = viewModel::addressChanged,
         onAppPasswordChanged = viewModel::appPasswordChanged,
         onConnect = viewModel::connect,
@@ -85,6 +105,7 @@ fun OnboardingScreen(
 @Composable
 internal fun OnboardingScreen(
     state: OnboardingUiState,
+    onScan: () -> Unit,
     onAddressChanged: (String) -> Unit,
     onAppPasswordChanged: (String) -> Unit,
     onConnect: () -> Unit,
@@ -157,6 +178,12 @@ internal fun OnboardingScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+
+            // The scan is offered above the fields rather than below them,
+            // because it is the route that avoids typing either of them.
+            Button(onClick = onScan, enabled = !state.isBusy, modifier = Modifier.fillMaxWidth()) {
+                Text(stringResource(R.string.onboarding_scan))
             }
 
             Button(
