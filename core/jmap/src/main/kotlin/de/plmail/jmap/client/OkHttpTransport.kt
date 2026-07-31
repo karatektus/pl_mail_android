@@ -82,7 +82,7 @@ class OkHttpTransport(private val client: OkHttpClient) : StreamingTransport {
          * establishment, never a request the server has already begun answering, so it cannot
          * duplicate a send.
          */
-        fun defaultClient(): OkHttpClient =
+        fun defaultClient(trust: ServerTrust? = null): OkHttpClient =
             OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)
                 .readTimeout(60, TimeUnit.SECONDS)
@@ -91,6 +91,12 @@ class OkHttpTransport(private val client: OkHttpClient) : StreamingTransport {
                 // a small box are expensive, and the client deliberately keeps
                 // few connections open.
                 .retryOnConnectionFailure(true)
+                // Without this the pinning in ServerTrust is dead code: the
+                // platform's own evaluation runs, a self-signed NAS is refused,
+                // and the fingerprint the user already accepted is never
+                // consulted. A trust manager that nothing installs protects
+                // nothing.
+                .apply { trust?.let { serverTrust(it) } }
                 .build()
 
         private fun hostOf(url: String): String = runCatching { URI(url).host }.getOrNull() ?: url
@@ -112,7 +118,14 @@ private suspend fun Call.await(host: String): HttpResponse =
                 override fun onFailure(call: Call, e: IOException) {
                     if (continuation.isCancelled) return
 
-                    continuation.resumeWithException(JmapError.Unreachable(host, e))
+                    // A pinning refusal reaches here wrapped in whatever the
+                    // handshake threw, so it has to be recovered from the cause
+                    // chain. Reported as "cannot reach your server" it would
+                    // send the user to check their network rather than to the
+                    // one screen that can fix it.
+                    val trustFailure = ServerTrust.trustFailure(e)
+
+                    continuation.resumeWithException(trustFailure ?: JmapError.Unreachable(host, e))
                 }
 
                 override fun onResponse(call: Call, response: Response) {
