@@ -154,7 +154,7 @@ internal fun RecipientField(
  * point the composer is long closed.
  */
 internal fun String.parseAddresses(): List<EmailAddress> =
-    split(',', ';', '\n')
+    splitAddresses()
         .map { it.trim().trim(' ', ',', ';') }
         .filter { it.isNotEmpty() }
         .mapNotNull { entry ->
@@ -168,3 +168,46 @@ internal fun String.parseAddresses(): List<EmailAddress> =
 
             EmailAddress(name = name, email = address)
         }
+
+/**
+ * Splits on separators that are not inside a quoted display name or an angle-address.
+ *
+ * `"Meyer, Anna" <anna@example.org>` is an ordinary Outlook address and a plain `split(',')` tears
+ * it in half — the second half has no `@` and is dropped, so the recipient becomes "Meyer" and
+ * disappears. Someone with a comma in their name is not an edge case; it is how half of Europe's
+ * corporate directories spell one.
+ */
+private fun String.splitAddresses(): List<String> {
+    val parts = mutableListOf<String>()
+    val current = StringBuilder()
+    var inQuotes = false
+    var inAngles = false
+
+    forEach { character ->
+        when {
+            character == '"' -> {
+                inQuotes = !inQuotes
+                current.append(character)
+            }
+            character == '<' && !inQuotes -> {
+                inAngles = true
+                current.append(character)
+            }
+            character == '>' && !inQuotes -> {
+                inAngles = false
+                current.append(character)
+            }
+            (character == ',' || character == ';' || character == '\n') &&
+                !inQuotes &&
+                !inAngles -> {
+                parts += current.toString()
+                current.clear()
+            }
+            else -> current.append(character)
+        }
+    }
+
+    parts += current.toString()
+
+    return parts
+}

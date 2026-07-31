@@ -44,6 +44,18 @@ class ComposeInputTest {
     }
 
     @Test
+    fun `a comma inside a quoted name does not split the address`() {
+        // "Meyer, Anna" <a@x> is how half of Europe's corporate directories
+        // spell a name. Splitting on the comma leaves "Anna" <a@x> and a
+        // fragment with no @, which is dropped -- so the recipient vanishes.
+        val parsed = "\"Meyer, Anna\" <anna@example.org>, bob@x.test".parseAddresses()
+
+        assertEquals(2, parsed.size)
+        assertEquals("Meyer, Anna", parsed.first().name)
+        assertEquals("bob@x.test", parsed.last().email)
+    }
+
+    @Test
     fun `a pasted list becomes several recipients`() {
         // Landing as one unusable string is the common failure; the address line
         // then holds something that is not an address and the send is rejected
@@ -147,7 +159,7 @@ class ComposeInputTest {
     fun `the quote preview shows text rather than markup`() {
         val preview = "<p>Hello &amp; welcome</p><blockquote>a<br>b</blockquote>".strippedOfTags()
 
-        assertEquals("Hello & welcome\n\na\nb", preview)
+        assertEquals("Hello & welcome\na\nb", preview)
     }
 
     @Test

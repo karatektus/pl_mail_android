@@ -82,7 +82,30 @@ constructor(
                 transport = transports.create(connection.address, connection.pinnedKey),
             )
 
-        val session = client.session()
+        // The session is the one call in this flow that can fail before any row
+        // exists, and it throws rather than returning — a revoked app password
+        // is a `NotAuthenticated`, and an unreachable server an IO failure. Left
+        // to propagate it reaches `cachedIn(viewModelScope)` with nothing
+        // between, which is an uncaught exception on the main thread: the app
+        // dies at launch rather than showing the mail it already has on disk.
+        // Found by reseeding the test stack, which is exactly what "my
+        // credential stopped working" looks like.
+        val session = runCatching {
+            client.session()
+        }
+            .getOrElse { failure ->
+                _failures.update {
+                    listOf(SourceFailure(accountKey = connection.address.origin, error = failure))
+                }
+
+                // The cached rows, still paged from the local table. An
+                // expired credential must not empty someone's inbox on
+                // screen; it stops it being refreshed, which the banner
+                // says.
+                emitAll(cachedOnly(pageSize))
+                return@flow
+            }
+
         val server = connection.address.origin
 
         // Written before the first page, so the sidebar and the per-account
@@ -158,6 +181,25 @@ constructor(
                 .flow
         )
     }
+
+    /**
+     * The feed table alone, with no mediator behind it.
+     *
+     * What the list falls back to when the server cannot be reached at all. Paging without a
+     * `RemoteMediator` simply never appends, which is the honest behaviour: there is nothing to
+     * append from.
+     */
+    private fun cachedOnly(pageSize: Int): Flow<PagingData<ThreadEntity>> =
+        Pager(
+                config =
+                    PagingConfig(
+                        pageSize = pageSize,
+                        prefetchDistance = pageSize,
+                        enablePlaceholders = false,
+                    ),
+                pagingSourceFactory = { database.feed().pagingSource(Feed.UNIFIED_INBOX.id) },
+            )
+            .flow
 
     /**
      * The Inbox binding for one account, or null when it has none.

@@ -3,6 +3,7 @@ package de.plmail.core.data
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.core.net.toUri
 import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
@@ -262,7 +263,7 @@ constructor(
         val uri = attachment.uri ?: return null
 
         return runCatching {
-            context.contentResolver.openInputStream(Uri.parse(uri))?.use { it.readBytes() }
+            context.contentResolver.openInputStream(uri.toUri())?.use { it.readBytes() }
         }
             .getOrNull()
     }
