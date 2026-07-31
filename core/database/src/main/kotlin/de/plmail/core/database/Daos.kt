@@ -91,6 +91,15 @@ interface EmailDao {
     )
     fun observeThread(accountKey: String, threadId: String): Flow<List<EmailEntity>>
 
+    /**
+     * The same rows, once, for summarising a thread after a page has been written.
+     *
+     * A suspend read rather than the flow above: the summary is computed inside the same
+     * transaction as the write, and collecting a flow there would deadlock on the writer.
+     */
+    @Query("SELECT * FROM emails WHERE threadId = :threadId AND accountKey = :accountKey")
+    suspend fun inThread(accountKey: String, threadId: String): List<EmailEntity>
+
     @Upsert suspend fun upsert(emails: List<EmailEntity>)
 
     @Upsert suspend fun upsertBody(body: EmailBodyEntity)
