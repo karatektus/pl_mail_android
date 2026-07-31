@@ -1,0 +1,51 @@
+{
+  "methodResponses": [
+    [
+      "Thread/get",
+      {
+        "accountId": "1",
+        "state": "0",
+        "list": [
+          {
+            "id": "4",
+            "emailIds": [
+              "4"
+            ],
+            "snoozedUntil": null
+          },
+          {
+            "id": "3",
+            "emailIds": [
+              "3"
+            ],
+            "snoozedUntil": null
+          },
+          {
+            "id": "2",
+            "emailIds": [
+              "2"
+            ],
+            "snoozedUntil": null
+          },
+          {
+            "id": "1",
+            "emailIds": [
+              "1"
+            ],
+            "snoozedUntil": null
+          },
+          {
+            "id": "5",
+            "emailIds": [
+              "5"
+            ],
+            "snoozedUntil": null
+          }
+        ],
+        "notFound": []
+      },
+      "t0"
+    ]
+  ],
+  "sessionState": "df3ce784d856334d"
+}

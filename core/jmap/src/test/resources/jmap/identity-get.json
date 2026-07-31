@@ -1,0 +1,26 @@
+{
+  "methodResponses": [
+    [
+      "Identity/get",
+      {
+        "accountId": "1",
+        "state": "0",
+        "list": [
+          {
+            "id": "1",
+            "name": "E2E Mailbox",
+            "email": "E2E Mailbox",
+            "replyTo": null,
+            "bcc": null,
+            "textSignature": "",
+            "htmlSignature": "",
+            "mayDelete": false
+          }
+        ],
+        "notFound": []
+      },
+      "i0"
+    ]
+  ],
+  "sessionState": "df3ce784d856334d"
+}

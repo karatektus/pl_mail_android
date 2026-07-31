@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      A platform DayNight theme rather than a Material Components one: the UI is
+      Compose, so this exists only to paint the window before the first
+      composition and to follow the system's light/dark setting. Pulling in the
+      View-based Material library to style a window nothing draws in would be a
+      dependency for no benefit.
+
+      The action bar is switched off by hand because the platform has no
+      `Theme.DeviceDefault.DayNight.NoActionBar` — `Theme.DeviceDefault.DayNight`
+      is the only DayNight variant that exists (verified against android.jar's
+      R$style), and the `.NoActionBar` suffix that works on the Light and Dark
+      themes silently is not a resource here. It fails at resource-link time
+      with "resource not found", which reads like a missing dependency rather
+      than a style that was never defined.
+    -->
+    <style name="Theme.PlMail" parent="android:Theme.DeviceDefault.DayNight">
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+</resources>

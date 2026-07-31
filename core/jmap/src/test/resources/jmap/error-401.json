@@ -1,0 +1,5 @@
+{
+  "type": "urn:ietf:params:jmap:error:unauthorized",
+  "status": 401,
+  "detail": "Invalid or revoked app password."
+}

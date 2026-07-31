@@ -1,0 +1,21 @@
+.DS_Store
+
+# Gradle
+.gradle/
+build/
+local.properties
+.kotlin/
+
+# Android Studio / IntelliJ
+.idea/
+*.iml
+captures/
+
+# Wrapper: the jar and properties ARE checked in on purpose. A wrapper whose
+# jar is absent cannot bootstrap, which defeats the point of having one.
+!gradle/wrapper/gradle-wrapper.jar
+
+# Local signing identity — see app/signing.properties.dist
+signing.properties
+*.jks
+*.keystore

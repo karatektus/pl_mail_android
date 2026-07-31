@@ -1,0 +1,59 @@
+{
+  "capabilities": {
+    "urn:ietf:params:jmap:core": {
+      "maxSizeUpload": 50000000,
+      "maxConcurrentUpload": 4,
+      "maxSizeRequestObject": 10000000,
+      "maxConcurrentRequests": 4,
+      "maxCallsInRequest": 32,
+      "maxObjectsInGet": 500,
+      "maxObjectsInSet": 500,
+      "collationAlgorithms": [
+        "i;ascii-numeric",
+        "i;ascii-casemap",
+        "i;unicode-casemap"
+      ]
+    },
+    "urn:ietf:params:jmap:mail": {},
+    "urn:ietf:params:jmap:submission": {},
+    "urn:plmail:params:jmap:push": {
+      "vapidPublicKey": "BGhIG_D4wVHpADF70-Sjztf1F1opcsNzjSeEsiX7Byg1ek0dTbFgmPxQmUB6TaKDZB6g3qK275kgvHMGGJhPnjk"
+    }
+  },
+  "accounts": {
+    "1": {
+      "name": "E2E Mailbox",
+      "isPersonal": true,
+      "isReadOnly": false,
+      "accountCapabilities": {
+        "urn:ietf:params:jmap:mail": {
+          "maxMailboxesPerEmail": null,
+          "maxMailboxDepth": null,
+          "maxSizeMailboxName": 255,
+          "maxSizeAttachmentsPerEmail": 50000000,
+          "emailQuerySortOptions": [
+            "receivedAt",
+            "from",
+            "to",
+            "subject",
+            "size"
+          ],
+          "mayCreateTopLevelMailbox": true
+        },
+        "urn:ietf:params:jmap:submission": {
+          "maxDelayedSend": 0,
+          "submissionExtensions": {}
+        }
+      }
+    }
+  },
+  "primaryAccounts": {
+    "urn:ietf:params:jmap:mail": "1"
+  },
+  "username": "e2e@plmail.test",
+  "apiUrl": "http://127.0.0.1:8002/jmap/api",
+  "downloadUrl": "http://127.0.0.1:8002/jmap/download/{accountId}/{blobId}/{name}?accept={type}",
+  "uploadUrl": "http://127.0.0.1:8002/jmap/upload/{accountId}",
+  "eventSourceUrl": "http://127.0.0.1:8002/jmap/eventsource?types={types}&closeafter={closeafter}&ping={ping}",
+  "state": "df3ce784d856334d"
+}

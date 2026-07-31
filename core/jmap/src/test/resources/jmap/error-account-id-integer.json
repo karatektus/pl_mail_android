@@ -1,0 +1,12 @@
+{
+  "methodResponses": [
+    [
+      "error",
+      {
+        "type": "invalidArguments"
+      },
+      "q0"
+    ]
+  ],
+  "sessionState": "df3ce784d856334d"
+}

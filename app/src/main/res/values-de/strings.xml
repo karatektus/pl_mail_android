@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      German ships alongside English from the first string, not retrofitted
+      later. The server's own UI is bilingual, and German runs roughly 30%
+      longer than English, so every layout is measured against the longer of
+      the two from the start rather than discovering the overflow at the end.
+    -->
+    <string name="placeholder_subtitle">Noch mit keinem Server verbunden.</string>
+</resources>

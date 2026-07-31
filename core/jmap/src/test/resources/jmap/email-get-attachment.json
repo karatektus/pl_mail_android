@@ -1,0 +1,51 @@
+{
+  "methodResponses": [
+    [
+      "Email/get",
+      {
+        "accountId": "1",
+        "state": "0",
+        "list": [
+          {
+            "id": "5",
+            "threadId": "5",
+            "subject": "E2E Attachment",
+            "from": [
+              {
+                "name": "E2E Sender",
+                "email": "sender@e2e.test"
+              }
+            ],
+            "receivedAt": "2026-07-31T13:19:24Z",
+            "preview": "Seeded message with one attachment.",
+            "keywords": {},
+            "hasAttachment": true,
+            "attachments": [
+              {
+                "partId": "1",
+                "blobId": "p-1",
+                "size": 24,
+                "type": "text/plain",
+                "charset": "utf-8",
+                "name": "e2e-attachment.txt",
+                "disposition": "attachment",
+                "cid": null,
+                "language": null,
+                "location": null,
+                "headers": []
+              }
+            ],
+            "blobId": "m-5",
+            "size": 0,
+            "mailboxIds": {
+              "1": true
+            }
+          }
+        ],
+        "notFound": []
+      },
+      "g0"
+    ]
+  ],
+  "sessionState": "df3ce784d856334d"
+}

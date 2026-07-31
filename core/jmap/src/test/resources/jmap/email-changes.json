@@ -1,0 +1,18 @@
+{
+  "methodResponses": [
+    [
+      "Email/changes",
+      {
+        "accountId": "1",
+        "oldState": "0",
+        "newState": "0",
+        "hasMoreChanges": false,
+        "created": [],
+        "updated": [],
+        "destroyed": []
+      },
+      "c0"
+    ]
+  ],
+  "sessionState": "df3ce784d856334d"
+}

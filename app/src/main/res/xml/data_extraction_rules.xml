@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Nothing this app stores may leave the device, and nothing it stores is worth
+  restoring.
+
+  Two independent reasons, either of which is sufficient:
+
+  1. The credential is encrypted with an Android Keystore key, which is bound to
+     *this* device and cannot be exported. A restored copy on another phone
+     would be ciphertext whose key no longer exists — an app that silently
+     cannot decrypt its own login.
+  2. Everything else is a cache of the user's server. Every row is
+     reconstructible by syncing, so restoring a stale copy buys nothing and
+     risks showing mail whose state the server has since changed.
+
+  A self-hosted mail client shipping its user's mail to Google's backup servers
+  would also be the exact opposite of the product's premise.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </cloud-backup>
+
+    <device-transfer>
+        <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+    </device-transfer>
+</data-extraction-rules>

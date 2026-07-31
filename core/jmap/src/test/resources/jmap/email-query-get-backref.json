@@ -1,0 +1,125 @@
+{
+  "methodResponses": [
+    [
+      "Email/query",
+      {
+        "accountId": "1",
+        "queryState": "0",
+        "canCalculateChanges": false,
+        "position": 0,
+        "ids": [
+          "5",
+          "1",
+          "2",
+          "3",
+          "4"
+        ],
+        "total": 5,
+        "limit": 20
+      },
+      "q0"
+    ],
+    [
+      "Email/get",
+      {
+        "accountId": "1",
+        "state": "0",
+        "list": [
+          {
+            "id": "1",
+            "threadId": "1",
+            "subject": "E2E Star Me",
+            "from": [
+              {
+                "name": "E2E Sender",
+                "email": "sender@e2e.test"
+              }
+            ],
+            "receivedAt": "2026-07-31T13:19:24Z",
+            "preview": "Seeded body for \"E2E Star Me\".",
+            "keywords": {},
+            "hasAttachment": false,
+            "mailboxIds": {
+              "1": true
+            }
+          },
+          {
+            "id": "2",
+            "threadId": "2",
+            "subject": "E2E Archive Me",
+            "from": [
+              {
+                "name": "E2E Sender",
+                "email": "sender@e2e.test"
+              }
+            ],
+            "receivedAt": "2026-07-31T13:18:24Z",
+            "preview": "Seeded body for \"E2E Archive Me\".",
+            "keywords": {},
+            "hasAttachment": false,
+            "mailboxIds": {
+              "1": true
+            }
+          },
+          {
+            "id": "3",
+            "threadId": "3",
+            "subject": "E2E Trash Me",
+            "from": [
+              {
+                "name": "E2E Sender",
+                "email": "sender@e2e.test"
+              }
+            ],
+            "receivedAt": "2026-07-31T13:17:24Z",
+            "preview": "Seeded body for \"E2E Trash Me\".",
+            "keywords": {},
+            "hasAttachment": false,
+            "mailboxIds": {
+              "1": true
+            }
+          },
+          {
+            "id": "4",
+            "threadId": "4",
+            "subject": "E2E Read Me",
+            "from": [
+              {
+                "name": "E2E Sender",
+                "email": "sender@e2e.test"
+              }
+            ],
+            "receivedAt": "2026-07-31T13:16:24Z",
+            "preview": "Seeded body for \"E2E Read Me\".",
+            "keywords": {},
+            "hasAttachment": false,
+            "mailboxIds": {
+              "1": true
+            }
+          },
+          {
+            "id": "5",
+            "threadId": "5",
+            "subject": "E2E Attachment",
+            "from": [
+              {
+                "name": "E2E Sender",
+                "email": "sender@e2e.test"
+              }
+            ],
+            "receivedAt": "2026-07-31T13:19:24Z",
+            "preview": "Seeded message with one attachment.",
+            "keywords": {},
+            "hasAttachment": true,
+            "mailboxIds": {
+              "1": true
+            }
+          }
+        ],
+        "notFound": []
+      },
+      "g0"
+    ]
+  ],
+  "sessionState": "df3ce784d856334d"
+}

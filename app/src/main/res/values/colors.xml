@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The launcher background, and the one place a raw hex value is legitimate:
+      an app icon is a fixed asset, not themed surface. #2563eb is plMail's
+      default accent, so the icon matches the server's own UI out of the box.
+      Nothing in the app's own chrome may reference this.
+    -->
+    <color name="ic_launcher_background">#2563EB</color>
+</resources>

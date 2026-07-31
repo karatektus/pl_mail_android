@@ -1,0 +1,64 @@
+{
+  "methodResponses": [
+    [
+      "Mailbox/get",
+      {
+        "accountId": "1",
+        "state": "2",
+        "list": [
+          {
+            "id": "1",
+            "labelId": "1",
+            "name": "Inbox",
+            "parentId": null,
+            "role": "inbox",
+            "sortOrder": 0,
+            "totalEmails": 5,
+            "unreadEmails": 5,
+            "totalThreads": 5,
+            "unreadThreads": 5,
+            "myRights": {
+              "mayReadItems": true,
+              "mayAddItems": true,
+              "mayRemoveItems": true,
+              "maySetSeen": true,
+              "maySetKeywords": true,
+              "mayCreateChild": true,
+              "mayRename": false,
+              "mayDelete": false,
+              "maySubmit": true
+            },
+            "isSubscribed": true
+          },
+          {
+            "id": "2",
+            "labelId": "2",
+            "name": "E2E Label",
+            "parentId": null,
+            "role": null,
+            "sortOrder": 0,
+            "totalEmails": 0,
+            "unreadEmails": 0,
+            "totalThreads": 0,
+            "unreadThreads": 0,
+            "myRights": {
+              "mayReadItems": true,
+              "mayAddItems": true,
+              "mayRemoveItems": true,
+              "maySetSeen": true,
+              "maySetKeywords": true,
+              "mayCreateChild": true,
+              "mayRename": true,
+              "mayDelete": true,
+              "maySubmit": true
+            },
+            "isSubscribed": true
+          }
+        ],
+        "notFound": []
+      },
+      "m0"
+    ]
+  ],
+  "sessionState": "df3ce784d856334d"
+}

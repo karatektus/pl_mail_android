@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The product's name, not a word. It reads the same in every locale. -->
+    <string name="app_name" translatable="false">plMail</string>
+    <string name="placeholder_subtitle">Not connected to a server yet.</string>
+</resources>
