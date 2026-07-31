@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  plMail runs on machines people own, and the platform defaults assume it does not.
+
+  Two departures from those defaults, both narrower than they look, and neither of them the
+  "trust everything" shortcut that ServerTrust exists to avoid:
+
+  1. User CAs are trusted as well as system ones. Since Android 7 an app ignores CAs the user
+     installed themselves, which is right for an app talking to a service its author operates and
+     wrong here: a NAS behind a private CA the owner deliberately installed on their own phone is
+     the target audience, not an attack. Note this only *widens what the platform will vouch for*.
+     Everything still goes through ServerTrust, which asks the platform first and falls back to a
+     pinned key only when the platform refuses — so a certificate covered by a user CA takes the
+     PlatformTrusted path and never prompts, while everything else is unchanged.
+
+  2. Cleartext is permitted. Not because it is fine, but because refusing it outright would make
+     the app unusable against the emulator's http://10.0.2.2:8002 test stack and against the many
+     LAN boxes running plMail with no certificate at all. The cost is paid in onboarding instead,
+     which warns explicitly when the address is http:// — a decision the user can see and make,
+     rather than a silent downgrade. ServerAddress.isCleartext is what that warning reads.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      Lint reads a cleartext-permitting base config as insecure, and for an app with a known server
+      it is. plMail has no canonical server: the address is whatever the user typed, so there is no
+      domain-config to scope this to and no list of hosts to enumerate. Suppressed here rather than
+      project-wide, and paid for in onboarding, which names the risk when the address is http://.
+    -->
+    <base-config
+        cleartextTrafficPermitted="true"
+        tools:ignore="InsecureBaseConfiguration">
+        <trust-anchors>
+            <certificates src="system" />
+            <!--
+              Lint wants this confined to <debug-overrides>, and for most apps it is right. Here it
+              would break the case the app is for, so the check is suppressed on this element alone
+              rather than disabled anywhere wider.
+
+              The reason is key rotation, not convenience. ServerTrust pins the SubjectPublicKeyInfo
+              — chosen because `certbot renew` keeps the key, so a ninety-day renewal does not
+              re-prompt. A private CA that mints a *fresh key* on every renewal breaks that
+              assumption: the pin stops matching, and PinMismatch is deliberately terminal and never
+              a question, so the user is locked out of their own server by a routine renewal. Being
+              able to trust the CA they installed is what keeps them on the PlatformTrusted path,
+              where renewals are invisible.
+
+              Without it the app still works against a private CA — first contact prompts with the
+              fingerprint and the user pins it — so this widens nothing that TOFU had not already
+              made reachable. It only stops a rotation from becoming a lockout.
+            -->
+            <certificates src="user" tools:ignore="AcceptsUserCertificates" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
