@@ -13,7 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
-import de.plmail.feature.mail.MailPane
+import de.plmail.feature.mail.MailShell
 import de.plmail.feature.onboarding.OnboardingScreen
 
 @AndroidEntryPoint
@@ -82,7 +82,7 @@ private fun PlMailApp(
             )
         // The mail pane owns its own layout and back behaviour from here on;
         // :app only decides whether there is a server to show it for.
-        is ConnectionState.Connected -> MailPane()
+        is ConnectionState.Connected -> MailShell()
     }
 }
 

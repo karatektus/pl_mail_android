@@ -12,4 +12,7 @@
 
     <string name="reader_placeholder">Wähle eine Unterhaltung.</string>
     <string name="reader_coming">Die Leseansicht kommt im nächsten Meilenstein.</string>
+    <string name="sent_title">Gesendet</string>
+    <string name="drafts_title">Entwürfe</string>
+    <string name="coming_soon">%1$s kommt in einem späteren Meilenstein.</string>
 </resources>

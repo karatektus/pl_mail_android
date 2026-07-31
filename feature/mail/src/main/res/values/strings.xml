@@ -16,4 +16,7 @@
 
     <string name="reader_placeholder">Select a conversation.</string>
     <string name="reader_coming">The reader arrives in the next milestone.</string>
+    <string name="sent_title">Sent</string>
+    <string name="drafts_title">Drafts</string>
+    <string name="coming_soon">%1$s arrives in a later milestone.</string>
 </resources>
