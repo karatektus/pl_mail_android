@@ -12,6 +12,21 @@ fun interface JmapTransport {
     suspend fun send(request: HttpRequest): HttpResponse
 }
 
+/**
+ * A transport that can deliver a response body as it arrives.
+ *
+ * Separate from [JmapTransport] rather than a method on it, because only one caller needs it and
+ * every fake would otherwise have to implement a streaming method it never uses.
+ *
+ * The distinction is not academic. `send` buffers the whole body, and an EventSource connection is
+ * held open for 300 seconds by design — served through `send`, "live" updates would all arrive at
+ * once, five minutes late, while appearing to work.
+ */
+interface StreamingTransport : JmapTransport {
+    /** Emits body lines as the server writes them. Completes when it closes. */
+    fun lines(request: HttpRequest): kotlinx.coroutines.flow.Flow<String>
+}
+
 data class HttpRequest(
     val url: String,
     val method: String = "GET",

@@ -6,6 +6,7 @@ import java.net.URI
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.suspendCancellableCoroutine
 import okhttp3.Call
 import okhttp3.Callback
@@ -21,7 +22,40 @@ import okhttp3.Response
  * The only file in this module that knows OkHttp exists, which is what lets the whole protocol
  * layer be tested on the JVM against a fake.
  */
-class OkHttpTransport(private val client: OkHttpClient) : JmapTransport {
+class OkHttpTransport(private val client: OkHttpClient) : StreamingTransport {
+
+    /**
+     * Reads the body line by line as it arrives.
+     *
+     * `source().readUtf8Line()` blocks the calling thread, hence the IO dispatcher — and the flow
+     * is cancellable at each line, so backgrounding the app closes the connection promptly rather
+     * than at the next event, which on an idle mailbox could be thirty seconds away.
+     */
+    override fun lines(request: HttpRequest): kotlinx.coroutines.flow.Flow<String> =
+        kotlinx.coroutines.flow
+            .flow {
+                val okRequest =
+                    Request.Builder()
+                        .url(request.url)
+                        .apply { request.headers.forEach { (n, v) -> header(n, v) } }
+                        .build()
+
+                val call = client.newCall(okRequest)
+
+                call.execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw JmapError.UnexpectedStatus(response.code)
+                    }
+
+                    val source = response.body.source()
+
+                    while (!source.exhausted()) {
+                        val line = source.readUtf8Line() ?: break
+                        emit(line)
+                    }
+                }
+            }
+            .flowOn(kotlinx.coroutines.Dispatchers.IO)
 
     override suspend fun send(request: HttpRequest): HttpResponse {
         val body = request.body?.toRequestBody(request.headers["Content-Type"]?.toMediaTypeOrNull())

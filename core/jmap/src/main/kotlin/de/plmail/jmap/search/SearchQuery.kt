@@ -83,9 +83,8 @@ data class SearchQuery(
          * - **An unusable value for `has:`, `is:`, `in:`, `after:` or `before:` is dropped
          *   silently**, not turned into free text. `is:bogus` narrows nothing and searches for
          *   nothing.
-         * - **The last occurrence of an operator wins**, and for `in:`/`after:`/ `before:` an
-         *   unusable value clears an earlier good one, matching the server's unconditional
-         *   assignment.
+         * - **The last occurrence of an operator wins.** An unusable `in:`, `after:` or `before:`
+         *   value clears an earlier good one, matching the server's unconditional assignment.
          *
          * @param clock supplies both "now" for `today`/`yesterday` and the zone a bare date is
          *   anchored in. Injected so tests do not depend on the machine's zone.
