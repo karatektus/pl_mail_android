@@ -21,6 +21,9 @@ dependencies {
     // module owns the RemoteMediator that fills it.
     api(libs.androidx.paging.runtime)
     implementation(libs.kotlinx.coroutines.core)
+    // Periodic background sync. WorkManager rather than a bare coroutine so the
+    // schedule survives the process dying and honours the network constraint.
+    implementation(libs.androidx.work.runtime.ktx)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)

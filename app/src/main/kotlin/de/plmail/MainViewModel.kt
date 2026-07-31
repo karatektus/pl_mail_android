@@ -1,8 +1,11 @@
 package de.plmail
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import de.plmail.core.data.SyncWorker
 import de.plmail.core.datastore.CredentialStore
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,13 +29,27 @@ sealed interface ConnectionState {
 }
 
 @HiltViewModel
-class MainViewModel @Inject constructor(credentials: CredentialStore) : ViewModel() {
+class MainViewModel
+@Inject
+constructor(
+    credentials: CredentialStore,
+    @param:ApplicationContext private val context: Context,
+) : ViewModel() {
 
     val connection: StateFlow<ConnectionState> =
         credentials.connection
             .map { stored ->
-                if (stored == null) ConnectionState.None
-                else ConnectionState.Connected(stored.username)
+                // Scheduled from the presence of a connection rather than from
+                // onboarding finishing: a credential that stopped being
+                // readable should stop the background sync too, and that is a
+                // change in the store rather than a screen anyone visits.
+                if (stored == null) {
+                    SyncWorker.cancel(context)
+                    ConnectionState.None
+                } else {
+                    SyncWorker.schedule(context)
+                    ConnectionState.Connected(stored.username)
+                }
             }
             .stateIn(
                 scope = viewModelScope,
