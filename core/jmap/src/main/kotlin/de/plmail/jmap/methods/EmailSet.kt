@@ -107,6 +107,65 @@ class EmailPatch private constructor(private val fields: Map<String, JsonElement
         fun flagged(value: Boolean) = keyword(Keyword.FLAGGED, value)
 
         /**
+         * A header the composer owns, on a draft.
+         *
+         * The server refuses these on anything that is not a draft — a received message's body is a
+         * record of what arrived, and a client able to rewrite it would make the mailbox
+         * unfalsifiable.
+         *
+         * A blank value is sent as JSON null rather than `""`, because the two mean different
+         * things: the server treats an absent key as "leave it alone", so clearing a subject the
+         * user has deleted needs the null.
+         */
+        fun text(property: String, value: String?) = apply {
+            fields[property] = value?.takeIf { it.isNotBlank() }?.let(::JsonPrimitive) ?: JsonNull
+        }
+
+        fun addresses(property: String, value: List<EmailAddress>) = apply {
+            fields[property] =
+                if (value.isEmpty()) {
+                    JsonNull
+                } else {
+                    buildJsonArray {
+                        value.forEach { address ->
+                            add(
+                                buildJsonObject {
+                                    address.name?.let { put("name", it) }
+                                    address.email?.let { put("email", it) }
+                                }
+                            )
+                        }
+                    }
+                }
+        }
+
+        fun strings(property: String, value: List<String>) = apply {
+            fields[property] = buildJsonArray { value.forEach { add(it) } }
+        }
+
+        /**
+         * The HTML body, as the part list and the value the part names.
+         *
+         * Both keys, always: `bodyValues` is keyed by `partId`, so sending the values without the
+         * `htmlBody` part that names them leaves the server with a map it cannot look anything up
+         * in, and the body silently does not change.
+         */
+        fun html(value: String) = apply {
+            fields["htmlBody"] = buildJsonArray {
+                add(
+                    buildJsonObject {
+                        put("partId", "html")
+                        put("type", "text/html")
+                    }
+                )
+            }
+
+            fields["bodyValues"] = buildJsonObject {
+                put("html", buildJsonObject { put("value", value) })
+            }
+        }
+
+        /**
          * Archiving is *removing the Inbox label*, and nothing else.
          *
          * Adding an Archive label instead leaves the message in the inbox as well, which is not

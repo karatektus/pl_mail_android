@@ -15,6 +15,10 @@ dependencies {
     // in room-ktx.
     implementation(libs.androidx.room.ktx)
     implementation(projects.core.datastore)
+    // ContextCompat.checkSelfPermission, for the composer's optional read of the
+    // device address book. Nothing here demands the permission; it asks whether
+    // it already has it.
+    implementation(libs.androidx.core.ktx)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
     // The feed is a Paging source over the materialised feed table, so this

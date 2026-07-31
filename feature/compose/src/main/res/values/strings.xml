@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compose_title">New message</string>
+    <string name="compose_back">Back</string>
+    <string name="compose_send">Send</string>
+    <string name="compose_attach">Attach a file</string>
+    <string name="compose_more">More</string>
+    <string name="compose_discard">Discard draft</string>
+
+    <string name="compose_from">From</string>
+    <!-- Shown only before identities have been read; never a made-up address. -->
+    <string name="compose_from_unknown">Not known yet</string>
+    <string name="compose_choose_sender">Choose which account sends</string>
+    <string name="compose_to">To</string>
+    <string name="compose_cc">Cc</string>
+    <string name="compose_bcc">Bcc</string>
+    <string name="compose_show_copy_fields">Cc / Bcc</string>
+    <string name="compose_subject">Subject</string>
+    <string name="compose_body_hint">Write your message</string>
+
+    <string name="compose_bold">Bold</string>
+    <string name="compose_italic">Italic</string>
+    <string name="compose_underline">Underline</string>
+    <string name="compose_bullets">Bullet list</string>
+
+    <!-- Names the person so the action is unambiguous with several chips on one line. -->
+    <string name="compose_remove_recipient">Remove %1$s</string>
+    <string name="compose_remove_attachment">Remove %1$s</string>
+
+    <string name="compose_quoted_text">Quoted text</string>
+    <string name="compose_remove_quote">Remove quote</string>
+
+    <!--
+      Says what is true rather than what is hoped: the draft is on the server or
+      it is on its way there, and the difference matters to someone about to
+      close the app.
+    -->
+    <string name="compose_saved">Draft saved</string>
+    <string name="compose_saving">Saving…</string>
+
+    <string name="compose_error_no_recipients">Add someone to send this to.</string>
+    <string name="compose_error_no_identity">No account can send mail yet. Check that your server is reachable.</string>
+    <string name="compose_error_no_original">That message could not be loaded, so there is nothing to quote.</string>
+    <!-- The server's own words, because they name the actual problem. -->
+    <string name="compose_error_save_failed">The draft could not be saved: %1$s</string>
+
+    <!--
+      The attribution line above a quoted reply. Date first, sender second — the
+      order most clients use, and the one German reads best in.
+    -->
+    <string name="compose_attribution">On %1$s, %2$s wrote:</string>
+    <string name="compose_forwarded_heading">Forwarded message</string>
+    <string name="compose_from_label">From</string>
+    <string name="compose_date_label">Date</string>
+    <string name="compose_subject_label">Subject</string>
+    <string name="compose_to_label">To</string>
+    <string name="compose_cc_label">Cc</string>
+
+    <!-- The undo-send snackbar, hosted over the mail list rather than here. -->
+    <string name="send_pending">Sending…</string>
+    <string name="send_undo">Undo</string>
+    <string name="send_done">Message sent</string>
+    <string name="send_failed">Not sent: %1$s</string>
+    <string name="send_reopen">Edit</string>
+</resources>

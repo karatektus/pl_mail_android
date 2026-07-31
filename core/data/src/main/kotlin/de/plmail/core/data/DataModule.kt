@@ -10,12 +10,17 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Qualifier
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class DataModule {
 
     @Binds @Singleton abstract fun transportFactory(real: OkHttpTransportFactory): TransportFactory
+
+    @Binds @Singleton abstract fun draftSender(real: ComposeRepository): DraftSender
 
     companion object {
 
@@ -43,6 +48,22 @@ abstract class DataModule {
             @DeviceName deviceName: String,
         ): ServerConnector = ServerConnector(transports, deviceName)
 
+        /**
+         * A scope that lives as long as the process.
+         *
+         * For work that must not be cancelled by the screen that started it — the undo-send window
+         * is exactly that: the composer closes the instant Send is tapped, and a `viewModelScope`
+         * would take the send with it.
+         *
+         * `SupervisorJob` so one failed send does not cancel the next, and `Dispatchers.Default`
+         * rather than `Main` so nothing here can block a frame.
+         */
+        @Provides
+        @Singleton
+        @ApplicationScope
+        fun applicationScope(): CoroutineScope =
+            CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
         /** `DevicePairingController` truncates at 100; sending more would be silently cut. */
         private const val MAX_DEVICE_NAME = 100
     }
@@ -50,3 +71,6 @@ abstract class DataModule {
 
 /** Distinguishes the device label from every other injectable `String`. */
 @Qualifier @Retention(AnnotationRetention.BINARY) annotation class DeviceName
+
+/** Distinguishes the process-lifetime scope from any other injectable `CoroutineScope`. */
+@Qualifier @Retention(AnnotationRetention.BINARY) annotation class ApplicationScope

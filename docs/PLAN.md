@@ -455,6 +455,23 @@ account. Sidebar order is fixed for system labels (Inbox 0, Sent 10, Drafts 20, 
 Archive 50 — created hidden), custom labels alphabetical after. Snooze via `Thread/set` with presets
 + exact time. Nested labels flat-with-paths.
 
+### Design system — **pulled forward from M10, 2026-08-01**
+Look and feel is a first-class requirement, not polish: the app has to feel modern, functional and
+nice, with the Claude mobile app as the standard of finish to aim at. Parity with Gmail is about
+*capability*; the visual language is its own thing.
+
+So `:core:designsystem` and the token layer land **before** further feature screens, not at M10.
+Screens built against raw Material defaults are screens that have to be retrofitted, and retrofits
+are where visual inconsistency becomes permanent. The thread row in `:core:ui` converts first — two
+features draw it, which makes it the best test of whether the tokens are sufficient.
+
+Direction, so it is not re-derived each time: warm neutrals rather than blue-grey, in both schemes;
+one restrained accent used sparingly and never as a large filled area; generous whitespace with
+hierarchy carried by weight and colour rather than size; hairline borders and flat surfaces instead
+of elevation shadows; quick purposeful motion. Targets stay ≥48dp and body ≥16sp, contrast checked
+in both schemes — a theme that fails contrast is not finished. Roborazzi coverage across light and
+dark grows with it, because that is what stops the look regressing while M8 and M9 are built on top.
+
 ### M10 · Appearance and settings
 The two-axis **Theme × Layout** model with density and knobs on top, in a `LocalPlMailTheme`
 `CompositionLocal` over semantic tokens (`surface`, `line`, `raised`/`hover`,

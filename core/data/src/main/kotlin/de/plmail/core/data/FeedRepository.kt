@@ -10,6 +10,7 @@ import de.plmail.core.database.ThreadEntity
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.mail.EmailFilter
+import de.plmail.jmap.methods.IdentityGet
 import de.plmail.jmap.methods.MailboxGet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.RequestBuilder
@@ -97,9 +98,17 @@ constructor(
 
             runCatching {
                 val request = RequestBuilder()
-                val get = request.add(MailboxGet(AccountId(accountId.value)))
+                val mailboxes = request.add(MailboxGet(AccountId(accountId.value)))
+                // In the same batch rather than its own round trip. Identities
+                // are what the composer's From row is drawn from, and a composer
+                // opened before the first sync would otherwise have nothing to
+                // send as -- against a server on a domestic uplink, one request
+                // is the resource worth saving.
+                val identities = request.add(IdentityGet(AccountId(accountId.value)))
+                val results = client.send(request)
 
-                mail.replaceMailboxes(accountKey, client.send(request).result(get).list)
+                mail.replaceMailboxes(accountKey, results.result(mailboxes).list)
+                mail.replaceIdentities(accountKey, results.result(identities).list)
             }
         }
 

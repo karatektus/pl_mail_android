@@ -27,6 +27,18 @@ data class ReaderMessage(
 ) {
     val body: String?
         get() = html ?: text?.let { "<pre>$it</pre>" }
+
+    /**
+     * Whether a reply-all would reach anyone a plain reply would not.
+     *
+     * Counted from the stored recipient blobs rather than from a parsed address list, because the
+     * only question is "is there more than one line's worth of people here" and parsing three
+     * hundred bytes of JSON per row to answer it would be waste. The user's own address is in
+     * there, which is why one recipient is not enough to justify the button.
+     */
+    val hasOtherRecipients: Boolean
+        get() =
+            (email.toJson?.count { it == '@' } ?: 0) + (email.ccJson?.count { it == '@' } ?: 0) > 1
 }
 
 data class ReaderUiState(

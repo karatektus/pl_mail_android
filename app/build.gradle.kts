@@ -47,6 +47,7 @@ dependencies {
     implementation(projects.core.datastore)
     implementation(projects.feature.onboarding)
     implementation(projects.feature.mail)
+    implementation(projects.feature.compose)
     implementation(projects.feature.search)
 
     implementation(libs.androidx.core.ktx)

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Close
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -66,6 +68,7 @@ fun MailScreen(
     // dependency from one feature onto another is the thing module boundaries
     // exist to prevent. :app owns the swap.
     onSearch: () -> Unit,
+    onCompose: () -> Unit,
     viewModel: MailViewModel = hiltViewModel(),
 ) {
     val threads = viewModel.threads.collectAsLazyPagingItems()
@@ -105,6 +108,19 @@ fun MailScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbars) },
+        floatingActionButton = {
+            // Hidden while rows are selected: the bar above is a mode, and a
+            // compose button inside it invites tapping it by accident with
+            // forty conversations chosen.
+            if (selection.isEmpty()) {
+                FloatingActionButton(onClick = onCompose) {
+                    Icon(
+                        imageVector = Icons.Filled.Edit,
+                        contentDescription = stringResource(R.string.compose_new),
+                    )
+                }
+            }
+        },
         topBar = {
             if (selection.isEmpty()) {
                 TopAppBar(

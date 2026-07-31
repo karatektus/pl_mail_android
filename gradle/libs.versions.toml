@@ -34,6 +34,7 @@ kotlinxSerialization = "1.11.0"
 kotlinxCoroutines = "1.11.0"
 kotlinxDatetime = "0.8.0"
 unifiedpush = "3.3.3"
+richEditor = "1.0.0"
 
 # Testing
 junit5 = "6.1.2"
@@ -108,6 +109,12 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
 
 unifiedpush-connector = { group = "org.unifiedpush.android", name = "connector", version.ref = "unifiedpush" }
+
+# The rich-text editor for the composer. Compose has none, and plMail stores
+# HTML bodies -- this is the only maintained option that already speaks HTML in
+# both directions, which is the whole reason it is here rather than a hand-rolled
+# serialiser over AnnotatedString.
+richeditor-compose = { group = "com.mohamedrejeb.richeditor", name = "richeditor-compose", version.ref = "richEditor" }
 
 # The BOM aligns jupiter with the platform launcher; those two are versioned
 # independently and a mismatch surfaces as "no tests found" rather than an error.

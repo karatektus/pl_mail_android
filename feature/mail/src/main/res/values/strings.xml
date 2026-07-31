@@ -52,4 +52,8 @@
         <item quantity="other">%1$d selected</item>
     </plurals>
     <string name="clear_selection">Clear selection</string>
+    <string name="compose_new">Write a message</string>
+    <string name="reader_reply">Reply</string>
+    <string name="reader_reply_all">Reply all</string>
+    <string name="reader_forward">Forward</string>
 </resources>

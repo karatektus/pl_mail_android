@@ -115,10 +115,50 @@ interface EmailDao {
 
     @Query("DELETE FROM emails WHERE uid IN (:uids)") suspend fun delete(uids: List<String>)
 
+    /**
+     * Senders whose name or address matches, newest first.
+     *
+     * The composer's address book. Not `DISTINCT`: SQLite refuses a `DISTINCT` whose `ORDER BY`
+     * names a column outside the projection, and ordering by recency is the whole value here — the
+     * person mailed yesterday should outrank one mailed in 2019. Duplicates are collapsed in
+     * Kotlin, where the address can be lower-cased first.
+     */
+    @Query(
+        """
+        SELECT fromName AS name, fromAddress AS address FROM emails
+        WHERE fromAddress IS NOT NULL AND (fromAddress LIKE :pattern OR fromName LIKE :pattern)
+        ORDER BY receivedAt DESC LIMIT :limit
+        """
+    )
+    suspend fun sendersLike(pattern: String, limit: Int): List<AddressRow>
+
+    /**
+     * Recipient lists that mention the pattern, newest first.
+     *
+     * Recipients are stored as a JSON blob because nothing queries on them — except this, which
+     * uses `LIKE` over the blob as a coarse filter and parses only the rows that survive it. The
+     * alternative, a harvested-address table, would be the first row in this database that is not
+     * reconstructible from the server.
+     */
+    @Query(
+        """
+        SELECT toJson, ccJson FROM emails
+        WHERE toJson LIKE :pattern OR ccJson LIKE :pattern
+        ORDER BY receivedAt DESC LIMIT :limit
+        """
+    )
+    suspend fun recipientsLike(pattern: String, limit: Int): List<RecipientRow>
+
     /** Frees space without losing the message; bodies re-fetch on demand. */
     @Query("DELETE FROM email_bodies WHERE fetchedAt < :before")
     suspend fun evictBodiesOlderThan(before: Long)
 }
+
+/** One `{name, address}` pair, projected out of a message row rather than stored anywhere. */
+data class AddressRow(val name: String?, val address: String)
+
+/** The two recipient blobs of one message, for the composer's address book to parse. */
+data class RecipientRow(val toJson: String?, val ccJson: String?)
 
 @Dao
 interface FeedDao {

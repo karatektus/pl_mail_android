@@ -14,6 +14,7 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
@@ -186,6 +187,85 @@ class WriteMethodsTest {
 
         assertTrue(fields.containsKey("inReplyTo"))
         assertTrue(fields.containsKey("references"))
+    }
+
+    @Test
+    fun `an edited body sends the part list and the values together`() {
+        // bodyValues is keyed by partId, so values sent without the htmlBody
+        // part that names them leave the server with a map it cannot look
+        // anything up in. It answers `updated` and changes nothing.
+        val patch = EmailPatch.build { html("<p>Rewritten</p>") }.toJson()
+
+        assertTrue(patch.containsKey("htmlBody"))
+        assertEquals(
+            "html",
+            patch["htmlBody"]!!.jsonArray[0].jsonObject["partId"]?.jsonPrimitive?.content,
+        )
+        assertEquals(
+            "<p>Rewritten</p>",
+            patch["bodyValues"]!!
+                .jsonObject["html"]
+                ?.jsonObject
+                ?.get("value")
+                ?.jsonPrimitive
+                ?.content,
+        )
+    }
+
+    @Test
+    fun `clearing a field sends null rather than an empty string`() {
+        // The server treats an absent key as "leave it alone", so a subject the
+        // user has just deleted needs the null to actually go away. An empty
+        // string would be stored as an empty subject on some backends and
+        // ignored on others.
+        val patch = EmailPatch.build { text("subject", "   ") }.toJson()
+
+        assertEquals(JsonNull, patch["subject"])
+    }
+
+    @Test
+    fun `emptying a recipient list sends null, not an empty array`() {
+        val patch = EmailPatch.build { addresses("cc", emptyList()) }.toJson()
+
+        assertEquals(JsonNull, patch["cc"])
+    }
+
+    @Test
+    fun `a submission omits the mailbox move unless both bindings are known`() {
+        // A patch that removes Drafts without adding Sent leaves the message in
+        // no mailbox, which the server refuses -- from inside
+        // onSuccessUpdateEmail, after the send has already been queued. An
+        // account that has never sent anything has no Sent binding, so this is
+        // the ordinary case rather than an exotic one.
+        val onlyDrafts =
+            EmailSubmissionSet.send(account, EmailId("7"), IdentityId("1"), MailboxId("3"), null)
+
+        assertFalse(argumentsOf(onlyDrafts).containsKey("onSuccessUpdateEmail"))
+
+        val both =
+            EmailSubmissionSet.send(
+                account,
+                EmailId("7"),
+                IdentityId("1"),
+                MailboxId("3"),
+                MailboxId("5"),
+            )
+
+        val patch = argumentsOf(both)["onSuccessUpdateEmail"]!!.jsonObject["#s1"]!!.jsonObject
+
+        assertEquals(JsonNull, patch["mailboxIds/3"])
+        assertEquals(true, patch["mailboxIds/5"]?.jsonPrimitive?.content?.toBoolean())
+    }
+
+    @Test
+    fun `a draft created in the same request is submitted by its creation id`() {
+        // "#c1" names an Email/set creation id. A result reference to
+        // /created/c1/id resolves to a bare string instead, and Email/get then
+        // rejects the argument with no description saying why.
+        val submission = EmailSubmissionSet.sendNew(account, "c1", IdentityId("1"))
+        val create = argumentsOf(submission)["create"]!!.jsonObject["s1"]!!.jsonObject
+
+        assertEquals("#c1", create["emailId"]?.jsonPrimitive?.content)
     }
 
     @Test

@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="compose_title">Neue Nachricht</string>
+    <string name="compose_back">Zurück</string>
+    <string name="compose_send">Senden</string>
+    <string name="compose_attach">Datei anhängen</string>
+    <string name="compose_more">Mehr</string>
+    <string name="compose_discard">Entwurf verwerfen</string>
+
+    <string name="compose_from">Von</string>
+    <string name="compose_from_unknown">Noch nicht bekannt</string>
+    <string name="compose_choose_sender">Absendekonto wählen</string>
+    <string name="compose_to">An</string>
+    <string name="compose_cc">Cc</string>
+    <string name="compose_bcc">Bcc</string>
+    <string name="compose_show_copy_fields">Cc / Bcc</string>
+    <string name="compose_subject">Betreff</string>
+    <string name="compose_body_hint">Nachricht schreiben</string>
+
+    <string name="compose_bold">Fett</string>
+    <string name="compose_italic">Kursiv</string>
+    <string name="compose_underline">Unterstrichen</string>
+    <string name="compose_bullets">Aufzählung</string>
+
+    <string name="compose_remove_recipient">%1$s entfernen</string>
+    <string name="compose_remove_attachment">%1$s entfernen</string>
+
+    <string name="compose_quoted_text">Zitierter Text</string>
+    <string name="compose_remove_quote">Zitat entfernen</string>
+
+    <string name="compose_saved">Entwurf gespeichert</string>
+    <string name="compose_saving">Wird gespeichert…</string>
+
+    <string name="compose_error_no_recipients">Fügen Sie eine Empfängerin oder einen Empfänger hinzu.</string>
+    <string name="compose_error_no_identity">Noch kann kein Konto senden. Prüfen Sie, ob Ihr Server erreichbar ist.</string>
+    <string name="compose_error_no_original">Diese Nachricht konnte nicht geladen werden, es gibt also nichts zu zitieren.</string>
+    <string name="compose_error_save_failed">Der Entwurf konnte nicht gespeichert werden: %1$s</string>
+
+    <!--
+      "Am <Datum> schrieb <Name>:" — the German order puts the verb before the
+      subject, so the placeholders are not simply swapped versions of the English.
+    -->
+    <string name="compose_attribution">Am %1$s schrieb %2$s:</string>
+    <string name="compose_forwarded_heading">Weitergeleitete Nachricht</string>
+    <string name="compose_from_label">Von</string>
+    <string name="compose_date_label">Datum</string>
+    <string name="compose_subject_label">Betreff</string>
+    <string name="compose_to_label">An</string>
+    <string name="compose_cc_label">Cc</string>
+
+    <string name="send_pending">Wird gesendet…</string>
+    <string name="send_undo">Rückgängig</string>
+    <string name="send_done">Nachricht gesendet</string>
+    <string name="send_failed">Nicht gesendet: %1$s</string>
+    <string name="send_reopen">Bearbeiten</string>
+</resources>

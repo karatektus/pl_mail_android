@@ -64,8 +64,16 @@ class EmailSubmissionSet(
         /**
          * Sends an existing draft, moving it from Drafts to Sent.
          *
-         * The mailbox move is spelled out even though the server would do it anyway, so the intent
-         * is visible at the call site rather than being an invisible side effect of a pipeline.
+         * The mailbox move is spelled out when both bindings are known, so the intent is visible at
+         * the call site rather than being an invisible side effect of a pipeline.
+         *
+         * **Both or neither, never one.** A patch that only removes Drafts leaves the message in no
+         * mailbox at all, which the server rejects with "An Email must belong to at least one
+         * Mailbox" — and it rejects it *after* the submission has already been queued, from inside
+         * `onSuccessUpdateEmail`, so the whole request comes back an error describing a mailbox
+         * while the mail is on its way. An account that has never sent anything has no Sent binding
+         * yet, which makes that the ordinary case rather than an exotic one. Omitting the patch
+         * entirely is safe: plMail's send pipeline performs the same transition itself.
          */
         fun send(
             accountId: AccountId,
@@ -74,20 +82,42 @@ class EmailSubmissionSet(
             drafts: MailboxId?,
             sent: MailboxId?,
         ): EmailSubmissionSet {
-            val patch = EmailPatch.build {
-                drafts?.let { removeMailbox(it) }
-                sent?.let { addMailbox(it) }
-            }
+            val patch =
+                if (drafts != null && sent != null) {
+                    EmailPatch.build {
+                        addMailbox(sent)
+                        removeMailbox(drafts)
+                    }
+                } else {
+                    null
+                }
 
             return EmailSubmissionSet(
                 accountId = accountId,
                 create = mapOf(CREATION_ID to Submission(emailId, identityId)),
-                onSuccessUpdateEmail =
-                    if (patch.isEmpty) emptyMap() else mapOf(CREATION_ID to patch),
+                onSuccessUpdateEmail = patch?.let { mapOf(CREATION_ID to it) } ?: emptyMap(),
             )
         }
 
-        private const val CREATION_ID = "s1"
+        /**
+         * Sends a draft being created in the same request.
+         *
+         * `emailId: "#c1"` names an `Email/set` creation id rather than an existing message, which
+         * is what lets a compose that has never been saved go out in one round trip. It is *not* a
+         * result reference: `{"resultOf": …, "path": "/created/c1/id"}` resolves to a bare string
+         * and the server then rejects the argument, with no description saying why.
+         */
+        fun sendNew(
+            accountId: AccountId,
+            creationId: String,
+            identityId: IdentityId,
+        ): EmailSubmissionSet =
+            EmailSubmissionSet(
+                accountId = accountId,
+                create = mapOf(CREATION_ID to Submission(EmailId("#$creationId"), identityId)),
+            )
+
+        const val CREATION_ID = "s1"
     }
 }
 

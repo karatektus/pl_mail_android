@@ -5,15 +5,26 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
+import de.plmail.feature.compose.ComposeRequest
+import de.plmail.feature.compose.ComposeRequestSaver
+import de.plmail.feature.compose.ComposeScreen
+import de.plmail.feature.compose.SendStatusHost
 import de.plmail.feature.mail.MailShell
 import de.plmail.feature.onboarding.OnboardingScreen
 import de.plmail.feature.search.SearchScreen
@@ -72,11 +83,17 @@ private fun PlMailApp(
 ) {
     val connection by viewModel.connection.collectAsStateWithLifecycle()
 
-    // Search lives here rather than inside the mail shell because it is its own
-    // feature module: :feature:mail depending on :feature:search would make two
-    // peers into a chain, and the module boundary exists to prevent exactly that.
-    // :app is the one place that is allowed to know about both.
+    // Search and compose live here rather than inside the mail shell because
+    // they are their own feature modules: :feature:mail depending on either
+    // would make peers into a chain, and the module boundary exists to prevent
+    // exactly that. :app is the one place allowed to know about all three.
     var isSearching by rememberSaveable { mutableStateOf(false) }
+    var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
+
+    // Over the mail list, never over the composer: the composer has closed by
+    // the time the undo window is running, which is the whole point of a window
+    // rather than a confirmation.
+    val snackbars = remember { SnackbarHostState() }
 
     when (connection) {
         ConnectionState.Unknown -> Unit // The very first frame, before the store has been read.
@@ -91,16 +108,50 @@ private fun PlMailApp(
         // The mail pane owns its own layout and back behaviour from here on;
         // :app only decides whether there is a server to show it for.
         is ConnectionState.Connected ->
-            if (isSearching) {
-                SearchScreen(
-                    // The reader is M4's and reached from the list; opening a
-                    // result closes search, so Back returns to the mail list
-                    // rather than to a query the user has finished with.
-                    onOpenThread = { _, _ -> isSearching = false },
-                    onBack = { isSearching = false },
-                )
-            } else {
-                MailShell(onSearch = { isSearching = true })
+            Scaffold(snackbarHost = { SnackbarHost(snackbars) }) { insets ->
+                Box(modifier = Modifier.padding(insets)) {
+                    // Mounted for every screen below, so an undo remains
+                    // reachable after the user has navigated on. Reopening
+                    // replaces whatever is showing, because the message being
+                    // recovered is the thing they just asked for.
+                    SendStatusHost(
+                        snackbars = snackbars,
+                        onReopen = { request ->
+                            isSearching = false
+                            composing = request
+                        },
+                    )
+
+                    val request = composing
+
+                    when {
+                        request != null ->
+                            ComposeScreen(
+                                request = request,
+                                onClose = { composing = null },
+                            )
+                        isSearching ->
+                            SearchScreen(
+                                // The reader is M4's and reached from the list;
+                                // opening a result closes search, so Back
+                                // returns to the mail list rather than to a
+                                // query the user has finished with.
+                                onOpenThread = { _, _ -> isSearching = false },
+                                onBack = { isSearching = false },
+                            )
+                        else ->
+                            MailShell(
+                                onSearch = { isSearching = true },
+                                onCompose = { composing = ComposeRequest.New },
+                                onReply = { accountKey, emailId, all ->
+                                    composing = ComposeRequest.Reply(accountKey, emailId, all)
+                                },
+                                onForward = { accountKey, emailId ->
+                                    composing = ComposeRequest.Forward(accountKey, emailId)
+                                },
+                            )
+                    }
+                }
             }
     }
 }

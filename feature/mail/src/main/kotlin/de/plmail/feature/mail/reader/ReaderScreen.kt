@@ -45,6 +45,8 @@ fun ReaderScreen(
     accountKey: String,
     threadId: String,
     subject: String?,
+    onReply: (emailId: String, all: Boolean) -> Unit,
+    onForward: (emailId: String) -> Unit,
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -81,9 +83,51 @@ fun ReaderScreen(
                     onToggleOriginal = { viewModel.toggleOriginal(message.email.uid) },
                     onDisplayed = { viewModel.markRead(accountKey, message.email.uid) },
                 )
+
+                // Under the message they answer, rather than in the app bar.
+                // A thread is several messages and "reply" has to mean "to this
+                // one" -- replying to the newest when the user was reading the
+                // third quotes the wrong text and threads against the wrong id.
+                if (message.isExpanded) {
+                    ReplyActions(
+                        canReplyAll = message.hasOtherRecipients,
+                        onReply = { onReply(message.email.emailId, false) },
+                        onReplyAll = { onReply(message.email.emailId, true) },
+                        onForward = { onForward(message.email.emailId) },
+                    )
+                }
+
                 HorizontalDivider()
             }
         }
+    }
+}
+
+/**
+ * Reply, reply-all and forward for one message.
+ *
+ * Reply-all appears only when it would reach someone the plain reply does not. A button that sends
+ * to exactly the same person under a different name teaches people not to trust the difference,
+ * which is how a private reply eventually goes to a mailing list.
+ */
+@Composable
+private fun ReplyActions(
+    canReplyAll: Boolean,
+    onReply: () -> Unit,
+    onReplyAll: () -> Unit,
+    onForward: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        TextButton(onClick = onReply) { Text(stringResource(R.string.reader_reply)) }
+
+        if (canReplyAll) {
+            TextButton(onClick = onReplyAll) { Text(stringResource(R.string.reader_reply_all)) }
+        }
+
+        TextButton(onClick = onForward) { Text(stringResource(R.string.reader_forward)) }
     }
 }
 

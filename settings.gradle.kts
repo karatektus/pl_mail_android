@@ -55,4 +55,6 @@ include(":feature:onboarding")
 
 include(":feature:mail")
 
+include(":feature:compose")
+
 include(":feature:search")
