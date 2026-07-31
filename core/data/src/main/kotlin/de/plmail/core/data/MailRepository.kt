@@ -2,6 +2,8 @@ package de.plmail.core.data
 
 import androidx.room.withTransaction
 import de.plmail.core.database.AccountEntity
+import de.plmail.core.database.EmailBodyEntity
+import de.plmail.core.database.EmailEntity
 import de.plmail.core.database.MailboxEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
@@ -155,6 +157,39 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
                         )
                     }
                 )
+        }
+    }
+
+    /** One conversation's messages, oldest first, from the cache. */
+    suspend fun messagesInThread(accountKey: String, threadId: String): List<EmailEntity> =
+        database.emails().inThread(accountKey, threadId)
+
+    suspend fun body(emailUid: String): EmailBodyEntity? = database.emails().body(emailUid)
+
+    /**
+     * Marks a message read locally.
+     *
+     * Local only for now. The `Email/set` that tells the server arrives with M5, where it belongs
+     * alongside the rest of the local-first mutations and the undo that goes with them — writing it
+     * here would mean a mutation with no rollback path.
+     */
+    suspend fun markSeen(accountKey: String, emailUid: String) {
+        database.withTransaction {
+            val email = database.emails().byUid(emailUid) ?: return@withTransaction
+            if (email.isSeen) return@withTransaction
+
+            database.emails().upsert(listOf(email.copy(isSeen = true)))
+
+            // The thread row is denormalised, so it has to be recomputed or the
+            // list keeps showing the conversation as unread.
+            email.threadId?.let { threadId ->
+                database.threads().byUid(StoreKey.objectKey(accountKey, threadId))?.let { thread ->
+                    val messages = database.emails().inThread(accountKey, threadId)
+                    database
+                        .threads()
+                        .upsert(listOf(thread.copy(isUnread = messages.any { !it.isSeen })))
+                }
+            }
         }
     }
 

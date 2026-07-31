@@ -27,6 +27,8 @@ dependencies {
     implementation(libs.androidx.compose.material3.adaptive.navigation)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
     implementation(libs.androidx.paging.compose)
+    // WebSettingsCompat, for telling a self-darkening message which scheme applies.
+    implementation(libs.androidx.webkit)
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.core)
 

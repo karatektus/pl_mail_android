@@ -57,6 +57,14 @@ class MethodResults(val responses: List<Invocation>, val sessionState: String) {
             explicitNulls = false
             encodeDefaults = true
             isLenient = false
+            // The server writes an absent list as an explicit `null` rather
+            // than omitting the key or sending `[]` -- `"cc": null`,
+            // `"references": null`. A default only applies to a key that is
+            // *missing*, so without this the response fails to decode the
+            // moment a message has no Cc, which is most of them. It surfaces as
+            // "Expected JsonArray, but had JsonNull at path: $.cc" nowhere near
+            // the field that caused it.
+            coerceInputValues = true
         }
 
         /**

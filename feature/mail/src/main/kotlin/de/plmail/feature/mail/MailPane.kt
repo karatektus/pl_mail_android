@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import de.plmail.feature.mail.reader.ReaderScreen
 import kotlinx.coroutines.launch
 
 /**
@@ -43,6 +44,8 @@ fun MailPane() {
     val scope = rememberCoroutineScope()
     var selectedUid by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedSubject by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedAccount by rememberSaveable { mutableStateOf<String?>(null) }
+    var selectedThread by rememberSaveable { mutableStateOf<String?>(null) }
 
     // Only when the detail pane is the one being shown. On a tablet both panes
     // are visible and there is nothing to go back *from*, so intercepting here
@@ -59,6 +62,8 @@ fun MailPane() {
                     onThreadSelected = { thread ->
                         selectedUid = thread.uid
                         selectedSubject = thread.subject
+                        selectedAccount = thread.accountKey
+                        selectedThread = thread.threadId
                         scope.launch {
                             navigator.navigateTo(ListDetailPaneScaffoldRole.Detail)
                         }
@@ -67,40 +72,36 @@ fun MailPane() {
             }
         },
         detailPane = {
-            AnimatedPane { ReaderPlaceholder(subject = selectedSubject, uid = selectedUid) }
+            AnimatedPane {
+                val account = selectedAccount
+                val thread = selectedThread
+
+                if (account == null || thread == null) {
+                    NothingSelected()
+                } else {
+                    ReaderScreen(
+                        accountKey = account,
+                        threadId = thread,
+                        subject = selectedSubject,
+                    )
+                }
+            }
         },
     )
 }
 
-/**
- * Where the reader goes.
- *
- * M4's job. Showing the selected conversation's subject rather than a blank pane so the selection
- * is visibly working — a pane that never changes looks like a broken list.
- */
+/** The detail pane before anything has been chosen, which only a tablet ever shows. */
 @Composable
-private fun ReaderPlaceholder(subject: String?, uid: String?) {
+private fun NothingSelected() {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (uid == null) {
-            Text(
-                text = stringResource(R.string.reader_placeholder),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            Text(
-                text = subject?.takeIf { it.isNotBlank() } ?: stringResource(R.string.no_subject),
-                style = MaterialTheme.typography.titleMedium,
-            )
-            Text(
-                text = stringResource(R.string.reader_coming),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(
+            text = stringResource(R.string.reader_placeholder),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }

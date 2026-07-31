@@ -44,7 +44,7 @@ internal fun avatarLetter(seed: String): String =
  * Relative to [today] rather than to the clock so the result is testable, and so a list rendered
  * either side of midnight cannot show two different answers for the same message.
  */
-internal fun Long.asListDate(
+fun Long.asListDate(
     zone: ZoneId = ZoneId.systemDefault(),
     today: LocalDate = LocalDate.now(zone),
 ): String {

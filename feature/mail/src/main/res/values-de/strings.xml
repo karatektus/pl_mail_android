@@ -11,8 +11,11 @@
     <string name="retry">Erneut versuchen</string>
 
     <string name="reader_placeholder">Wähle eine Unterhaltung.</string>
-    <string name="reader_coming">Die Leseansicht kommt im nächsten Meilenstein.</string>
     <string name="sent_title">Gesendet</string>
     <string name="drafts_title">Entwürfe</string>
     <string name="coming_soon">%1$s kommt in einem späteren Meilenstein.</string>
+    <string name="show_remote_images">Bilder anzeigen</string>
+    <string name="show_original">Original anzeigen</string>
+    <string name="show_adapted">Angepasst anzeigen</string>
+    <string name="body_not_downloaded">Diese Nachricht wurde noch nicht heruntergeladen.</string>
 </resources>
