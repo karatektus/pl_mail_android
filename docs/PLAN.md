@@ -92,14 +92,46 @@ emulator UI here — drive it with `adb` and `screencap`):
 ~/Android/run-emulator.sh plmail_tablet_api36  # tablet
 ```
 
-> **The open decision for this host: where the emulator should run long-term.** A software-rendered
-> emulator inside WSL2 is usable for install-and-screenshot verification but is poor for anything
-> interactive, and it will be painful at M3–M4 when real UI work starts. The better arrangement on
-> Windows is to install **Android Studio and the emulator on the Windows side**, where the emulator
-> gets WHPX hardware acceleration and the real GPU, and keep building in WSL2 — connecting to the
-> Windows-side adb server over TCP from WSL2. That splits the toolchain across the boundary and needs
-> its own small setup (a second SDK on Windows, `adb -H` or `adb connect`, and a shared or duplicated
-> APK path). It is worth doing before M3. **Not done yet; flagged rather than assumed.**
+### The accelerated emulator lives on Windows
+
+Settled on 2026-07-31, because software rendering was never going to survive M3–M4. There is now a
+**second, Windows-side SDK** whose only job is to run the emulator:
+
+| | |
+|---|---|
+| Windows SDK | `C:\Users\mail\AppData\Local\Android\Sdk` — emulator 37.1.11, platform-tools 37.0.1, `system-images;android-36;google_apis;x86_64` |
+| Windows JDK | `C:\Users\mail\.jdks\temurin-21`, needed only to run `sdkmanager.bat` |
+| AVD | `plmail_win_api36`, `hw.gpu.mode=host`, 4 GB RAM |
+| Helpers | `C:\Users\mail\plmail-emulator.bat`, `plmail-adb-server.bat`, `plmail-sdkmanager.bat` |
+
+WHPX was already installed and usable, so nothing had to be enabled for acceleration. The emulator
+renders through the machine's **RTX 3080** — confirmed from `dumpsys SurfaceFlinger`, which reports
+`Android Emulator OpenGL ES Translator (NVIDIA GeForce RTX 3080)` rather than SwiftShader.
+
+Building still happens in WSL2. The only awkward part is adb, because WSL2 is in `nat` mode and does
+not share localhost with Windows:
+
+1. The Windows adb server runs with `-a`, so it listens on `0.0.0.0:5037` instead of `127.0.0.1`.
+2. `~/Android/use-windows-emulator.sh` puts a socat relay on the WSL side's own 5037. Anything in
+   WSL that talks to `127.0.0.1:5037` then reaches it — including AGP, which uses ddmlib over TCP
+   and does **not** honour `ADB_SERVER_SOCKET`, so a relay is the only approach that needs no
+   Gradle flags.
+3. WSL's Hyper-V firewall defaults to `DefaultInboundAction = Block`, which is what stops the relay
+   connecting. One elevated rule fixes it permanently:
+
+```powershell
+New-NetFirewallHyperVRule -Name "adb-from-wsl" -DisplayName "adb server (WSL -> Windows)" `
+  -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `
+  -Protocol TCP -LocalPorts 5037 -Action Allow
+```
+
+Mirrored networking (`networkingMode=mirrored`) would remove the need for both the relay and the
+rule, and is deliberately **not** used: it is known to disturb Docker bridge networking inside WSL,
+and the pl_mail server stack runs there.
+
+The WSL-side emulator and `~/Android/run-emulator.sh` stay as they are. They need no firewall rule
+and no Windows session, which makes them the better choice for a quick headless install-and-
+screenshot check; the Windows AVD is for anything interactive.
 
 ### Verified working, on this host
 
@@ -478,8 +510,7 @@ From identity. The user said they would fix this; check whether they have before
 
 ## Open decisions
 
-1. **Where the emulator runs** (see Environment). Software rendering in WSL2 works now but will hurt
-   from M3. Moving the emulator to the Windows side is the likely answer. Due before M3.
+1. ~~**Where the emulator runs.**~~ Settled: on Windows, GPU-accelerated. See Environment.
 2. **Rich-text compose** (M8). Compose has no rich-text editor, and the server round-trips HTML
    bodies.
 
