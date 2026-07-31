@@ -50,7 +50,7 @@ enum class MailDestination(val label: Int, val icon: ImageVector) {
  * a bottom bar and one pane at a time.
  */
 @Composable
-fun MailShell() {
+fun MailShell(onSearch: () -> Unit) {
     var destination by rememberSaveable { mutableStateOf(MailDestination.INBOX) }
 
     NavigationSuiteScaffold(
@@ -68,7 +68,7 @@ fun MailShell() {
         }
     ) {
         when (destination) {
-            MailDestination.INBOX -> MailPane()
+            MailDestination.INBOX -> MailPane(onSearch = onSearch)
             // Sent and Drafts are the same list against a different mailbox
             // binding, which needs the per-role filter M9 introduces. Named
             // here rather than hidden so the shape of the shell is visible.

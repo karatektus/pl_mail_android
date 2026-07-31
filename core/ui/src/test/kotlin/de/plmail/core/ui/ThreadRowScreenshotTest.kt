@@ -1,4 +1,4 @@
-package de.plmail.feature.mail
+package de.plmail.core.ui
 
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme

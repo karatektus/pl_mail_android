@@ -28,6 +28,14 @@ class FeedMediator(
     private val sources: List<FeedSource>,
     /** Reported so the list can name an account that is unreachable rather than showing nothing. */
     private val onFailures: (List<SourceFailure>) -> Unit = {},
+    /**
+     * Whether rows already in the table are an answer to *this* feed's question.
+     *
+     * True for a mailbox, where yesterday's inbox is still the inbox. False for a search, where the
+     * table holds the previous query's results: showing those is not a stale answer but an answer
+     * to a question nobody asked, and it would arrive instantly and look authoritative.
+     */
+    private val cachedRowsAnswerThis: Boolean = true,
 ) : RemoteMediator<Int, ThreadEntity>() {
 
     private val feed = UnifiedFeed(sources)
@@ -46,7 +54,8 @@ class FeedMediator(
      * far enough to trigger an append — which, on an empty list, they cannot do.
      */
     override suspend fun initialize(): InitializeAction =
-        if (database.feed().count(feedId) == 0) InitializeAction.LAUNCH_INITIAL_REFRESH
+        if (!cachedRowsAnswerThis || database.feed().count(feedId) == 0)
+            InitializeAction.LAUNCH_INITIAL_REFRESH
         else InitializeAction.SKIP_INITIAL_REFRESH
 
     override suspend fun load(

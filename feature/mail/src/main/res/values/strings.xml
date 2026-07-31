@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="inbox_title">Inbox</string>
-    <string name="no_subject">(no subject)</string>
-    <string name="no_sender">(unknown sender)</string>
+    <string name="search">Search</string>
 
     <string name="inbox_empty">Nothing here yet.</string>
     <string name="inbox_loading">Fetching your mail…</string>

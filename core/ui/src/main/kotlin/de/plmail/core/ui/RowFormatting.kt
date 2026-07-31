@@ -1,4 +1,4 @@
-package de.plmail.feature.mail
+package de.plmail.core.ui
 
 import java.time.Instant
 import java.time.LocalDate

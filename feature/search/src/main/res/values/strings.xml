@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_placeholder">Search mail</string>
+    <string name="search_clear">Clear</string>
+    <string name="search_back">Back</string>
+    <string name="search_recent">Recent searches</string>
+    <!-- Names the query so the action is unambiguous with several chips on screen. -->
+    <string name="search_forget">Forget “%1$s”</string>
+
+    <string name="search_empty_no_matches">No messages match.</string>
+
+    <!--
+      The dated empty state. Two sentences, because they say different things:
+      the search worked, and the mail was never here to be found. Answering
+      only "no results" would be true and misleading.
+    -->
+    <string name="search_empty_outside_window">Nothing found — but this search reaches back further than your mail has been synced.</string>
+    <string name="search_oldest_held">The oldest message on this server is from %1$s.</string>
+
+    <!--
+      Both flags is contradictory and matches nothing on every plMail client.
+      Reproduced rather than resolved, so it has to be said out loud.
+    -->
+    <string name="search_contradiction">is:read and is:unread together match nothing.</string>
+
+    <!-- The account was skipped entirely, which is not the same as matching nothing in it. -->
+    <string name="search_account_lacks_mailbox">Account %1$s has no such mailbox and was not searched.</string>
+
+    <string name="chip_from">From: %1$s</string>
+    <string name="chip_to">To: %1$s</string>
+    <string name="chip_subject">Subject: %1$s</string>
+    <string name="chip_attachment">Has attachment</string>
+    <string name="chip_unread">Unread</string>
+    <string name="chip_read">Read</string>
+    <string name="chip_starred">Starred</string>
+    <string name="chip_in">In: %1$s</string>
+    <string name="chip_after">After %1$s</string>
+    <string name="chip_before">Before %1$s</string>
+</resources>

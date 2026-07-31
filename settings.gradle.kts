@@ -49,6 +49,10 @@ include(":core:datastore")
 
 include(":core:data")
 
+include(":core:ui")
+
 include(":feature:onboarding")
 
 include(":feature:mail")
+
+include(":feature:search")

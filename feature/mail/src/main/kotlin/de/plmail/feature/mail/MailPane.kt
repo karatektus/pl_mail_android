@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
-fun MailPane() {
+fun MailPane(onSearch: () -> Unit) {
     val navigator = rememberListDetailPaneScaffoldNavigator<Nothing>()
     val scope = rememberCoroutineScope()
     var selectedUid by rememberSaveable { mutableStateOf<String?>(null) }
@@ -59,6 +59,7 @@ fun MailPane() {
         listPane = {
             AnimatedPane {
                 MailScreen(
+                    onSearch = onSearch,
                     onThreadSelected = { thread ->
                         selectedUid = thread.uid
                         selectedSubject = thread.subject
@@ -67,7 +68,7 @@ fun MailPane() {
                         scope.launch {
                             navigator.navigateTo(ListDetailPaneScaffoldRole.Detail)
                         }
-                    }
+                    },
                 )
             }
         },

@@ -21,6 +21,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import de.plmail.core.data.MailAction
 import de.plmail.core.database.ThreadEntity
+import de.plmail.core.ui.ThreadRow
 
 /**
  * A thread row that can be swiped.

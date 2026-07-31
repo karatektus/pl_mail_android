@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Shown in place of a field the message genuinely lacks. Parenthesised so a
+      reader can tell it apart from a subject that happens to read "no subject",
+      which is a real thing people send.
+    -->
+    <string name="no_subject">(no subject)</string>
+    <string name="no_sender">(unknown sender)</string>
+</resources>

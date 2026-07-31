@@ -9,12 +9,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import de.plmail.feature.mail.MailShell
 import de.plmail.feature.onboarding.OnboardingScreen
+import de.plmail.feature.search.SearchScreen
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -70,6 +72,12 @@ private fun PlMailApp(
 ) {
     val connection by viewModel.connection.collectAsStateWithLifecycle()
 
+    // Search lives here rather than inside the mail shell because it is its own
+    // feature module: :feature:mail depending on :feature:search would make two
+    // peers into a chain, and the module boundary exists to prevent exactly that.
+    // :app is the one place that is allowed to know about both.
+    var isSearching by rememberSaveable { mutableStateOf(false) }
+
     when (connection) {
         ConnectionState.Unknown -> Unit // The very first frame, before the store has been read.
         ConnectionState.None ->
@@ -82,7 +90,18 @@ private fun PlMailApp(
             )
         // The mail pane owns its own layout and back behaviour from here on;
         // :app only decides whether there is a server to show it for.
-        is ConnectionState.Connected -> MailShell()
+        is ConnectionState.Connected ->
+            if (isSearching) {
+                SearchScreen(
+                    // The reader is M4's and reached from the list; opening a
+                    // result closes search, so Back returns to the mail list
+                    // rather than to a query the user has finished with.
+                    onOpenThread = { _, _ -> isSearching = false },
+                    onBack = { isSearching = false },
+                )
+            } else {
+                MailShell(onSearch = { isSearching = true })
+            }
     }
 }
 

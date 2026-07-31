@@ -26,7 +26,15 @@ import kotlinx.coroutines.flow.update
 /** The lists the app can show. Ids are stable, because they key the feed table. */
 enum class Feed(val id: String) {
     /** Every account's inbox, merged. The product's default view. */
-    UNIFIED_INBOX("unified.inbox")
+    UNIFIED_INBOX("unified.inbox"),
+
+    /**
+     * The current search. One at a time, cleared as each new query starts.
+     *
+     * Shares the feed table so results page and draw exactly like the inbox, but never shows its
+     * rows before a refresh: they answer the previous query. See [SearchRepository].
+     */
+    SEARCH("search.results"),
 }
 
 /**

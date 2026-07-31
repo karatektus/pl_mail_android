@@ -29,8 +29,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.plmail.core.ui.R as UiR
+import de.plmail.core.ui.asListDate
 import de.plmail.feature.mail.R
-import de.plmail.feature.mail.asListDate
 
 /**
  * One conversation.
@@ -62,7 +63,7 @@ fun ReaderScreen(
                     Text(
                         text =
                             state.subject?.takeIf { it.isNotBlank() }
-                                ?: stringResource(R.string.no_subject),
+                                ?: stringResource(UiR.string.no_subject),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
@@ -61,6 +62,10 @@ import de.plmail.core.database.ThreadEntity
 @Composable
 fun MailScreen(
     onThreadSelected: (ThreadEntity) -> Unit,
+    // Hoisted rather than handled here: search is its own feature module, and a
+    // dependency from one feature onto another is the thing module boundaries
+    // exist to prevent. :app owns the swap.
+    onSearch: () -> Unit,
     viewModel: MailViewModel = hiltViewModel(),
 ) {
     val threads = viewModel.threads.collectAsLazyPagingItems()
@@ -102,7 +107,17 @@ fun MailScreen(
         snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
             if (selection.isEmpty()) {
-                TopAppBar(title = { Text(stringResource(R.string.inbox_title)) })
+                TopAppBar(
+                    title = { Text(stringResource(R.string.inbox_title)) },
+                    actions = {
+                        IconButton(onClick = onSearch) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = stringResource(R.string.search),
+                            )
+                        }
+                    },
+                )
             } else {
                 SelectionBar(
                     count = selection.size,
