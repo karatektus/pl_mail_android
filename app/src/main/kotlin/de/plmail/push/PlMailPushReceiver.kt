@@ -1,6 +1,7 @@
 package de.plmail.push
 
 import android.content.Context
+import android.util.Log
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -44,7 +45,16 @@ class PlMailPushReceiver : MessagingReceiver() {
      * fails silently forever.
      */
     override fun onNewEndpoint(context: Context, endpoint: PushEndpoint, instance: String) {
-        val keys = endpoint.pubKeySet ?: return
+        val keys = endpoint.pubKeySet
+
+        if (keys == null) {
+            // Without the keypair the server has nothing to encrypt to, so the
+            // subscription would be registered and undeliverable. Said out
+            // loud: a distributor that negotiates no encryption is a
+            // configuration problem, not a silent no-op.
+            Log.w(TAG, "Distributor returned an endpoint with no keys; push cannot be encrypted.")
+            return
+        }
 
         launch(context) { push ->
             push.subscribe(
@@ -83,7 +93,12 @@ class PlMailPushReceiver : MessagingReceiver() {
         instance: String,
     ) = Unit
 
+    private companion object {
+        const val TAG = "plMail.Push"
+    }
+
     private fun launch(context: Context, block: suspend (PushRepository) -> Unit) {
+        Log.d(TAG, "push event")
         val push =
             EntryPointAccessors.fromApplication(
                     context.applicationContext,
@@ -94,6 +109,11 @@ class PlMailPushReceiver : MessagingReceiver() {
         // Application-scoped rather than tied to the broadcast: a receiver has
         // about ten seconds, and the Email/changes loop a push triggers can
         // legitimately take longer against a sleeping NAS.
-        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch { block(push) }
+        CoroutineScope(Dispatchers.IO + SupervisorJob()).launch {
+            // Logged rather than swallowed. A push path that fails quietly is
+            // indistinguishable from one that was never triggered, and this
+            // runs where no user is watching.
+            runCatching { block(push) }.onFailure { Log.w(TAG, "Push handling failed", it) }
+        }
     }
 }

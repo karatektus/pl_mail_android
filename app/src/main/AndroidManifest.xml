@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!--
       plMail talks to a server the user owns: a NAS, a home box, a Tailscale
@@ -80,15 +81,29 @@
             </intent-filter>
         </activity>
         <!--
-          UnifiedPush delivery. Not exported to the world: the distributor is
-          granted permission by the connector's own registration, and an
-          exported receiver here would let any app on the device deliver a
-          payload that looks like a state change.
+          UnifiedPush delivery, and it must be exported.
+          
+          A distributor is a *different app*, so it delivers by broadcast across
+          a package boundary, which a non-exported receiver cannot receive at
+          all. Exported="false" here is not a safer choice, it is a silent one:
+          the distributor logs a successful send and the app never hears it.
+          
+          What actually protects this is the connector's token. Every event
+          carries the one issued at registration, and the library drops
+          anything whose token it did not hand out, so a payload from another
+          app is discarded before it reaches any of the code below.
+
+          Lint wants a permission on an exported receiver and is right to in
+          general. There is none to require here: a distributor is any app the
+          user chose, known only at runtime, so a custom permission would have
+          to be held by an app that has never heard of us. UnifiedPush's answer
+          is the token, and this is the one place it applies.
         -->
         <receiver
             android:name=".push.PlMailPushReceiver"
             android:enabled="true"
-            android:exported="false">
+            android:exported="true"
+            tools:ignore="ExportedReceiver">
             <intent-filter>
                 <action android:name="org.unifiedpush.android.connector.MESSAGE" />
                 <action android:name="org.unifiedpush.android.connector.UNREGISTERED" />
