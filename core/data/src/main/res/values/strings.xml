@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Fallback for the app-password label when Build.MODEL is empty, which some
+         custom ROMs and most emulators leave blank. -->
+    <string name="default_device_name">Android device</string>
+</resources>
