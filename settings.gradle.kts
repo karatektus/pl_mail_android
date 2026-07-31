@@ -50,3 +50,5 @@ include(":core:datastore")
 include(":core:data")
 
 include(":feature:onboarding")
+
+include(":feature:mail")

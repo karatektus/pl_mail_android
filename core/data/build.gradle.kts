@@ -17,6 +17,9 @@ dependencies {
     implementation(projects.core.datastore)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
+    // The feed is a Paging source over the materialised feed table, so this
+    // module owns the RemoteMediator that fills it.
+    api(libs.androidx.paging.runtime)
     implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(platform(libs.junit.bom))

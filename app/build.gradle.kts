@@ -14,6 +14,7 @@ dependencies {
     implementation(projects.core.data)
     implementation(projects.core.datastore)
     implementation(projects.feature.onboarding)
+    implementation(projects.feature.mail)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

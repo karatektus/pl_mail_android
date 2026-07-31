@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="inbox_title">Posteingang</string>
+    <string name="no_subject">(kein Betreff)</string>
+    <string name="no_sender">(unbekannter Absender)</string>
+
+    <string name="inbox_empty">Hier ist noch nichts.</string>
+    <string name="inbox_loading">E-Mails werden geladen…</string>
+
+    <string name="account_unreachable">%1$s ist nicht erreichbar. Die anderen Konten sind aktuell.</string>
+    <string name="retry">Erneut versuchen</string>
+
+    <string name="reader_placeholder">Wähle eine Unterhaltung.</string>
+    <string name="reader_coming">Die Leseansicht kommt im nächsten Meilenstein.</string>
+</resources>

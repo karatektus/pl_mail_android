@@ -2,11 +2,4 @@
 <resources>
     <!-- The product's name, not a word. It reads the same in every locale. -->
     <string name="app_name" translatable="false">plMail</string>
-    <!--
-      The screen after onboarding, until the mail list exists. It names the
-      account actually signed in, rather than saying "not connected", which is
-      no longer true by the time anyone sees this.
-    -->
-    <string name="placeholder_signed_in_as">Signed in as %1$s</string>
-    <string name="placeholder_no_mail_yet">Your mail arrives in the next milestone.</string>
 </resources>

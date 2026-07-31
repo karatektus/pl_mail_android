@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="inbox_title">Inbox</string>
+    <string name="no_subject">(no subject)</string>
+    <string name="no_sender">(unknown sender)</string>
+
+    <string name="inbox_empty">Nothing here yet.</string>
+    <string name="inbox_loading">Fetching your mail…</string>
+
+    <!--
+      Names the account, because the whole point of degrading per account is
+      that the user can tell which server is the problem.
+    -->
+    <string name="account_unreachable">Could not reach %1$s. The other accounts are still up to date.</string>
+    <string name="retry">Try again</string>
+
+    <string name="reader_placeholder">Select a conversation.</string>
+    <string name="reader_coming">The reader arrives in the next milestone.</string>
+</resources>

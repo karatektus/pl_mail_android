@@ -11,6 +11,7 @@ import de.plmail.jmap.mail.Identity
 import de.plmail.jmap.mail.MailThread
 import de.plmail.jmap.mail.Mailbox
 import de.plmail.jmap.protocol.Session
+import de.plmail.jmap.protocol.ThreadId
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -117,7 +118,7 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
     suspend fun storeEmails(
         accountKey: String,
         emails: List<Email>,
-        threads: List<MailThread>,
+        threads: List<MailThread> = emptyList(),
         fetchedAt: Long,
     ) {
         if (emails.isEmpty() && threads.isEmpty()) return
@@ -132,15 +133,25 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
                 if (attachments.isNotEmpty()) database.emails().upsertAttachments(attachments)
             }
 
+            // Every thread the page touched, whether or not a Thread/get came
+            // with it. A list page fetches messages alone -- one per
+            // conversation -- so requiring the Thread object here would leave
+            // the rows those messages belong to unsummarised, and the list
+            // reading from them empty.
+            val fetched = threads.associateBy { it.id.value }
+            val touched = (fetched.keys + emails.mapNotNull { it.threadId?.value }).toSet()
+
             // Read back rather than reusing `emails`: the summary has to cover
             // every message the thread now has, not just the ones in this page.
             database
                 .threads()
                 .upsert(
-                    threads.map { thread ->
+                    touched.map { threadId ->
+                        val thread = fetched[threadId] ?: MailThread(id = ThreadId(threadId))
+
                         thread.toEntity(
                             accountKey,
-                            database.emails().inThread(accountKey, thread.id.value),
+                            database.emails().inThread(accountKey, threadId),
                         )
                     }
                 )
