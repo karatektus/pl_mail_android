@@ -133,6 +133,7 @@ agp-gradle-plugin = { group = "com.android.tools.build", name = "gradle", versio
 kotlin-gradle-plugin = { group = "org.jetbrains.kotlin", name = "kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlin-compose-gradle-plugin = { group = "org.jetbrains.kotlin", name = "compose-compiler-gradle-plugin", version.ref = "kotlin" }
 ksp-gradle-plugin = { group = "com.google.devtools.ksp", name = "com.google.devtools.ksp.gradle.plugin", version.ref = "ksp" }
+room-gradle-plugin = { group = "androidx.room", name = "room-gradle-plugin", version.ref = "room" }
 spotless-gradle-plugin = { group = "com.diffplug.spotless", name = "spotless-plugin-gradle", version.ref = "spotless" }
 
 [plugins]
@@ -158,4 +159,6 @@ roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
 plmail-android-application = { id = "plmail.android.application" }
 plmail-android-library = { id = "plmail.android.library" }
 plmail-android-compose = { id = "plmail.android.compose" }
+plmail-android-hilt = { id = "plmail.android.hilt" }
+plmail-android-room = { id = "plmail.android.room" }
 plmail-jvm-library = { id = "plmail.jvm.library" }

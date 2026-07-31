@@ -12,6 +12,8 @@ dependencies {
     compileOnly(libs.kotlin.gradle.plugin)
     compileOnly(libs.kotlin.compose.gradle.plugin)
     compileOnly(libs.spotless.gradle.plugin)
+    compileOnly(libs.ksp.gradle.plugin)
+    compileOnly(libs.room.gradle.plugin)
 }
 
 gradlePlugin {
@@ -31,6 +33,14 @@ gradlePlugin {
         register("jvmLibrary") {
             id = "plmail.jvm.library"
             implementationClass = "JvmLibraryConventionPlugin"
+        }
+        register("androidHilt") {
+            id = "plmail.android.hilt"
+            implementationClass = "AndroidHiltConventionPlugin"
+        }
+        register("androidRoom") {
+            id = "plmail.android.room"
+            implementationClass = "AndroidRoomConventionPlugin"
         }
     }
 }
