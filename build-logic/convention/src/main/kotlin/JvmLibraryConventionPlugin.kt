@@ -19,6 +19,16 @@ class JvmLibraryConventionPlugin : Plugin<Project> {
 
             extensions.configure<JavaPluginExtension> {
                 toolchain.languageVersion.set(javaToolchainVersion())
+
+                // Compile *with* JDK 21, emit Java 17 bytecode. Both halves
+                // matter: Android cannot dex class files newer than 17, and
+                // this module is consumed by the app, so a JVM module left on
+                // the toolchain's own default would build fine here and fail
+                // at dexing. Kotlin is pinned to 17 in configureKotlin(); if
+                // Java is not pinned to match, the Kotlin plugin refuses the
+                // mismatch outright rather than letting the two drift.
+                sourceCompatibility = JAVA_TARGET
+                targetCompatibility = JAVA_TARGET
             }
 
             configureKotlin()
