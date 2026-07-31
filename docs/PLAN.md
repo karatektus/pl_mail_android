@@ -168,9 +168,15 @@ project name gives it its own volumes:
 cd ~/pl_mail && TEST_HTTP_PORT=8002 docker compose -p pl_mail_android -f compose.test.yaml up -d --build --wait app
 ```
 
-- Serves at `http://127.0.0.1:8002` → **`http://10.0.2.2:8002`** from the emulator. The emulator's
-  `10.0.2.2` alias resolves to the WSL2 host, which is where the container's port is published, so
-  this works unchanged from the macOS arrangement.
+**Up and verified on 2026-07-31**, seeded with `seed-user`, `seed-mail` (4 inbox threads),
+`seed-label` and `seed-attachment`. The app onboarded against it end to end from the emulator.
+
+- Serves at `http://127.0.0.1:8002` → **`http://10.0.2.2:8002`** from the emulator, and that still
+  holds now the emulator runs on Windows, though for a longer reason: `10.0.2.2` is the *emulator
+  host's* loopback, which is Windows, and the container is published on WSL. WSL2's default
+  `localhostForwarding` bridges the two, so Windows `localhost:8002` reaches the WSL container and
+  the emulator reaches it through that. If localhost forwarding is ever turned off, this breaks and
+  the address becomes WSL's own IP.
 - Own `database_data`, `app_var`, `app_public_assets` volumes — nothing shared, so `down -v` resets
   it without touching the user's data or the iOS app's.
 - Seed with `app:test:seed-user`, `seed-mail`, `seed-label`, `seed-attachment`, `clear-drafts` via
@@ -508,7 +514,10 @@ Android work:
 
 Also outstanding on the server: `SeedTestEmailCommand.php:110` does `->setEmail('E2E Mailbox')` — a
 display name in the account's email column — so `Identity/get` hands clients a non-address as the
-From identity. The user said they would fix this; check whether they have before M8.
+From identity. **Re-checked against the 8002 stack on 2026-07-31: still present.** `Identity/get`
+returns `{"id":"1","name":"E2E Mailbox","email":"E2E Mailbox"}`. It only affects seeded data, so it
+is not a client bug to work around — but M8's From picker will show a non-address until it is fixed,
+and `Identity.email` must not be assumed to parse.
 
 ---
 
