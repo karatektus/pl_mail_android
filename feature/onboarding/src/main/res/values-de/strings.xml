@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="onboarding_title">Mit deinem Server verbinden</string>
+    <string name="onboarding_intro">plMail läuft auf einem Server, den du selbst betreibst. Gib seine Adresse ein oder scanne den Code aus Einstellungen → App-Passwörter.</string>
+
+    <string name="onboarding_address_label">Serveradresse</string>
+    <string name="onboarding_address_hint">nas.local</string>
+    <string name="onboarding_password_label">App-Passwort</string>
+    <string name="onboarding_password_hint">plmail_…</string>
+    <string name="onboarding_connect">Verbinden</string>
+    <string name="onboarding_connecting">Server wird kontaktiert…</string>
+
+    <string name="onboarding_address_scheme">Hier funktionieren nur http:// und https://, nicht %1$s://.</string>
+    <string name="onboarding_address_malformed">Das sieht nicht nach einer Serveradresse aus.</string>
+    <string name="onboarding_address_credentials">Lass Benutzernamen und Passwort aus der Adresse heraus — das App-Passwort gehört in das Feld darunter.</string>
+
+    <string name="onboarding_cleartext_warning">Diese Adresse ist unverschlüsselt. Dein App-Passwort und deine E-Mails werden im Klartext übertragen — nutze sie nur in einem Netzwerk, dem du vertraust.</string>
+
+    <string name="onboarding_trust_title">Ist das dein Server?</string>
+    <string name="onboarding_trust_body">%1$s verwendet ein Zertifikat, für das dieses Telefon nicht bürgen kann. Bei einem selbst betriebenen Server ist das normal. Prüfe, ob dieser Fingerabdruck mit dem auf dem Server übereinstimmt, bevor du fortfährst.</string>
+    <string name="onboarding_trust_accept">Das ist mein Server</string>
+    <string name="onboarding_trust_reject">Abbrechen</string>
+
+    <string name="onboarding_confirm_title">Verbunden</string>
+    <string name="onboarding_confirm_signed_in_as">Angemeldet als %1$s</string>
+    <string name="onboarding_confirm_accounts">Erreichbare Postfächer</string>
+    <string name="onboarding_confirm_save">Speichern</string>
+    <string name="onboarding_confirm_cancel">Nicht dieser</string>
+
+    <string name="onboarding_error_unauthenticated">Dieses App-Passwort wurde abgelehnt. Erstelle ein neues unter Einstellungen → App-Passwörter.</string>
+    <string name="onboarding_error_unreachable">%1$s ist nicht erreichbar. Prüfe die Adresse und ob der Server läuft.</string>
+    <string name="onboarding_error_certificate_changed">Das Zertifikat für %1$s hat sich seit der letzten Verbindung geändert. Falls du es nicht selbst geändert hast, fahre nicht fort.</string>
+    <string name="onboarding_error_malformed">An dieser Adresse hat etwas geantwortet, aber es war nicht plMail.</string>
+</resources>

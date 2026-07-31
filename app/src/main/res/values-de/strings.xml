@@ -6,5 +6,6 @@
       longer than English, so every layout is measured against the longer of
       the two from the start rather than discovering the overflow at the end.
     -->
-    <string name="placeholder_subtitle">Noch mit keinem Server verbunden.</string>
+    <string name="placeholder_signed_in_as">Angemeldet als %1$s</string>
+    <string name="placeholder_no_mail_yet">Deine E-Mails kommen im nächsten Meilenstein.</string>
 </resources>

@@ -25,13 +25,36 @@
           No android:label here: it would repeat the application's, and a
           duplicate is one more place to forget when the name changes.
         -->
+        <!--
+          singleTask so a tapped pairing link reaches the activity that is
+          already running rather than stacking a second copy of it. Onboarding
+          is usually already open when the link is tapped — the user went
+          looking for the code because the app asked for one — and a second
+          instance would redeem against a ViewModel the visible screen is not
+          observing.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.PlMail">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+              The pairing deep link. When the QR is on the same device as the
+              app, tapping it skips the camera entirely, which is the whole
+              flow — and it is also the fallback when camera permission is
+              refused. No autoVerify: plmail:// is our own scheme, not an
+              https:// one that needs Digital Asset Links.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="plmail" android:host="pair" />
             </intent-filter>
         </activity>
     </application>

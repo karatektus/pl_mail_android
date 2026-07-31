@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="onboarding_title">Connect to your server</string>
+    <string name="onboarding_intro">plMail runs on a server you host. Enter its address, or scan the code from Settings → App passwords.</string>
+
+    <string name="onboarding_address_label">Server address</string>
+    <string name="onboarding_address_hint">nas.local</string>
+    <string name="onboarding_password_label">App password</string>
+    <string name="onboarding_password_hint">plmail_…</string>
+    <string name="onboarding_connect">Connect</string>
+    <string name="onboarding_connecting">Contacting your server…</string>
+
+    <!-- Shown under the address field, so each names the field rather than the server. -->
+    <string name="onboarding_address_scheme">Only http:// and https:// addresses work here, not %1$s://.</string>
+    <string name="onboarding_address_malformed">That does not look like a server address.</string>
+    <string name="onboarding_address_credentials">Leave the username and password out of the address — the app password goes in the field below.</string>
+
+    <!--
+      Deliberately about what happens rather than about how bad it is. The
+      emulator's test stack and plenty of LAN boxes are http://, so this is a
+      choice being described, not a scolding.
+    -->
+    <string name="onboarding_cleartext_warning">This address is unencrypted. Your app password and your mail will travel in the clear, so only use it on a network you trust.</string>
+
+    <string name="onboarding_trust_title">Is this your server?</string>
+    <string name="onboarding_trust_body">%1$s uses a certificate this phone cannot vouch for, which is normal for a server you host yourself. Check that this fingerprint matches the one on the server before continuing.</string>
+    <string name="onboarding_trust_accept">This is my server</string>
+    <string name="onboarding_trust_reject">Cancel</string>
+
+    <string name="onboarding_confirm_title">Connected</string>
+    <string name="onboarding_confirm_signed_in_as">Signed in as %1$s</string>
+    <string name="onboarding_confirm_accounts">Mailboxes this reaches</string>
+    <string name="onboarding_confirm_save">Save</string>
+    <string name="onboarding_confirm_cancel">Not this one</string>
+
+    <!--
+      One string per thing the user can act on. "The server rejected the
+      request" is a sentence nobody can do anything with, so the cases that
+      have an action get their own wording and the rest fall back to whatever
+      the server said, which at least names the problem.
+    -->
+    <string name="onboarding_error_unauthenticated">That app password was rejected. Create a new one in Settings → App passwords.</string>
+    <string name="onboarding_error_unreachable">Could not reach %1$s. Check the address, and that the server is running.</string>
+    <string name="onboarding_error_certificate_changed">The certificate for %1$s has changed since you last connected. If you did not change it yourself, do not continue.</string>
+    <string name="onboarding_error_malformed">Something answered at that address, but it was not plMail.</string>
+</resources>
