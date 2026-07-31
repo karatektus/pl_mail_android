@@ -34,14 +34,20 @@ class FeedMediator(
     private var restored = false
 
     /**
-     * Cached rows are shown immediately and refreshed behind them.
+     * Cached rows are shown immediately and refreshed behind them — unless there are none.
      *
-     * `SKIP_INITIAL_REFRESH` rather than `LAUNCH_INITIAL_REFRESH`: the server is frequently a NAS
-     * that is asleep or a Tailscale node that is not reachable from this network, and blocking the
-     * first frame on it turns "your mail, instantly" into a spinner. What is on disk is already
-     * correct as of the last sync.
+     * Skipping the initial refresh is what makes a cold launch instant: the server is frequently a
+     * NAS that is asleep or a Tailscale node unreachable from this network, and blocking the first
+     * frame on it turns "your mail, instantly" into a spinner. What is on disk is already correct
+     * as of the last sync.
+     *
+     * But an empty table is not a synced empty inbox, it is a client that has never synced.
+     * Skipping there leaves a freshly paired account showing nothing at all until the user scrolls
+     * far enough to trigger an append — which, on an empty list, they cannot do.
      */
-    override suspend fun initialize(): InitializeAction = InitializeAction.SKIP_INITIAL_REFRESH
+    override suspend fun initialize(): InitializeAction =
+        if (database.feed().count(feedId) == 0) InitializeAction.LAUNCH_INITIAL_REFRESH
+        else InitializeAction.SKIP_INITIAL_REFRESH
 
     override suspend fun load(
         loadType: LoadType,

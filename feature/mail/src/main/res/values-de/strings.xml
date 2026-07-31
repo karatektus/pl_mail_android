@@ -18,4 +18,33 @@
     <string name="show_original">Original anzeigen</string>
     <string name="show_adapted">Angepasst anzeigen</string>
     <string name="body_not_downloaded">Diese Nachricht wurde noch nicht heruntergeladen.</string>
+    <string name="action_archive">Archivieren</string>
+    <string name="action_trash">In den Papierkorb</string>
+    <string name="action_star">Markieren</string>
+    <string name="action_read">Als gelesen markieren</string>
+    <string name="action_spam">Als Spam markieren</string>
+    <string name="undo">Rückgängig</string>
+    <plurals name="archived">
+        <item quantity="one">1 Unterhaltung archiviert</item>
+        <item quantity="other">%1$d Unterhaltungen archiviert</item>
+    </plurals>
+    <plurals name="trashed">
+        <item quantity="one">1 Unterhaltung in den Papierkorb verschoben</item>
+        <item quantity="other">%1$d Unterhaltungen in den Papierkorb verschoben</item>
+    </plurals>
+    <plurals name="moved_to_inbox">
+        <item quantity="one">1 Unterhaltung in den Posteingang verschoben</item>
+        <item quantity="other">%1$d Unterhaltungen in den Posteingang verschoben</item>
+    </plurals>
+    <plurals name="marked_spam">
+        <item quantity="one">1 Unterhaltung als Spam markiert</item>
+        <item quantity="other">%1$d Unterhaltungen als Spam markiert</item>
+    </plurals>
+    <string name="changed">Geändert</string>
+    <string name="action_rejected">%1$s Deine Änderung hat den Server möglicherweise nicht erreicht.</string>
+    <plurals name="selected_count">
+        <item quantity="one">1 ausgewählt</item>
+        <item quantity="other">%1$d ausgewählt</item>
+    </plurals>
+    <string name="clear_selection">Auswahl aufheben</string>
 </resources>

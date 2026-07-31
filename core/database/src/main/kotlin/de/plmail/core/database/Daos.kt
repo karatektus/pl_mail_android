@@ -142,7 +142,25 @@ interface FeedDao {
 
     @Upsert suspend fun upsertEntries(entries: List<FeedEntryEntity>)
 
+    /**
+     * How many rows one list holds.
+     *
+     * Distinguishes "synced, and empty" from "never synced", which decide opposite things about
+     * whether to go to the network before the first frame.
+     */
+    @Query("SELECT COUNT(*) FROM feed_entries WHERE feedId = :feedId")
+    suspend fun count(feedId: String): Int
+
     @Query("DELETE FROM feed_entries WHERE feedId = :feedId") suspend fun clearFeed(feedId: String)
+
+    /**
+     * Drops one conversation from one list.
+     *
+     * What archiving does to the inbox: the list reads this table, so leaving the row would keep
+     * showing a conversation the user has just archived until the next refresh.
+     */
+    @Query("DELETE FROM feed_entries WHERE feedId = :feedId AND uid = :feedId || '#' || :threadUid")
+    suspend fun clearThread(feedId: String, threadUid: String)
 
     @Query("DELETE FROM feed_entries WHERE feedId = :feedId AND accountKey = :accountKey")
     suspend fun clearAccountFromFeed(feedId: String, accountKey: String)

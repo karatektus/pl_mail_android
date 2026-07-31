@@ -5,21 +5,89 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import dagger.hilt.android.lifecycle.HiltViewModel
+import de.plmail.core.data.ActionOutcome
+import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.FeedRepository
+import de.plmail.core.data.MailAction
+import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
+import de.plmail.core.data.UndoableAction
 import de.plmail.core.database.ThreadEntity
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /** An account that is not answering, named so the banner can say which. */
 data class UnreachableAccount(val accountKey: String, val displayName: String)
 
+/** A change to announce, with the undo that reverses it. */
+data class ActionAnnouncement(
+    val outcome: ActionOutcome,
+    /**
+     * Distinguishes two identical archives so the snackbar re-shows rather than being deduplicated.
+     */
+    val id: Long,
+)
+
 @HiltViewModel
-class MailViewModel @Inject constructor(feed: FeedRepository, mail: MailRepository) : ViewModel() {
+class MailViewModel
+@Inject
+constructor(
+    feed: FeedRepository,
+    private val mail: MailRepository,
+    private val actions: MailActions,
+) : ViewModel() {
+
+    private val _announcement = MutableStateFlow<ActionAnnouncement?>(null)
+    val announcement: StateFlow<ActionAnnouncement?> = _announcement.asStateFlow()
+
+    private val _selection = MutableStateFlow<Set<String>>(emptySet())
+    val selection: StateFlow<Set<String>> = _selection.asStateFlow()
+
+    private var announcements = 0L
+
+    fun toggleSelected(uid: String) {
+        _selection.update { if (uid in it) it - uid else it + uid }
+    }
+
+    fun clearSelection() {
+        _selection.update { emptySet() }
+    }
+
+    /**
+     * Applies an action and announces the result.
+     *
+     * The selection is cleared immediately rather than when the server answers: the rows are gone
+     * from the list the moment the local write lands, and a selection referring to conversations
+     * that are no longer shown is a checkbox nobody can uncheck.
+     */
+    fun apply(action: MailAction, targets: List<ActionTarget>) {
+        if (targets.isEmpty()) return
+        clearSelection()
+
+        viewModelScope.launch {
+            val outcome = actions.apply(action, targets)
+            _announcement.update { ActionAnnouncement(outcome, announcements++) }
+        }
+    }
+
+    fun undo(undoable: UndoableAction) {
+        viewModelScope.launch {
+            val outcome = actions.undo(undoable)
+            _announcement.update { ActionAnnouncement(outcome, announcements++) }
+        }
+    }
+
+    fun announcementShown(id: Long) {
+        _announcement.update { current -> current?.takeIf { it.id != id } }
+    }
 
     /**
      * `cachedIn` so the pages survive a rotation.

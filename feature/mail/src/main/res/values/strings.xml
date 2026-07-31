@@ -22,4 +22,35 @@
     <string name="show_original">Show original</string>
     <string name="show_adapted">Show adapted</string>
     <string name="body_not_downloaded">This message has not been downloaded yet.</string>
+    <string name="action_archive">Archive</string>
+    <string name="action_trash">Trash</string>
+    <string name="action_star">Star</string>
+    <string name="action_read">Mark read</string>
+    <string name="action_spam">Mark as spam</string>
+    <string name="undo">Undo</string>
+    <!-- Conversations, not messages: conversations are what the user acted on. -->
+    <plurals name="archived">
+        <item quantity="one">1 conversation archived</item>
+        <item quantity="other">%1$d conversations archived</item>
+    </plurals>
+    <plurals name="trashed">
+        <item quantity="one">1 conversation moved to Trash</item>
+        <item quantity="other">%1$d conversations moved to Trash</item>
+    </plurals>
+    <plurals name="moved_to_inbox">
+        <item quantity="one">1 conversation moved to Inbox</item>
+        <item quantity="other">%1$d conversations moved to Inbox</item>
+    </plurals>
+    <plurals name="marked_spam">
+        <item quantity="one">1 conversation marked as spam</item>
+        <item quantity="other">%1$d conversations marked as spam</item>
+    </plurals>
+    <string name="changed">Changed</string>
+    <!-- The row already moved, so a rejection has to be said out loud. -->
+    <string name="action_rejected">%1$s Your change may not have reached the server.</string>
+    <plurals name="selected_count">
+        <item quantity="one">1 selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <string name="clear_selection">Clear selection</string>
 </resources>

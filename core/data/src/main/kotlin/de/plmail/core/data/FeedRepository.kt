@@ -10,7 +10,9 @@ import de.plmail.core.database.ThreadEntity
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.mail.EmailFilter
+import de.plmail.jmap.methods.MailboxGet
 import de.plmail.jmap.protocol.AccountId
+import de.plmail.jmap.protocol.RequestBuilder
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -77,6 +79,21 @@ constructor(
         // Written before the first page, so the sidebar and the per-account
         // banner have names to show even while the first query is in flight.
         mail.replaceAccounts(server, session)
+
+        // And the label bindings, because everything else needs them: the inbox
+        // filter below, and every move action, which is expressed as adding or
+        // removing a binding id that differs per account. Without this the list
+        // silently pages the whole mailbox and archiving silently does nothing.
+        session.accountIds.forEach { accountId ->
+            val accountKey = StoreKey.account(server, accountId.value)
+
+            runCatching {
+                val request = RequestBuilder()
+                val get = request.add(MailboxGet(AccountId(accountId.value)))
+
+                mail.replaceMailboxes(accountKey, client.send(request).result(get).list)
+            }
+        }
 
         val sources =
             session.accountIds.map { accountId ->

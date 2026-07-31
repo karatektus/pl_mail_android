@@ -1,7 +1,8 @@
 package de.plmail.feature.mail
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -35,15 +36,29 @@ import de.plmail.core.database.ThreadEntity
  * Everything drawn here comes off the row itself — the thread table is denormalised precisely so
  * that fifty of these can scroll at 120fps without a join or a lazy load per row.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ThreadRow(thread: ThreadEntity, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ThreadRow(
+    thread: ThreadEntity,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
+    isSelected: Boolean = false,
+) {
     val unreadWeight = if (thread.isUnread) FontWeight.Bold else FontWeight.Normal
 
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .clickable(onClick = onClick)
+                .then(
+                    if (isSelected) {
+                        Modifier.background(MaterialTheme.colorScheme.secondaryContainer)
+                    } else {
+                        Modifier
+                    }
+                )
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 .padding(horizontal = 16.dp, vertical = 12.dp)
                 .clearAndSetSemantics { contentDescription = thread.spoken() },
         horizontalArrangement = Arrangement.spacedBy(12.dp),
