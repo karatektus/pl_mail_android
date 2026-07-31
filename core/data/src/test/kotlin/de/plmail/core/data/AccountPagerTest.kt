@@ -137,7 +137,7 @@ class AccountPagerTest {
         val stored = mutableListOf<String>()
         val transport = transport(queryIds = listOf("2", "1"), getOrder = listOf("1", "2"))
 
-        pager(transport) { emails -> stored += emails.map { it.id.value } }
+        pager(transport) { emails, _ -> stored += emails.map { it.id.value } }
             .page(null, emptySet(), 10)
 
         // In query order, so what is written matches what is drawn.
@@ -155,18 +155,36 @@ class AccountPagerTest {
 
         val stored = mutableListOf<String>()
         val page =
-            pager(transport) { emails -> stored += emails.map { it.id.value } }
+            pager(transport) { emails, _ -> stored += emails.map { it.id.value } }
                 .page(null, emptySet(), 10)
 
         assertEquals(listOf("1"), page.rows.map { it.id }, "it cannot be placed in a dated list")
         assertEquals(listOf("2", "1"), stored, "but the reader can still open it")
     }
 
+    /**
+     * The cursor, as a test.
+     *
+     * This shipped broken and looked healthy from every angle: the state was never reported, so the
+     * account had no cursor, so `Email/changes` had nothing to resume from and every push woke the
+     * app to do nothing. Nothing failed — push and the periodic sync were simply inert. A page is
+     * the only place the state can be learned, so it is asserted at the only place it is produced.
+     */
+    @Test
+    fun `a page reports the state it was read at, which is what changes resumes from`() = runTest {
+        val transport = transport(queryIds = listOf("1"), getOrder = listOf("1"))
+
+        var seen: String? = null
+        pager(transport) { _, state -> seen = state }.page(null, emptySet(), 10)
+
+        assertEquals("e", seen, "without this there is no cursor and delta sync never runs")
+    }
+
     // -- helpers -----------------------------------------------------------
 
     private fun pager(
         transport: RecordingTransport,
-        onPage: suspend (List<de.plmail.jmap.mail.Email>) -> Unit = {},
+        onPage: suspend (List<de.plmail.jmap.mail.Email>, String) -> Unit = { _, _ -> },
     ) =
         AccountPager(
             accountKey = "https://nas.local/13",

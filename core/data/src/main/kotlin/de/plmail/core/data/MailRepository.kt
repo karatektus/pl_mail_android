@@ -193,6 +193,19 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
         }
     }
 
+    /**
+     * Stores the Email state a page was read at.
+     *
+     * Only ever moves forward from *absent* to set here; delta sync owns it afterwards. A blank
+     * state is ignored rather than written, because a cursor of "" is not a starting point and
+     * would send `Email/changes` somewhere it cannot answer from.
+     */
+    suspend fun recordEmailState(accountKey: String, state: String) {
+        if (state.isBlank()) return
+
+        database.accounts().setEmailState(accountKey, state)
+    }
+
     /** Records the outcome of a sync so the diagnostics screen can show it. */
     suspend fun recordSync(accountKey: String, at: Long?, error: String?) {
         database.accounts().recordSync(accountKey, at, error)

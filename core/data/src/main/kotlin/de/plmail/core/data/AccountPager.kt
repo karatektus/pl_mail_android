@@ -28,7 +28,14 @@ class AccountPager(
     private val client: JmapClient,
     /** The list being paged — an inbox, a label, a search. Null pages everything. */
     private val filter: EmailFilter? = null,
-    private val onPage: suspend (List<Email>) -> Unit = {},
+    /**
+     * Receives the page *and* the Email state it was read at.
+     *
+     * The state is what `Email/changes` resumes from, and a page is the only place it can be
+     * learned: `Email/get` reports the state its answer reflects. Without recording it here there
+     * is no cursor, delta sync has nothing to resume from, and every push arrives and does nothing.
+     */
+    private val onPage: suspend (List<Email>, String) -> Unit = { _, _ -> },
 ) : FeedSource {
 
     override suspend fun page(
@@ -65,9 +72,10 @@ class AccountPager(
         // computes notFound by difference, so a query answered newest-first
         // comes back oldest-first. A list rendered from `list` is sorted by
         // database id, which looks almost right on a small mailbox.
-        val messages = results.result(get).ordered(ids)
+        val getResult = results.result(get)
+        val messages = getResult.ordered(ids)
 
-        onPage(messages)
+        onPage(messages, getResult.state)
 
         val rows =
             messages

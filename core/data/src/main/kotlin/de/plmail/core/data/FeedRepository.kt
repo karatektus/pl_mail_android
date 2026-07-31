@@ -107,7 +107,15 @@ constructor(
                     // differs per account -- resolved per account rather than
                     // shared.
                     filter = inboxFilter(accountKey),
-                    onPage = { emails -> mail.storeEmails(accountKey, emails, fetchedAt = now()) },
+                    onPage = { emails, state ->
+                        mail.storeEmails(accountKey, emails, fetchedAt = now())
+
+                        // The cursor delta sync resumes from. Recorded here
+                        // because a page is the only place it is reported, and
+                        // without it every push triggers a sync that finds no
+                        // cursor and gives up.
+                        mail.recordEmailState(accountKey, state)
+                    },
                 )
             }
 
