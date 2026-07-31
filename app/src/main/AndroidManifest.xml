@@ -10,6 +10,28 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+      Notifications are asked for at the moment push is switched on, not at
+      launch: a permission prompt before the user has connected a server is one
+      they have no way to evaluate.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!--
+      Package visibility for UnifiedPush.
+
+      Since Android 11 an app cannot see another unless it declares a query for
+      it. Distributor discovery works by resolving this action, so without this
+      block the connector finds no distributors at all on a device where one is
+      installed, and push simply never starts, with nothing logged and nothing
+      to see. It is the single easiest way for this to look broken.
+    -->
+    <queries>
+        <intent>
+            <action android:name="org.unifiedpush.android.distributor.REGISTER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".PlMailApplication"
         android:allowBackup="false"
@@ -57,6 +79,24 @@
                 <data android:scheme="plmail" android:host="pair" />
             </intent-filter>
         </activity>
+        <!--
+          UnifiedPush delivery. Not exported to the world: the distributor is
+          granted permission by the connector's own registration, and an
+          exported receiver here would let any app on the device deliver a
+          payload that looks like a state change.
+        -->
+        <receiver
+            android:name=".push.PlMailPushReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.MESSAGE" />
+                <action android:name="org.unifiedpush.android.connector.UNREGISTERED" />
+                <action android:name="org.unifiedpush.android.connector.NEW_ENDPOINT" />
+                <action android:name="org.unifiedpush.android.connector.REGISTRATION_FAILED" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>

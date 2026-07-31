@@ -7,6 +7,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.data.SyncWorker
 import de.plmail.core.datastore.CredentialStore
+import de.plmail.push.PushSetup
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -45,9 +46,17 @@ constructor(
                 // change in the store rather than a screen anyone visits.
                 if (stored == null) {
                     SyncWorker.cancel(context)
+                    PushSetup.disable(context)
                     ConnectionState.None
                 } else {
                     SyncWorker.schedule(context)
+
+                    // Push is an upgrade, never a requirement. Enabling it is
+                    // attempted and allowed to fail: a device with no
+                    // distributor keeps the fifteen-minute sync, which is why
+                    // that sync is scheduled first and unconditionally.
+                    PushSetup.enable(context)
+
                     ConnectionState.Connected(stored.username)
                 }
             }
