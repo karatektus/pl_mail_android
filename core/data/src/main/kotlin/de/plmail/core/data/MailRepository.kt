@@ -149,12 +149,27 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
                 .threads()
                 .upsert(
                     touched.map { threadId ->
+                        val uid = StoreKey.objectKey(accountKey, threadId)
                         val thread = fetched[threadId] ?: MailThread(id = ThreadId(threadId))
 
-                        thread.toEntity(
-                            accountKey,
-                            database.emails().inThread(accountKey, threadId),
-                        )
+                        val row =
+                            thread.toEntity(
+                                accountKey,
+                                database.emails().inThread(accountKey, threadId),
+                            )
+
+                        // Every field on that row is derived from the messages
+                        // — except the snooze time, which is a property of the
+                        // conversation and exists nowhere in `Email/get`. So a
+                        // caller that did not fetch the Thread has not learned
+                        // that it is null; it has learned nothing, and writing
+                        // null anyway is how the only local record of when mail
+                        // is due back gets destroyed by an unrelated page load.
+                        // Callers that *do* fetch it — the pagers and the delta
+                        // sync — carry the server's answer, including a null
+                        // that genuinely means the mail is awake again.
+                        if (threadId in fetched) row
+                        else row.copy(snoozedUntil = database.threads().byUid(uid)?.snoozedUntil)
                     }
                 )
         }

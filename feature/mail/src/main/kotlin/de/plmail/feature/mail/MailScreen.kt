@@ -46,6 +46,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -66,6 +67,7 @@ import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailEmptyState
 import de.plmail.core.designsystem.PlMailTheme
 import java.time.Instant
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The unified inbox.
@@ -104,23 +106,43 @@ fun MailScreen(
 
     val snackbars = remember { SnackbarHostState() }
 
-    // Six seconds, matching the product's undo window. Long enough to notice a
-    // row leave and change your mind, short enough not to sit over the list.
     // Resolved through the composition's own resources rather than
     // LocalContext.resources, which does not recompose on a locale change --
     // the snackbar would keep the language the screen was first created in.
     val message = announcement?.let { describe(it.outcome) }.orEmpty()
     val undoLabel = stringResource(R.string.undo)
+    val accessibility = LocalAccessibilityManager.current
 
     LaunchedEffect(announcement?.id) {
         val shown = announcement ?: return@LaunchedEffect
 
+        // Extended for anyone the system says needs longer. This is the one
+        // control in the app with a deadline, so it is the one place where a
+        // fixed timeout quietly excludes people -- and it is exactly the users
+        // who need the extra seconds who would lose them.
+        val window =
+            accessibility?.calculateRecommendedTimeoutMillis(
+                originalTimeoutMillis = UNDO_WINDOW_MILLIS,
+                containsIcons = false,
+                containsText = true,
+                containsControls = true,
+            ) ?: UNDO_WINDOW_MILLIS
+
+        // Indefinite plus a timeout, rather than SnackbarDuration.Short. Short
+        // is four seconds, and this code claimed six in a comment while asking
+        // for it -- four is not enough to watch a row leave, decide against it
+        // and reach a button at the other end of the screen, which is a large
+        // part of why the undo path was so hard to catch working that it
+        // shipped without anyone seeing it. Material offers no way to name a
+        // duration, so the duration is named here.
         val result =
-            snackbars.showSnackbar(
-                message = message,
-                actionLabel = undoLabel,
-                duration = SnackbarDuration.Short,
-            )
+            withTimeoutOrNull(window) {
+                snackbars.showSnackbar(
+                    message = message,
+                    actionLabel = undoLabel,
+                    duration = SnackbarDuration.Indefinite,
+                )
+            }
 
         if (result == SnackbarResult.ActionPerformed) viewModel.undo(shown.outcome.undoable)
 
@@ -399,6 +421,15 @@ private val ROW_TEXT_INSET = 72.dp
 /** The role plMail gives the mailbox a snoozed conversation waits in. */
 private const val SNOOZED_ROLE = "snoozed"
 
+/**
+ * How long the way back stays on screen.
+ *
+ * Six seconds is the product's window, and it is a deliberate number rather than a default: long
+ * enough to see a row leave, realise it was the wrong one and reach the button, short enough that
+ * it is not sitting over the list while somebody reads.
+ */
+private const val UNDO_WINDOW_MILLIS = 6_000L
+
 /** Keyed, so Paging does not confuse the footer with a row when the list grows under it. */
 private const val END_OF_LIST = "end-of-list"
 
@@ -596,6 +627,11 @@ private fun describe(outcome: ActionOutcome): String {
 
     val done =
         when {
+            // The way back took more than one change -- a bulk unsnooze put
+            // conversations back to times that differed. Naming one of them
+            // would be a lie about the rest, and the count is the part the user
+            // is checking anyway.
+            action == null -> pluralStringResource(R.plurals.put_back, count, count)
             action == MailAction.Archive -> pluralStringResource(R.plurals.archived, count, count)
             action == MailAction.Trash -> pluralStringResource(R.plurals.trashed, count, count)
             action == MailAction.MoveToInbox ->

@@ -5,6 +5,7 @@ import de.plmail.core.database.StoreKey
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.EmailChanges
 import de.plmail.jmap.methods.EmailGet
+import de.plmail.jmap.methods.ThreadGet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.EmailId
 import de.plmail.jmap.protocol.JmapError
@@ -153,9 +154,25 @@ constructor(
         ids.chunked(HYDRATION_CHUNK).forEach { chunk ->
             val request = RequestBuilder()
             val get = request.add(EmailGet(accountId, ids = chunk))
-            val emails = client.send(request).result(get).list
 
-            mail.storeEmails(accountKey, emails, fetchedAt = System.currentTimeMillis())
+            // In the same request, for the same reason the pager does it: snooze
+            // lives on the conversation, so a sync that only re-fetched messages
+            // would rebuild the row without it. That matters more here than
+            // anywhere — this is the path a *server-side* change arrives on, so
+            // it is where mail snoozed from the web, or woken by the server's own
+            // scheduled job, becomes true on the device.
+            val threads =
+                request.add(ThreadGet.forEmailsOf(accountId, get.reference("/list/*/threadId")))
+
+            val results = client.send(request)
+            val emails = results.result(get).list
+
+            mail.storeEmails(
+                accountKey,
+                emails,
+                results.result(threads).list,
+                fetchedAt = System.currentTimeMillis(),
+            )
             count += emails.size
         }
 

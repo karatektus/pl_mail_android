@@ -48,7 +48,12 @@ constructor(
      * confusing than the failure — the undo the caller was given is the honest way back.
      */
     suspend fun apply(action: MailAction, targets: List<ActionTarget>): ActionOutcome {
-        val undoable = UndoableAction(action, targets)
+        // Before the local write, not after. The way back from a snooze is the
+        // time the conversation was sleeping until beforehand, and the next line
+        // overwrites it -- so reading it when undo is tapped finds the value the
+        // snooze just set and "undo" restores the change it was asked to revert.
+        val undoable = UndoableAction(action, targets, wayBack(action, targets))
+
         if (targets.isEmpty()) return ActionOutcome.Applied(undoable)
 
         applyLocally(action, targets)
@@ -62,10 +67,58 @@ constructor(
     }
 
     /**
-     * Undo is the same path with the inverse action, so it can fail and be reported identically.
+     * Undo is the same path as [apply], so it can fail and be reported identically.
+     *
+     * Usually one step. Where the way back needs several — conversations restored to different
+     * snooze times — they are applied in turn and announced as the single change the user made,
+     * because they made one gesture and three snackbars for one tap is worse than none.
      */
-    suspend fun undo(undoable: UndoableAction): ActionOutcome =
-        apply(undoable.action.inverse, undoable.targets)
+    suspend fun undo(undoable: UndoableAction): ActionOutcome {
+        val outcomes = undoable.steps.map { apply(it.action, it.targets) }
+
+        val undone =
+            UndoableAction(
+                // Null where the steps disagree: a selection spanning awake and
+                // sleeping conversations is genuinely "unsnoozed" for some and
+                // "snoozed" for others, and naming one of those is wrong about
+                // the rest.
+                action = undoable.steps.map { it.action }.distinct().singleOrNull(),
+                targets = undoable.targets,
+                // The way back from the way back, which is the original change.
+                // Taken from what each sub-apply worked out rather than rebuilt,
+                // so undoing an undo is exact for the same reason undo is.
+                steps = outcomes.flatMap { it.undoable.steps },
+            )
+
+        // The first refusal decides. A partial undo has still moved rows, so the
+        // way back is offered either way -- the same rule as apply.
+        val rejection = outcomes.filterIsInstance<ActionOutcome.Rejected>().firstOrNull()
+
+        return rejection?.let { ActionOutcome.Rejected(undone, it.reason) }
+            ?: ActionOutcome.Applied(undone)
+    }
+
+    /**
+     * [wayBackFrom], with the pre-state read out of the cache.
+     *
+     * Only snooze needs the read, and only snooze pays for it: every other action's inverse is a
+     * property of the action itself.
+     */
+    private suspend fun wayBack(action: MailAction, targets: List<ActionTarget>): List<UndoStep> {
+        val before =
+            if (action is MailAction.Snooze) {
+                targets.associateWith {
+                    database
+                        .threads()
+                        .byUid(StoreKey.objectKey(it.accountKey, it.threadId))
+                        ?.snoozedUntil
+                }
+            } else {
+                emptyMap()
+            }
+
+        return wayBackFrom(action, targets, before)
+    }
 
     /**
      * Writes the change to the cache.
@@ -88,23 +141,7 @@ constructor(
                     // Undoing a removal has to put the row back, or the list
                     // keeps the conversation hidden until the next refresh and
                     // "undo" appears to have done nothing.
-                    MailAction.MoveToInbox ->
-                        database.threads().byUid(threadUid)?.let { thread ->
-                            database
-                                .feed()
-                                .upsertEntries(
-                                    listOf(
-                                        FeedEntryEntity(
-                                            uid = "${'$'}{Feed.UNIFIED_INBOX.id}#${'$'}threadUid",
-                                            feedId = Feed.UNIFIED_INBOX.id,
-                                            sortDate = thread.latestReceivedAt,
-                                            accountKey = target.accountKey,
-                                            threadId = target.threadId,
-                                            emailId = target.threadId,
-                                        )
-                                    )
-                                )
-                        }
+                    MailAction.MoveToInbox -> restoreToInbox(target, threadUid)
 
                     is MailAction.Star -> database.threads().setFlagged(threadUid, action.flagged)
 
@@ -149,18 +186,75 @@ constructor(
                     is MailAction.Snooze -> {
                         database.threads().setSnoozedUntil(threadUid, action.until)
 
-                        // Snoozing takes the conversation out of the inbox on
-                        // the server, so the local list has to lose it too --
-                        // otherwise the row sits there until the next refresh
-                        // and the snooze looks like it did nothing.
                         if (action.until != null) {
+                            // Snoozing takes the conversation out of the inbox
+                            // on the server, so the local list has to lose it
+                            // too -- otherwise the row sits there until the next
+                            // refresh and the snooze looks like it did nothing.
                             database.feed().clearThread(Feed.UNIFIED_INBOX.id, threadUid)
+                        } else {
+                            // And waking it up is the same rule in reverse, which
+                            // is the half that was missing. Undoing a snooze
+                            // cleared the timestamp, told the server, and left
+                            // the row out of the list -- so the one gesture whose
+                            // entire purpose is "no, not that one" changed
+                            // nothing anybody could see until the next sync.
+                            restoreToInbox(target, threadUid)
+
+                            // And out of the Snoozed list, which is where an
+                            // unsnooze is made from. Resolved through the
+                            // account's own snoozed binding because the mailbox
+                            // is created lazily -- an account that has never
+                            // snoozed anything has no such label, and that is an
+                            // ordinary state rather than a missing row.
+                            snoozedFeedId(target.accountKey)?.let {
+                                database.feed().clearThread(it, threadUid)
+                            }
                         }
                     }
                 }
             }
         }
     }
+
+    /**
+     * Puts a conversation back into the unified inbox's list.
+     *
+     * Shared by the two ways mail returns to the inbox — undoing an archive or a trash, and waking
+     * something snoozed — because the failure they share is the same one: the row left the list the
+     * moment the action landed, so a way back that does not re-insert it reads as a control that
+     * did nothing.
+     */
+    private suspend fun restoreToInbox(target: ActionTarget, threadUid: String) {
+        val thread = database.threads().byUid(threadUid) ?: return
+
+        database
+            .feed()
+            .upsertEntries(
+                listOf(
+                    FeedEntryEntity(
+                        // Exactly the key FeedMediator writes and clearThread
+                        // deletes, and it has to be: a row keyed any other way is
+                        // a second copy of the same conversation the next time
+                        // the list pages, and one nothing can ever remove. This
+                        // was a literal `${Feed…}#$threadUid` for a while -- the
+                        // same constant string for every conversation, so
+                        // restoring two of them left one row that matched
+                        // neither.
+                        uid = "${Feed.UNIFIED_INBOX.id}#$threadUid",
+                        feedId = Feed.UNIFIED_INBOX.id,
+                        sortDate = thread.latestReceivedAt,
+                        accountKey = target.accountKey,
+                        threadId = target.threadId,
+                        emailId = target.threadId,
+                    )
+                )
+            )
+    }
+
+    /** Where this account's snoozed mail is listed, or null if it has never snoozed anything. */
+    private suspend fun snoozedFeedId(accountKey: String): String? =
+        database.mailboxes().byRole(accountKey, SNOOZED_ROLE)?.let { labelFeedId(it.labelKey()) }
 
     /**
      * One `Email/set` per account.
@@ -207,7 +301,7 @@ constructor(
                         val patch =
                             patchFor(action, accountKey)
                                 ?: error(
-                                    "This account has no mailbox to move ${'$'}{action::class.simpleName} " +
+                                    "This account has no mailbox to move ${action::class.simpleName} " +
                                         "relative to yet. Its labels have not been synced."
                                 )
 
@@ -371,6 +465,11 @@ constructor(
 
     private suspend fun binding(accountKey: String, role: String): MailboxId? =
         database.mailboxes().byRole(accountKey, role)?.let { MailboxId(it.mailboxId) }
+
+    private companion object {
+        /** The role plMail gives the mailbox a snoozed conversation waits in. */
+        const val SNOOZED_ROLE = "snoozed"
+    }
 }
 
 /** Where a label lives in one account, or null when it is not bound there at all. */

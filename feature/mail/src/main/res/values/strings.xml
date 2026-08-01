@@ -94,6 +94,14 @@
         <item quantity="one">1 conversation brought back</item>
         <item quantity="other">%1$d conversations brought back</item>
     </plurals>
+    <!--
+      For an undo whose conversations went back to different places: several snooze times
+      restored at once. Deliberately vague about what each one became, because it differed.
+    -->
+    <plurals name="put_back">
+        <item quantity="one">1 conversation put back</item>
+        <item quantity="other">%1$d conversations put back</item>
+    </plurals>
     <plurals name="labelled">
         <item quantity="one">Label added to 1 conversation</item>
         <item quantity="other">Label added to %1$d conversations</item>

@@ -82,6 +82,10 @@
         <item quantity="one">1 Unterhaltung zurückgeholt</item>
         <item quantity="other">%1$d Unterhaltungen zurückgeholt</item>
     </plurals>
+    <plurals name="put_back">
+        <item quantity="one">1 Unterhaltung wiederhergestellt</item>
+        <item quantity="other">%1$d Unterhaltungen wiederhergestellt</item>
+    </plurals>
     <plurals name="labelled">
         <item quantity="one">Label zu 1 Unterhaltung hinzugefügt</item>
         <item quantity="other">Label zu %1$d Unterhaltungen hinzugefügt</item>

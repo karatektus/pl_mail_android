@@ -524,6 +524,14 @@ silently dropped on `create`. Filed in `docs/SERVER_REQUESTS.md`. Also outstandi
 and the snooze menu are reachable from the selection bar but not yet from inside the reader, and
 mail rules / block sender have no client surface.
 
+Undo of a snooze was shipped without ever being watched work, and it did not. Closed on 2026-08-01,
+and the three defects behind it are worth remembering because none of them was in the undo code:
+`Email/get` cannot answer what a conversation is snoozed until, so every page rebuilt the row with
+the value missing; the feed row was never put back, so the way back moved nothing on screen; and
+the snackbar asked for Material's `Short`, which is four seconds, under a comment claiming six.
+Every page and every delta sync now carries a `Thread/get` back-referenced off the message get, and
+the undo plan is worked out before the local write rather than derived from it afterwards.
+
 ### Design system — **pulled forward from M10, 2026-08-01**
 Look and feel is a first-class requirement, not polish: the app has to feel modern, functional and
 nice, with the Claude mobile app as the standard of finish to aim at. Parity with Gmail is about
@@ -648,9 +656,24 @@ Emulator loop on this host:
 ```bash
 ~/Android/run-emulator.sh &
 adb wait-for-device
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/foss/debug/app-foss-debug.apk
 adb shell am start -n de.plmail.debug/de.plmail.MainActivity
-adb shell screencap -p /sdcard/s.png && adb pull /sdcard/s.png
+adb exec-out screencap -p > s.png
+```
+
+**The APK path has a flavour in it, and getting it wrong is silent.** `:app` grew `foss` and
+`google` product flavours in M6, so the output moved from `apk/debug/app-debug.apk` to
+`apk/<flavour>/debug/app-<flavour>-debug.apk`. The old path was left behind in `build/` by a build
+that predates the flavours, so `adb install` on it *succeeds* and installs a months-old app —
+which looks exactly like a change that did not take effect. Install the `foss` build: it is the
+default flavour and the one this product's audience gets.
+
+A deep link is the fastest way to pair a freshly cleared app, and the URI has to be quoted for the
+**device's** shell — an unquoted `&` truncates it at `?host=…` and the app opens onboarding with an
+empty form rather than reporting a bad code:
+
+```bash
+adb shell "am start -a android.intent.action.VIEW -d 'plmail://pair?host=…&code=…'"
 ```
 
 **Do not run two Gradle invocations against this checkout concurrently** — parallel agent sessions

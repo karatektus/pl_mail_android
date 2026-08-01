@@ -4,8 +4,10 @@ import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.mail.Comparator
 import de.plmail.jmap.mail.Email
 import de.plmail.jmap.mail.EmailFilter
+import de.plmail.jmap.mail.MailThread
 import de.plmail.jmap.methods.EmailGet
 import de.plmail.jmap.methods.EmailQuery
+import de.plmail.jmap.methods.ThreadGet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.RequestBuilder
 import java.time.Instant
@@ -29,13 +31,13 @@ class AccountPager(
     /** The list being paged — an inbox, a label, a search. Null pages everything. */
     private val filter: EmailFilter? = null,
     /**
-     * Receives the page *and* the Email state it was read at.
+     * Receives the page, the conversations it belongs to, *and* the Email state it was read at.
      *
      * The state is what `Email/changes` resumes from, and a page is the only place it can be
      * learned: `Email/get` reports the state its answer reflects. Without recording it here there
      * is no cursor, delta sync has nothing to resume from, and every push arrives and does nothing.
      */
-    private val onPage: suspend (List<Email>, String) -> Unit = { _, _ -> },
+    private val onPage: suspend (List<Email>, List<MailThread>, String) -> Unit = { _, _, _ -> },
 ) : FeedSource {
 
     override suspend fun page(
@@ -65,6 +67,17 @@ class AccountPager(
 
         val get = request.add(EmailGet.byReference(accountId, query.reference("/ids")))
 
+        // The conversations those messages belong to, back-referenced off the
+        // get's own answer, in the same request. It is not free -- it is a third
+        // call the server has to answer -- and it is not optional either: snooze
+        // is a property of the *conversation*, so it exists nowhere in
+        // `Email/get`, and a row rebuilt from messages alone silently overwrites
+        // it with nothing. That is what wiped the local snooze time on every
+        // page load, which in turn made undoing a snooze restore "not snoozed"
+        // however carefully the undo itself was written.
+        val threads =
+            request.add(ThreadGet.forEmailsOf(accountId, get.reference("/list/*/threadId")))
+
         val results = client.send(request)
         val ids = results.result(query).ids
 
@@ -75,7 +88,11 @@ class AccountPager(
         val getResult = results.result(get)
         val messages = getResult.ordered(ids)
 
-        onPage(messages, getResult.state)
+        // `list` rather than `ordered`: nothing here depends on the order --
+        // these are looked up by id when the rows are summarised -- and the ids
+        // to order by are the *thread* ids, which this call never asked for
+        // directly.
+        onPage(messages, results.result(threads).list, getResult.state)
 
         val rows =
             messages

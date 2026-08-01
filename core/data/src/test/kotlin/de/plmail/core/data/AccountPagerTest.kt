@@ -3,6 +3,8 @@ package de.plmail.core.data
 import de.plmail.jmap.client.Credential
 import de.plmail.jmap.client.HttpResponse
 import de.plmail.jmap.client.JmapClient
+import de.plmail.jmap.mail.Email
+import de.plmail.jmap.mail.MailThread
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.testing.RecordingTransport
 import kotlin.test.Test
@@ -137,7 +139,7 @@ class AccountPagerTest {
         val stored = mutableListOf<String>()
         val transport = transport(queryIds = listOf("2", "1"), getOrder = listOf("1", "2"))
 
-        pager(transport) { emails, _ -> stored += emails.map { it.id.value } }
+        pager(transport) { emails, _, _ -> stored += emails.map { it.id.value } }
             .page(null, emptySet(), 10)
 
         // In query order, so what is written matches what is drawn.
@@ -155,7 +157,7 @@ class AccountPagerTest {
 
         val stored = mutableListOf<String>()
         val page =
-            pager(transport) { emails, _ -> stored += emails.map { it.id.value } }
+            pager(transport) { emails, _, _ -> stored += emails.map { it.id.value } }
                 .page(null, emptySet(), 10)
 
         assertEquals(listOf("1"), page.rows.map { it.id }, "it cannot be placed in a dated list")
@@ -175,16 +177,55 @@ class AccountPagerTest {
         val transport = transport(queryIds = listOf("1"), getOrder = listOf("1"))
 
         var seen: String? = null
-        pager(transport) { _, state -> seen = state }.page(null, emptySet(), 10)
+        pager(transport) { _, _, state -> seen = state }.page(null, emptySet(), 10)
 
         assertEquals("e", seen, "without this there is no cursor and delta sync never runs")
     }
+
+    /**
+     * The conversation, not just its messages.
+     *
+     * Snooze is the one thing on a list row that `Email/get` cannot answer — it belongs to the
+     * thread — so a page that fetches messages alone rebuilds the row with the snooze time missing
+     * and quietly destroys the only local record of when the mail is due back. That is exactly how
+     * undoing a snooze came to restore "not snoozed" no matter how the undo was written: the value
+     * it was supposed to put back had already been overwritten by the next page load.
+     */
+    // The back-reference has to be the starred threadId path off the **get**,
+    // not off the query: a query answers message ids, and this call needs thread
+    // ids. (Spelled out here rather than in the KDoc above, because the path
+    // contains a star-slash and would close the comment.)
+    @Test
+    fun `a page carries the conversations its messages belong to, with their snooze times`() =
+        runTest {
+            val transport =
+                transport(
+                    queryIds = listOf("1", "2"),
+                    getOrder = listOf("1", "2"),
+                    snoozed = mapOf("2" to "2026-08-03T08:00:00Z"),
+                )
+
+            var threads = emptyList<MailThread>()
+            pager(transport) { _, fetched, _ -> threads = fetched }.page(null, emptySet(), 10)
+
+            assertEquals(
+                mapOf("t1" to null, "t2" to "2026-08-03T08:00:00Z"),
+                threads.associate { it.id.value to it.snoozedUntil },
+            )
+
+            val sent = transport.lastBody.orEmpty()
+
+            assertTrue(
+                sent.contains("\"path\":\"/list/*/threadId\""),
+                "the thread ids come from the get's answer, not from the query's",
+            )
+        }
 
     // -- helpers -----------------------------------------------------------
 
     private fun pager(
         transport: RecordingTransport,
-        onPage: suspend (List<de.plmail.jmap.mail.Email>, String) -> Unit = { _, _ -> },
+        onPage: suspend (List<Email>, List<MailThread>, String) -> Unit = { _, _, _ -> },
     ) =
         AccountPager(
             accountKey = "https://nas.local/13",
@@ -203,12 +244,20 @@ class AccountPagerTest {
         queryIds: List<String>,
         getOrder: List<String>,
         dates: Map<String, String> = emptyMap(),
+        snoozed: Map<String, String> = emptyMap(),
     ): RecordingTransport = RecordingTransport { request ->
         val body =
             if (request.url.endsWith("/.well-known/jmap")) {
                 session
             } else {
                 val ids = queryIds.joinToString(",") { "\"$it\"" }
+                // Reversed, because the real server does: Thread/get reorders
+                // as Email/get does, and not into id order either.
+                val threads =
+                    getOrder.reversed().joinToString(",") { id ->
+                        val until = snoozed[id]?.let { "\"$it\"" } ?: "null"
+                        """{"id":"t$id","emailIds":["$id"],"snoozedUntil":$until}"""
+                    }
                 val list =
                     getOrder.joinToString(",") { id ->
                         val received = dates[id] ?: "2026-07-01T10:00:0${id.take(1)}Z"
@@ -220,7 +269,8 @@ class AccountPagerTest {
                   "sessionState": "s",
                   "methodResponses": [
                     ["Email/query", {"accountId":"13","queryState":"q","ids":[$ids]}, "c0"],
-                    ["Email/get", {"accountId":"13","state":"e","list":[$list]}, "c1"]
+                    ["Email/get", {"accountId":"13","state":"e","list":[$list]}, "c1"],
+                    ["Thread/get", {"accountId":"13","state":"t","list":[$threads]}, "c2"]
                   ]
                 }
                 """

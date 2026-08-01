@@ -49,11 +49,27 @@ data class Label(
 
     /** The feed id for browsing this label. Stable, because it keys the persisted feed table. */
     val feedId: String
-        get() = "label.$key"
+        get() = labelFeedId(key)
 }
 
 /** One label's binding in one account. */
 data class LabelBinding(val accountKey: String, val mailboxId: String)
+
+/**
+ * The key a mailbox row collapses onto — plMail's `labelId`, or the row's own uid where a server
+ * does not send one.
+ */
+internal fun MailboxEntity.labelKey(): String = labelId ?: uid
+
+/**
+ * The feed id a label's list is persisted under.
+ *
+ * One function rather than the same string in two places, because the two places are a write and a
+ * delete: [MailActions] has to reach a label's list from a raw mailbox row when it takes a
+ * conversation out of it, and a second copy of this expression is how a row gets written into one
+ * list and removed from another that only looks like it.
+ */
+internal fun labelFeedId(key: String): String = "label.$key"
 
 /**
  * Collapses raw mailbox rows into the label list the sidebar draws.
@@ -68,7 +84,7 @@ fun List<MailboxEntity>.asLabels(): List<Label> {
     val byUid = associateBy { it.uid }
 
     return filter { it.isSubscribed && it.role !in HIDDEN_ROLES }
-        .groupBy { it.labelId ?: it.uid }
+        .groupBy { it.labelKey() }
         .map { (key, bindings) ->
             // The first binding by account decides the name and the rights.
             // They agree in practice -- one label row on the server, bindings
