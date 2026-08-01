@@ -51,4 +51,5 @@
     <string name="reader_reply_all">Allen antworten</string>
     <string name="reader_forward">Weiterleiten</string>
     <string name="inbox_empty_body">Neue Nachrichten erscheinen hier, sobald sie eintreffen.</string>
+    <string name="inbox_end">Mehr liegt auf diesem Gerät nicht</string>
 </resources>

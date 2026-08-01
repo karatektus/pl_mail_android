@@ -6,8 +6,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -16,6 +16,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -110,51 +111,69 @@ private fun PlMailApp(
             )
         // The mail pane owns its own layout and back behaviour from here on;
         // :app only decides whether there is a server to show it for.
+        //
+        // A plain Box and not a Scaffold, and that is the fix for a real defect
+        // rather than a preference. Every screen below draws its own app bar,
+        // and an app bar applies the status-bar inset itself. A Scaffold here
+        // handed the same inset out a second time as content padding, and
+        // applying it pushed the entire app down by an extra status bar --
+        // 136px of it on the test device, because that AVD's cutout is deep --
+        // which is what put roughly 80dp of dead space between the notch and
+        // the "Inbox" title and lifted the bottom navigation off the gesture
+        // bar by the same trick. Insets belong to whoever draws the chrome that
+        // avoids them, and nothing at this level draws any.
         is ConnectionState.Connected ->
-            Scaffold(snackbarHost = { SnackbarHost(snackbars) }) { insets ->
-                Box(modifier = Modifier.padding(insets)) {
-                    // Mounted for every screen below, so an undo remains
-                    // reachable after the user has navigated on. Reopening
-                    // replaces whatever is showing, because the message being
-                    // recovered is the thing they just asked for.
-                    SendStatusHost(
-                        snackbars = snackbars,
-                        onReopen = { request ->
-                            isSearching = false
-                            composing = request
-                        },
-                    )
+            Box(modifier = Modifier.fillMaxSize()) {
+                // Mounted for every screen below, so an undo remains reachable
+                // after the user has navigated on. Reopening replaces whatever
+                // is showing, because the message being recovered is the thing
+                // they just asked for.
+                SendStatusHost(
+                    snackbars = snackbars,
+                    onReopen = { request ->
+                        isSearching = false
+                        composing = request
+                    },
+                )
 
-                    val request = composing
+                val request = composing
 
-                    when {
-                        request != null ->
-                            ComposeScreen(
-                                request = request,
-                                onClose = { composing = null },
-                            )
-                        isSearching ->
-                            SearchScreen(
-                                // The reader is M4's and reached from the list;
-                                // opening a result closes search, so Back
-                                // returns to the mail list rather than to a
-                                // query the user has finished with.
-                                onOpenThread = { _, _ -> isSearching = false },
-                                onBack = { isSearching = false },
-                            )
-                        else ->
-                            MailShell(
-                                onSearch = { isSearching = true },
-                                onCompose = { composing = ComposeRequest.New },
-                                onReply = { accountKey, emailId, all ->
-                                    composing = ComposeRequest.Reply(accountKey, emailId, all)
-                                },
-                                onForward = { accountKey, emailId ->
-                                    composing = ComposeRequest.Forward(accountKey, emailId)
-                                },
-                            )
-                    }
+                when {
+                    request != null ->
+                        ComposeScreen(
+                            request = request,
+                            onClose = { composing = null },
+                        )
+                    isSearching ->
+                        SearchScreen(
+                            // The reader is M4's and reached from the list;
+                            // opening a result closes search, so Back returns to
+                            // the mail list rather than to a query the user has
+                            // finished with.
+                            onOpenThread = { _, _ -> isSearching = false },
+                            onBack = { isSearching = false },
+                        )
+                    else ->
+                        MailShell(
+                            onSearch = { isSearching = true },
+                            onCompose = { composing = ComposeRequest.New },
+                            onReply = { accountKey, emailId, all ->
+                                composing = ComposeRequest.Reply(accountKey, emailId, all)
+                            },
+                            onForward = { accountKey, emailId ->
+                                composing = ComposeRequest.Forward(accountKey, emailId)
+                            },
+                        )
                 }
+
+                // Last, so it draws over the screen it belongs to, and inset
+                // only against the navigation bar: it floats above content
+                // rather than being laid out with it, so the gesture bar is the
+                // one thing it has to clear.
+                SnackbarHost(
+                    hostState = snackbars,
+                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+                )
             }
     }
 }

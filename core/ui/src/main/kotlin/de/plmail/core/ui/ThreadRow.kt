@@ -4,7 +4,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,9 +41,18 @@ import de.plmail.core.designsystem.PlMailAvatar
  * the smallest line on the row, which is exactly backwards — it is the line people actually read to
  * decide whether to open the mail.
  *
- * Unread is a weight change on the *subject* and a filled dot, not bold on everything. A row where
- * three lines all go bold is a row that shouts, and an inbox where half the rows shout says
- * nothing.
+ * Unread is a weight change on the sender and subject plus an accent date, not bold on everything.
+ * A row where three lines all go bold is a row that shouts, and an inbox where half the rows shout
+ * says nothing.
+ *
+ * There was a fourth mark — an accent dot under the date — and it is gone. Two reasons, and the
+ * second is the one that matters. It was redundant: the subject was already bold and the date
+ * already accented, so on an inbox where most mail is unread the dot was the third time the row
+ * said the same thing, and the accent this palette rations was suddenly the most repeated colour on
+ * screen. Worse, it shared a slot with the star. That column answers "what does this conversation
+ * carry" — an attachment, a star the user put there — and unread is not something the conversation
+ * carries, it is something the reader has not done. Two different kinds of fact in one slot means
+ * neither reads at a glance, and a starred unread thread had them fighting for the same six pixels.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -163,27 +171,12 @@ fun ThreadRow(
                         tint = colors.warning,
                     )
                 }
-
-                if (thread.isUnread) {
-                    // A dot rather than a bolder row. It is the only mark on
-                    // the row that means one thing and nothing else, so it is
-                    // the one that survives a glance.
-                    Box(
-                        modifier =
-                            Modifier.size(UNREAD_DOT)
-                                .background(
-                                    colors.accent,
-                                    androidx.compose.foundation.shape.CircleShape,
-                                )
-                    )
-                }
             }
         }
     }
 }
 
 private val AFFORDANCE = 15.dp
-private val UNREAD_DOT = 8.dp
 
 /** What the screen reader says, as one sentence rather than eight disconnected fragments. */
 private fun ThreadEntity.spoken(): String = buildList {

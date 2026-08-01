@@ -85,6 +85,19 @@ class ThreadRowScreenshotTest {
         capture("attachment-and-star", thread(hasAttachment = true, isFlagged = true))
     }
 
+    /**
+     * Unread *and* starred, which is the case that decided the right-hand column's contents.
+     *
+     * An accent unread dot used to sit in this slot beside the star, and the two competed: a mark
+     * about what the conversation carries next to a mark about what the reader has not done. The
+     * dot is gone and unread is carried by weight and the accent date, so this baseline is the one
+     * that fails if it ever comes back.
+     */
+    @Test
+    fun unreadAndStarred() {
+        capture("unread-starred", thread(isUnread = true, isFlagged = true))
+    }
+
     @Test
     fun aConversationWithSeveralMessages() {
         capture(

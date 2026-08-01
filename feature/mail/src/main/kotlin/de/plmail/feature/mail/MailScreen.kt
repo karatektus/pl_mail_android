@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -268,11 +269,32 @@ private fun ThreadList(
                     onAction = { action -> onAction(thread, action) },
                 )
 
-                // Indented past the avatar, so the line separates the text
-                // columns rather than cutting the row in half. A full-bleed
-                // rule under every row turns a list into a table.
-                PlMailDivider(startIndent = ROW_TEXT_INSET)
+                // Between rows, never after the last one. Indented past the
+                // avatar, so the line separates the text columns rather than
+                // cutting the row in half -- a full-bleed rule under every row
+                // turns a list into a table.
+                //
+                // The trailing case is the one worth spelling out: a hairline
+                // under the final row, with nothing beneath it, is what made an
+                // inbox of four messages look truncated rather than short. The
+                // line implies another row is coming and then none does.
+                if (index < threads.itemCount - 1) {
+                    PlMailDivider(startIndent = ROW_TEXT_INSET)
+                }
             }
+        }
+
+        // What the end of the list actually is, said once, rather than a list
+        // that simply stops halfway up an empty page. A new account with three
+        // messages is the common case for this product, not an edge one, and
+        // the untreated gap under those three rows reads as a screen that
+        // failed to finish loading.
+        //
+        // Deliberately not "you're up to date": that is a claim about the
+        // server, and the app cannot make it between syncs. This is a claim
+        // about the list, which it can.
+        if (threads.loadState.append.endOfPaginationReached) {
+            item(key = END_OF_LIST) { EndOfList() }
         }
 
         if (threads.loadState.append is LoadState.Loading) {
@@ -300,6 +322,31 @@ private fun ThreadList(
  * separating.
  */
 private val ROW_TEXT_INSET = 72.dp
+
+/** Keyed, so Paging does not confuse the footer with a row when the list grows under it. */
+private const val END_OF_LIST = "end-of-list"
+
+/**
+ * The line that closes the list.
+ *
+ * Quiet on purpose — `inkFaint` is the furniture step of the ink scale, and this is furniture. It
+ * is there so the eye has somewhere to stop, not to be read twice.
+ */
+@Composable
+private fun EndOfList() {
+    Text(
+        text = stringResource(R.string.inbox_end),
+        style = MaterialTheme.typography.labelMedium,
+        color = PlMailTheme.colors.inkFaint,
+        textAlign = TextAlign.Center,
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = PlMailTheme.spacing.gutter,
+                    vertical = PlMailTheme.spacing.xLarge,
+                ),
+    )
+}
 
 @Composable
 private fun Message(text: String) {

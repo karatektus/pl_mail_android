@@ -57,4 +57,9 @@
     <string name="reader_reply_all">Reply all</string>
     <string name="reader_forward">Forward</string>
     <string name="inbox_empty_body">New mail will appear here as it arrives.</string>
+    <!--
+      A claim about the list, not about the server. "You're up to date" would be
+      a claim about the server, which the app cannot make between syncs.
+    -->
+    <string name="inbox_end">That\'s everything on this device</string>
 </resources>
