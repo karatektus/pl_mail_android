@@ -49,6 +49,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.paging.CombinedLoadStates
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -91,6 +92,7 @@ fun MailScreen(
     LaunchedEffect(label?.key) { viewModel.show(label) }
 
     val threads = viewModel.threads.collectAsLazyPagingItems()
+    val rowsInFeed by viewModel.rowsInFeed.collectAsStateWithLifecycle()
     val unreachable by viewModel.unreachable.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
 
@@ -232,6 +234,7 @@ fun MailScreen(
 
             ThreadList(
                 threads = threads,
+                rowsInFeed = rowsInFeed,
                 selection = selection,
                 onThreadSelected = onThreadSelected,
                 onToggleSelected = viewModel::toggleSelected,
@@ -244,25 +247,27 @@ fun MailScreen(
 @Composable
 private fun ThreadList(
     threads: LazyPagingItems<ThreadEntity>,
+    /**
+     * How many rows the feed table holds, or null before it has been read. See [hasNothingToShow].
+     */
+    rowsInFeed: Int?,
     selection: Set<String>,
     onThreadSelected: (ThreadEntity) -> Unit,
     onToggleSelected: (String) -> Unit,
     onAction: (ThreadEntity, MailAction) -> Unit,
 ) {
-    val refreshing = threads.loadState.refresh is LoadState.Loading
-
     if (threads.itemCount == 0) {
         // "Nothing here" and "still looking" are different answers, and showing
         // the first while the first page is in flight tells someone their inbox
         // is empty when it is not.
-        if (refreshing) {
-            Message(stringResource(R.string.inbox_loading))
-        } else {
+        if (hasNothingToShow(threads.loadState, rowsInFeed)) {
             PlMailEmptyState(
                 icon = Icons.Outlined.Inbox,
                 title = stringResource(R.string.inbox_empty),
                 body = stringResource(R.string.inbox_empty_body),
             )
+        } else {
+            Message(stringResource(R.string.inbox_loading))
         }
 
         return
@@ -336,6 +341,41 @@ private fun ThreadList(
         }
     }
 }
+
+/**
+ * Whether the list may say "Nothing here yet".
+ *
+ * It looks like it should be `itemCount == 0 && refresh !is Loading`, and that is what it was. That
+ * version tells someone a label is empty at the one moment it has just been filled, and the reason
+ * is worth stating because nothing about the API hints at it:
+ *
+ * 1. `CombinedLoadStates.refresh` is **the mediator's** refresh state once a `RemoteMediator`
+ *    exists, not a combination of both. It reports "not loading" the instant the mediator returns.
+ * 2. The mediator returns having *committed rows to the feed table*, not having handed them to
+ *    Paging. Paging finds out through Room's invalidation tracker, which runs on the database's
+ *    query executor — the same executor that is, on a list's first visit, busy writing the hundreds
+ *    of message rows those feed rows point at.
+ *
+ * Between (1) and (2) the load states say nothing is loading and the item count says zero, which is
+ * bit-for-bit the state of a genuinely empty label. Every later visit skips the initial refresh
+ * because the table already has rows, which is why this only ever showed up once and never
+ * reproduced.
+ *
+ * So the table answers instead, through [de.plmail.core.data.FeedRepository.rowsHeld]. Null means
+ * nobody has asked yet, which is not the same as zero and must not be drawn as one — a screen that
+ * treated it as zero would flash the empty state on every cold launch.
+ *
+ * Both load states are consulted rather than the convenience one, for the reason in (1): the source
+ * can still be reading the rows the mediator wrote after the mediator has finished writing them.
+ */
+internal fun hasNothingToShow(state: CombinedLoadStates, rowsInFeed: Int?): Boolean =
+    when {
+        rowsInFeed == null -> false
+        rowsInFeed > 0 -> false
+        state.source.refresh is LoadState.Loading -> false
+        state.mediator?.refresh is LoadState.Loading -> false
+        else -> true
+    }
 
 /**
  * How far the row's text column starts from the edge.

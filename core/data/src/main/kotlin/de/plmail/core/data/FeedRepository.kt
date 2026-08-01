@@ -18,11 +18,15 @@ import de.plmail.jmap.protocol.RequestBuilder
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
 
 /** The lists the app can show. Ids are stable, because they key the feed table. */
@@ -58,12 +62,43 @@ constructor(
     private val _failures = MutableStateFlow<List<SourceFailure>>(emptyList())
 
     /**
+     * The mediator's own report of how many rows it has just committed, per feed.
+     *
+     * Unbuffered and conflated: a report is only interesting until the next one, and a subscriber
+     * that arrives late gets the truth from Room instead — see [rowsHeld].
+     */
+    private val mediatorRowCounts = MutableSharedFlow<Pair<String, Int>>(extraBufferCapacity = 16)
+
+    /**
      * Accounts that could not be reached on the last pull.
      *
      * Separate from the paging stream on purpose: a failure must not interrupt the rows, because
      * the whole point is that three working accounts keep drawing while a fourth is down.
      */
     val failures = _failures.asStateFlow()
+
+    /**
+     * How many conversations one list holds, from the two things that know.
+     *
+     * The list needs this to draw an honest empty state, and Paging's item count is the wrong
+     * source for it: it is this table seen one Room invalidation later, and the gap is widest on a
+     * list's first visit, when the same query executor that delivers the invalidation is busy
+     * writing the messages the rows point at. In that gap the mediator has committed rows, Paging
+     * reports none, and neither load state is loading — which is indistinguishable from an empty
+     * label unless something else answers.
+     *
+     * So two reporters of one number, merged, newest wins. Room is the authority and covers
+     * everything that writes the table — a delta sync, an archive, a label being emptied by
+     * somebody else. [FeedMediator] covers the one moment Room is late for, because it publishes
+     * after its transaction commits and before the load state the list watches has flipped. They
+     * cannot disagree for long and cannot disagree in a way that hides rows: both read the same
+     * table, and Room re-runs its query on every invalidation rather than replaying a cached value.
+     */
+    fun rowsHeld(feedId: String): Flow<Int> =
+        merge(
+            database.feed().observeCount(feedId),
+            mediatorRowCounts.filter { (id, _) -> id == feedId }.map { (_, count) -> count },
+        )
 
     /**
      * Every account's inbox, merged.
@@ -222,6 +257,9 @@ constructor(
                             database = database,
                             sources = sources,
                             onFailures = { failed -> _failures.update { failed } },
+                            onRowsHeld = { held ->
+                                mediatorRowCounts.tryEmit(feedId to held)
+                            },
                         ),
                     pagingSourceFactory = { database.feed().pagingSource(feedId) },
                 )

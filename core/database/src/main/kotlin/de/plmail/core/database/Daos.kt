@@ -203,6 +203,16 @@ interface FeedDao {
     @Query("SELECT COUNT(*) FROM feed_entries WHERE feedId = :feedId")
     suspend fun count(feedId: String): Int
 
+    /**
+     * The same count, observed.
+     *
+     * What the list asks to decide whether it is genuinely empty. Paging's own item count cannot
+     * answer that: it trails this table by one Room invalidation, and a list that reads it while it
+     * trails tells someone a label holds nothing at the exact moment its rows were written.
+     */
+    @Query("SELECT COUNT(*) FROM feed_entries WHERE feedId = :feedId")
+    fun observeCount(feedId: String): Flow<Int>
+
     @Query("DELETE FROM feed_entries WHERE feedId = :feedId") suspend fun clearFeed(feedId: String)
 
     /**

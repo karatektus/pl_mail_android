@@ -29,6 +29,19 @@ class FeedMediator(
     /** Reported so the list can name an account that is unreachable rather than showing nothing. */
     private val onFailures: (List<SourceFailure>) -> Unit = {},
     /**
+     * How many rows the feed table holds now, published after every write.
+     *
+     * The list cannot get this from Paging. Paging's item count is a view of the same table one
+     * Room invalidation behind it, and the invalidation is delivered on the database's own query
+     * executor — which, on the first visit to a list, is busy writing the messages those rows point
+     * at. So there is a window where this mediator has committed rows, Paging still reports none,
+     * and both load states say nothing is loading: the exact shape of "this label is empty" while
+     * it is not. Publishing the committed count here closes it, because this runs after the
+     * transaction commits and before [load] returns, which is strictly before the load state the
+     * list watches can flip.
+     */
+    private val onRowsHeld: (Int) -> Unit = {},
+    /**
      * Whether rows already in the table are an answer to *this* feed's question.
      *
      * True for a mailbox, where yesterday's inbox is still the inbox. False for a search, where the
@@ -75,12 +88,19 @@ class FeedMediator(
             val batch = feed.next(state.config.pageSize)
             if (batch.failures.isNotEmpty()) onFailures(batch.failures)
 
-            database.withTransaction {
+            val held = database.withTransaction {
                 if (loadType == LoadType.REFRESH) database.feed().clearFeed(feedId)
 
                 database.feed().upsertEntries(batch.rows.map { it.toEntry(feedId) })
                 feed.cursors.forEach { database.feed().upsertCursor(it.toEntity(feedId)) }
+
+                // Counted rather than derived from `batch.rows.size`: an
+                // append adds to what is already there, and an upsert of a
+                // row the table already holds adds nothing at all.
+                database.feed().count(feedId)
             }
+
+            onRowsHeld(held)
 
             // Exhaustion comes from the merge, not from the row count: a batch
             // can be short because one account failed while others still have

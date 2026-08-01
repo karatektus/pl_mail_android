@@ -6,6 +6,7 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.ActionTarget
+import de.plmail.core.data.Feed
 import de.plmail.core.data.FeedRepository
 import de.plmail.core.data.Label
 import de.plmail.core.data.LabelRepository
@@ -128,6 +129,20 @@ constructor(
     }
 
     /**
+     * Which list is on screen, as the feed layer understands it.
+     *
+     * The Inbox label and the unified inbox are the same mail seen two ways, so both collapse to
+     * null here and neither restarts the other. That is not tidiness: the sidebar arrives a moment
+     * after the first frame, so the list is created with no label and then told about Inbox — and
+     * without this the second one cancels the page already in flight and starts again for the same
+     * rows.
+     */
+    private val shownFeed: Flow<Label?> =
+        shown
+            .map { label -> label?.takeIf { it.role != INBOX_ROLE } }
+            .distinctUntilChanged { old, new -> old?.feedId == new?.feedId }
+
+    /**
      * `cachedIn` so the pages survive a rotation.
      *
      * Without it the list re-collects on every configuration change, which on this product means
@@ -139,19 +154,33 @@ constructor(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val threads: Flow<PagingData<ThreadEntity>> =
-        shown
-            // The Inbox label and the unified inbox are the same mail seen two
-            // ways, so both collapse to null here and neither restarts the
-            // other. That is not tidiness: the sidebar arrives a moment after
-            // the first frame, so the list is created with no label and then
-            // told about Inbox -- and without this the second one cancels the
-            // page already in flight and starts again for the same rows.
-            .map { label -> label?.takeIf { it.role != INBOX_ROLE } }
-            .distinctUntilChanged { old, new -> old?.feedId == new?.feedId }
+        shownFeed
             .flatMapLatest { label ->
                 if (label == null) feed.unifiedInbox() else feed.labelled(label)
             }
             .cachedIn(viewModelScope)
+
+    /**
+     * How many conversations the list on screen actually holds, or null before that is known.
+     *
+     * The screen needs this to tell "there is nothing here" apart from "Paging has not caught up
+     * with the rows that were just written", which look identical from inside Paging and are
+     * opposite answers to the person reading. Null rather than zero as the starting value, because
+     * zero is a claim and "not yet asked" is not — starting at zero would flash the empty state on
+     * every cold launch, before the first query has run.
+     *
+     * Derived from [shownFeed] so it switches with the pager rather than beside it: a count left
+     * over from the previous label is what would make an empty label say "still loading" forever.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val rowsInFeed: StateFlow<Int?> =
+        shownFeed
+            .flatMapLatest { label -> feed.rowsHeld(label?.feedId ?: Feed.UNIFIED_INBOX.id) }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = null,
+            )
 
     /**
      * Failures resolved to names the user recognises.
