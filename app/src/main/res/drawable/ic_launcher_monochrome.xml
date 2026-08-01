@@ -1,26 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  plMail's own mark, taken from the server's topbar
-  (templates/_partials/_topbar.html.twig) so the phone and the web wear the same
-  logo. Seven stroked segments in four colours, copied verbatim rather than
-  redrawn — a hand-traced logo drifts from the original the first time either
-  side changes.
+  The themed-icon layer: the same mark with its colour taken out.
 
-  An adaptive-icon foreground is a 108dp canvas whose outer ring is cropped by
-  whatever mask the launcher applies, and only a circle of radius 33 about the
-  centre is guaranteed to survive. The source art is a 48-unit square, so the
-  group below scales it by 1.2 and centres it: the painted bounds including
-  stroke width are x 12.25..46.75 and y 3.25..44.75, whose centre (29.5, 24)
-  lands on (54, 54) after the translate. The furthest painted point then sits
-  about 32.4 from the centre — inside the safe circle, with very little to
-  spare. Rescaling this art means redoing that arithmetic rather than nudging
-  the numbers until it looks right.
+  A separate drawable rather than reusing the foreground, because the foreground
+  is four brand colours and this one is tinted wholesale by the launcher. Passing
+  the colour version would mean the strokes' own hues fighting a filter that is
+  going to overwrite them anyway, and the result differs by launcher — which is
+  the sort of thing that looks fine on the device it was checked on.
 
-  The source clips everything to a rounded rect. That is deliberately dropped:
-  the launcher's mask is the shape, and a rounded square inside a rounded square
-  reads as a sticker stuck on an icon. Nothing is lost either way — the clip is
-  a safety net in the original, and the outermost stroke (the tail ending at
-  44,42) already falls just inside the corner radius.
+  Geometry, scale and translate are identical to ic_launcher_foreground so the
+  themed and coloured icons sit at exactly the same size and position; see that
+  file for why the numbers are what they are. Black is a placeholder the system
+  replaces, not a colour choice.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -37,7 +28,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M15,10 L15,38"
-            android:strokeColor="#4285F4"
+            android:strokeColor="#000000"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -45,7 +36,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M15,10 Q15,6 19,6 L25,6 Q31,6 31,12"
-            android:strokeColor="#EA4335"
+            android:strokeColor="#000000"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -53,7 +44,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M31,12 L31,26"
-            android:strokeColor="#FBBC04"
+            android:strokeColor="#000000"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -61,7 +52,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M31,26 Q31,30 25,30 L19,30 Q15,30 15,26"
-            android:strokeColor="#34A853"
+            android:strokeColor="#000000"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -69,7 +60,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M37,7 L37,26"
-            android:strokeColor="#EA4335"
+            android:strokeColor="#000000"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -77,7 +68,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M37,26 L37,35"
-            android:strokeColor="#4285F4"
+            android:strokeColor="#000000"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -85,7 +76,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M37,35 Q37,42 44,42"
-            android:strokeColor="#FBBC04"
+            android:strokeColor="#000000"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />

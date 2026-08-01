@@ -2,9 +2,14 @@
 <resources>
     <!--
       The launcher background, and the one place a raw hex value is legitimate:
-      an app icon is a fixed asset, not themed surface. #2563eb is plMail's
-      default accent, so the icon matches the server's own UI out of the box.
-      Nothing in the app's own chrome may reference this.
+      an app icon is a fixed asset, not themed surface. Nothing in the app's own
+      chrome may reference this.
+
+      Off-white rather than plMail's accent blue, because the mark drawn on top
+      is the server's own four-colour logo and one of those four is a blue three
+      shades off the accent — on the old #2563EB background that stroke very
+      nearly disappeared. This is the light theme's surface value, so the icon
+      and the app it opens are the same paper.
     -->
-    <color name="ic_launcher_background">#2563EB</color>
+    <color name="ic_launcher_background">#FAF9F7</color>
 </resources>
