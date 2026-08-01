@@ -10,6 +10,7 @@ dependencies {
     implementation(projects.core.data)
     implementation(projects.core.database)
     implementation(projects.core.datastore)
+    implementation(projects.core.designsystem)
     implementation(projects.core.ui)
     // The screen draws SearchQuery's fields as chips and SearchSnippet's HTML as
     // highlights, so the protocol types are part of this module's vocabulary

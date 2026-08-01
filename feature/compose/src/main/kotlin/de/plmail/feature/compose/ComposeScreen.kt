@@ -31,7 +31,6 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
@@ -60,6 +59,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
 import de.plmail.core.data.StagedAttachment
+import de.plmail.core.designsystem.PaneTone
+import de.plmail.core.designsystem.PlMailDivider
+import de.plmail.core.designsystem.PlMailPane
+import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.jmap.mail.DraftComposer
 
 /**
@@ -149,11 +152,13 @@ fun ComposeScreen(
             return@Scaffold
         }
 
+        val spacing = PlMailTheme.spacing
+
         Column(
             modifier = Modifier.fillMaxSize().padding(insets).verticalScroll(rememberScrollState())
         ) {
             FromRow(state = state, onSelected = viewModel::setIdentity)
-            HorizontalDivider()
+            PlMailDivider()
 
             RecipientField(
                 label = stringResource(R.string.compose_to),
@@ -182,20 +187,24 @@ fun ComposeScreen(
             } else {
                 TextButton(
                     onClick = viewModel::showCopyFields,
-                    modifier = Modifier.padding(horizontal = 8.dp),
+                    modifier = Modifier.padding(horizontal = spacing.medium),
                 ) {
                     Text(stringResource(R.string.compose_show_copy_fields))
                 }
             }
 
+            PlMailDivider()
+
             TextField(
                 value = state.draft.subject,
                 onValueChange = viewModel::setSubject,
-                label = { Text(stringResource(R.string.compose_subject)) },
+                placeholder = { Text(stringResource(R.string.compose_subject)) },
                 singleLine = true,
                 colors = flatFieldColors(),
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            PlMailDivider()
 
             if (state.draft.attachments.isNotEmpty()) {
                 Attachments(
@@ -289,7 +298,15 @@ private fun FromRow(state: ComposeUiState, onSelected: (de.plmail.core.data.Send
 
 @Composable
 private fun Attachments(attachments: List<StagedAttachment>, onRemove: (StagedAttachment) -> Unit) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+    Column(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = PlMailTheme.spacing.medium,
+                    vertical = PlMailTheme.spacing.tiny,
+                ),
+        verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.tiny),
+    ) {
         attachments.forEach { attachment ->
             InputChip(
                 selected = false,
@@ -326,8 +343,13 @@ private fun Quote(
     onRemove: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = PlMailTheme.spacing.medium,
+                    vertical = PlMailTheme.spacing.small,
+                ),
+        horizontalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.small),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         FilterChip(
@@ -348,12 +370,20 @@ private fun Quote(
         // message being previewed, not someone else's mail being rendered, and
         // a second WebView on this screen would fight the editor for focus and
         // the IME.
-        Text(
-            text = html.strippedOfTags(),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        )
+        PlMailPane(
+            tone = PaneTone.SUNKEN,
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = PlMailTheme.spacing.medium)
+                    .padding(bottom = PlMailTheme.spacing.medium),
+        ) {
+            Text(
+                text = html.strippedOfTags(),
+                style = MaterialTheme.typography.bodySmall,
+                color = PlMailTheme.colors.inkMuted,
+                modifier = Modifier.fillMaxWidth().padding(PlMailTheme.spacing.medium),
+            )
+        }
     }
 }
 
@@ -401,8 +431,8 @@ private fun OverflowMenu(onDiscard: () -> Unit) {
 @Composable
 private fun Formatting(state: com.mohamedrejeb.richeditor.model.RichTextState) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = PlMailTheme.spacing.small),
+        horizontalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.tiny),
     ) {
         IconButton(onClick = { state.toggleSpanStyle(BOLD) }) {
             Icon(Icons.Filled.FormatBold, stringResource(R.string.compose_bold))
@@ -449,12 +479,25 @@ private fun ComposeError.text(): String =
         is ComposeError.SaveFailed -> stringResource(R.string.compose_error_save_failed, message)
     }
 
+/**
+ * A field with no box around it.
+ *
+ * The composer is a document, not a form: an outlined box per line turns "write a message" into
+ * "fill this in". The separation comes from the hairlines between rows instead, and the focus
+ * indicator is the cursor plus the accent underline Material draws anyway.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun flatFieldColors() =
     TextFieldDefaults.colors(
-        focusedContainerColor = MaterialTheme.colorScheme.surface,
-        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+        focusedContainerColor = PlMailTheme.colors.surface,
+        unfocusedContainerColor = PlMailTheme.colors.surface,
+        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+        disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+        cursorColor = PlMailTheme.colors.accent,
+        focusedPlaceholderColor = PlMailTheme.colors.fieldPlaceholder,
+        unfocusedPlaceholderColor = PlMailTheme.colors.fieldPlaceholder,
     )
 
 private suspend fun SnackbarHostState.showMessage(message: String) {

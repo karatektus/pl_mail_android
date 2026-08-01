@@ -14,7 +14,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -26,10 +25,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.dp
+import de.plmail.core.designsystem.LocalPlMailTheme
 import de.plmail.jmap.mail.EmailAddress
 
 /**
@@ -67,10 +67,12 @@ internal fun RecipientField(
         onQueryChanged("")
     }
 
+    val theme = LocalPlMailTheme.current
+
     Column(modifier = modifier.fillMaxWidth()) {
         FlowRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = theme.spacing.gutter),
+            horizontalArrangement = Arrangement.spacedBy(theme.spacing.tiny),
         ) {
             addresses.forEach { address ->
                 InputChip(
@@ -100,7 +102,11 @@ internal fun RecipientField(
                     onQueryChanged(value)
                 }
             },
-            label = { Text(label) },
+            // A placeholder rather than a floating label: the label animating
+            // up and shrinking on focus is a form's idiom, and this is a line
+            // of an address book. The prefix below says what the line is.
+            placeholder = { Text(label) },
+            prefix = if (addresses.isEmpty()) null else ({ Text("$label ") }),
             singleLine = true,
             keyboardOptions =
                 KeyboardOptions(
@@ -110,8 +116,13 @@ internal fun RecipientField(
             keyboardActions = KeyboardActions(onDone = { commit() }),
             colors =
                 TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedContainerColor = theme.colors.surface,
+                    unfocusedContainerColor = theme.colors.surface,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = theme.colors.accent,
+                    focusedPlaceholderColor = theme.colors.fieldPlaceholder,
+                    unfocusedPlaceholderColor = theme.colors.fieldPlaceholder,
                 ),
             modifier =
                 Modifier.fillMaxWidth().onFocusChanged { focus ->

@@ -7,11 +7,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -26,12 +26,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.plmail.core.designsystem.PlMailAvatar
+import de.plmail.core.designsystem.PlMailDivider
+import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.ui.R as UiR
 import de.plmail.core.ui.asListDate
 import de.plmail.feature.mail.R
+
+/** The letter shown on a sender's avatar. Skips punctuation, so "+ada@…" is still an A. */
+private fun avatarInitial(seed: String): String =
+    seed.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?"
 
 /**
  * One conversation.
@@ -97,7 +103,7 @@ fun ReaderScreen(
                     )
                 }
 
-                HorizontalDivider()
+                PlMailDivider()
             }
         }
     }
@@ -118,8 +124,13 @@ private fun ReplyActions(
     onForward: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = PlMailTheme.spacing.medium,
+                    vertical = PlMailTheme.spacing.tiny,
+                ),
+        horizontalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.small),
     ) {
         TextButton(onClick = onReply) { Text(stringResource(R.string.reader_reply)) }
 
@@ -153,17 +164,29 @@ private fun Message(
         if (message.isExpanded) onDisplayed()
     }
 
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+    val spacing = PlMailTheme.spacing
+    val colors = PlMailTheme.colors
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = spacing.small)) {
         Row(
-            modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle).padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .clickable(onClick = onToggle)
+                    .heightIn(min = spacing.touchTarget)
+                    .padding(horizontal = spacing.gutter, vertical = spacing.medium),
+            horizontalArrangement = Arrangement.spacedBy(spacing.medium),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val seed = message.email.fromAddress ?: message.email.fromName.orEmpty()
+
+            PlMailAvatar(seed = seed, label = avatarInitial(seed))
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = message.email.fromName ?: message.email.fromAddress.orEmpty(),
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
+                    color = colors.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -171,7 +194,7 @@ private fun Message(
                     Text(
                         text = message.email.preview,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = colors.inkMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -181,7 +204,7 @@ private fun Message(
             Text(
                 text = (message.email.receivedAt ?: 0L).asListDate(),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = colors.inkMuted,
             )
         }
 
@@ -191,13 +214,13 @@ private fun Message(
             Text(
                 text = stringResource(R.string.body_not_downloaded),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp),
+                color = colors.inkMuted,
+                modifier = Modifier.padding(horizontal = spacing.gutter),
             )
             return@Column
         }
 
-        Row(modifier = Modifier.padding(horizontal = 8.dp)) {
+        Row(modifier = Modifier.padding(horizontal = spacing.small)) {
             if (message.remoteImages == RemoteImages.BLOCKED && profile.hasImagery) {
                 // Named rather than silent. A message with its pictures
                 // suppressed and no explanation looks broken, and the reason
@@ -225,7 +248,7 @@ private fun Message(
             body = body,
             style = style,
             remoteImages = message.remoteImages,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.small),
         )
     }
 }

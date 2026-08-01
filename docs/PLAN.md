@@ -270,7 +270,7 @@ depends on nothing, so its tests run on the JVM in seconds instead of booting an
 :core:database          Room entities, DAOs, migrations
 :core:datastore         settings + Keystore-backed credential store
 :core:data              repositories, DeltaSync, UnifiedFeed, AccountPager, search compiler, blob cache
-:core:designsystem      theme tokens, Material 3 theming, primitive composables
+:core:designsystem      ★ semantic tokens, PlMailTheme, primitive composables — landed early, see M10
 :core:ui                shared stateful composables (thread row, avatar, undo host, empty states)
 :core:notifications     UnifiedPush receiver, channels, notification actions
 :core:testing           Hilt test runner, fakes, Robolectric config, Roborazzi rules
@@ -439,14 +439,67 @@ highlighted results. Filter chips, recent searches, per-account scoping. Empty r
 sync window when the query had a date component — mail older than an account's window is not in the
 database and therefore not searchable, and "no results" is a dishonest answer to that.
 
-### M8 · Compose
-Rich text, reply / reply-all / forward with proper quoting and `In-Reply-To`/`References` (a reply
-that omits them starts a new conversation), **always-visible From picker** over `Identity/get`
-(accounts have multiple sendable aliases), draft autosave through `Email/set`, attachment upload at
-**send** time (staged blobs are swept by `app:prune:blobs`, so a draft left open overnight would send
-with its attachments already collected), contact autocomplete from locally-harvested addresses plus
-the OS address book, client-side undo-send window (the server deliberately does *not* apply the web
-UI's grace period to JMAP submissions), fullscreen on phone / dialog on tablet.
+### M-Design · The look, brought forward from M10 — **tokens landed, conversion in progress**
+
+**Reordered on 2026-08-01, deliberately.** The plan had the appearance model arriving at M10, after
+every screen had been built against raw Material defaults. That ordering was wrong: each screen
+built before the tokens exist is a screen that has to be retrofitted, and retrofits are where
+inconsistency becomes permanent. So `:core:designsystem` landed first and the existing screens are
+being moved onto it.
+
+Look and feel is a **first-class requirement**, not polish. Parity with Gmail is about *capability*;
+the visual language is its own and should read as better than a Material default.
+
+What that means concretely, and what the module implements:
+
+- **Warm neutrals.** Every neutral has more red than blue in it — a warm off-white that reads as
+  paper, and a dark scheme that is a warm near-black rather than an inverted blue-grey. A test
+  asserts it, because a neutral picked from a tool comes back cold and nobody can name what changed.
+- **One accent**, a deep green, used scarcely: the active navigation item, a link, an unread dot,
+  the compose button's tint. Never a large filled area — the FAB is tonal for exactly that reason.
+- **Hierarchy from weight and colour, not size.** The four-step ink scale (`ink`, `inkSoft`,
+  `inkMuted`, `inkFaint`) is a hierarchy of *meaning*: what the message is, what it is about, its
+  metadata, its furniture.
+- **Hairlines and surface shifts, never elevation.** No drop shadows anywhere, including on the FAB.
+- **Motion** at 120/200/320ms with a restrained ease-out, collapsing to zero when
+  `ANIMATOR_DURATION_SCALE` says the user has asked for stillness.
+- **≥48dp targets and ≥16sp body**, and every pair the app draws clears WCAG AA in both schemes —
+  `PaletteContrastTest` computes the real relative-luminance ratios rather than trusting an eye.
+- **Radius applies to panes, not controls.** Enforced by the token type and asserted in a test.
+
+Converted so far: the thread row (`:core:ui`, drawn by two features and therefore the right first
+test of whether the tokens suffice), the mail list, the reader, the composer, search and onboarding.
+Roborazzi now records **light and dark** for every row case, which is what stops a colour that was
+only ever looked at in one scheme from shipping.
+
+Still to do: the six-theme × two-layout × three-density *chooser* is M10's, along with the settings
+screen that drives it. The resolver is built for it — `PlMailThemeChoice` names the three schemes
+that exist rather than promising six nobody can select yet.
+
+### M8 · Compose — **done, apart from the tablet dialog presentation**
+Rich text (`richeditor-compose`, the open decision below, settled), reply / reply-all / forward with
+quoting and `In-Reply-To`/`References`, an always-visible From picker, autosave to Drafts through
+`Email/set`, attachments staged locally and uploaded at **send**, contact autocomplete from cached
+mail plus the OS address book, and a client-side undo-send window.
+
+**Four server behaviours were established by probing the running instance, and three of them succeed
+while doing nothing.** All four are written up in `docs/SERVER_REQUESTS.md`; the short version:
+
+1. `Email/set` **update** accepts `attachments`, answers `updated`, and drops them. Only a `create`
+   attaches. So a change to the attachment set recreates the draft and bins the old one.
+2. Neither the draft's `from` nor the submission's `identityId` reaches the sent message — it always
+   goes out as the account's address. The picker therefore offers one entry per *account*.
+3. `destroy` on a draft adds Trash and removes **Inbox**, which a draft never had, so it stays in
+   Drafts as well. Discarding is an explicit `mailboxIds` patch instead.
+4. A back-reference to a single created id resolves to a bare string, which `Email/get` rejects with
+   an undescribed `invalidArguments`. Submitting a draft created in the same request uses the
+   creation-id form (`"#c1"`), which is a different mechanism and does work.
+
+The undo window writes the draft to Drafts **first**, then waits, then submits — so a process death
+inside those seconds leaves the mail in Drafts rather than losing it.
+
+Not done: the tablet presentation is still fullscreen rather than a dialog, and scheduled send is
+blocked on the server (`maxDelayedSend` is 0).
 
 ### M9 · Organising
 Labels: apply, remove, create, delete, colour. **Collapse one label across accounts using
@@ -541,8 +594,10 @@ and `Identity.email` must not be assumed to parse.
 ## Open decisions
 
 1. ~~**Where the emulator runs.**~~ Settled: on Windows, GPU-accelerated. See Environment.
-2. **Rich-text compose** (M8). Compose has no rich-text editor, and the server round-trips HTML
-   bodies.
+2. ~~**Rich-text compose** (M8).~~ Settled: `richeditor-compose` 1.0.0. The deciding argument was
+   not in the table below — it is that the composer **never feeds it foreign HTML**. A quoted
+   original is held beside the draft and appended at send, so the editor only ever has to serialise
+   what this user typed, and its parser is not on the hook for anyone else's marketing mail.
 
    | Option | Trade |
    |---|---|

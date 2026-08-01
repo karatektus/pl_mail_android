@@ -7,6 +7,7 @@ plugins {
 android { namespace = "de.plmail.feature.onboarding" }
 
 dependencies {
+    implementation(projects.core.designsystem)
     implementation(projects.core.data)
     implementation(projects.core.datastore)
 

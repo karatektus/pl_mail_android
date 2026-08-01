@@ -18,7 +18,6 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +46,8 @@ import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import de.plmail.core.data.SkipReason
 import de.plmail.core.database.StoreKey
+import de.plmail.core.designsystem.PlMailDivider
+import de.plmail.core.designsystem.PlMailTheme
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -155,8 +156,12 @@ fun SearchScreen(
                                 account.accountKey.substringAfterLast('/'),
                             ),
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        color = PlMailTheme.colors.inkMuted,
+                        modifier =
+                            Modifier.padding(
+                                horizontal = PlMailTheme.spacing.gutter,
+                                vertical = PlMailTheme.spacing.tiny,
+                            ),
                     )
                 }
             }
@@ -191,7 +196,7 @@ fun SearchScreen(
                                 onClick = { onOpenThread(thread.accountKey, thread.threadId) },
                             )
 
-                            HorizontalDivider()
+                            PlMailDivider(startIndent = 72.dp)
                         }
                     }
             }
@@ -230,7 +235,12 @@ private fun QueryChips(state: SearchUiState) {
     if (labels.isEmpty()) return
 
     FlowRow(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = PlMailTheme.spacing.gutter,
+                    vertical = PlMailTheme.spacing.tiny,
+                ),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         labels.forEach { label ->
@@ -245,8 +255,12 @@ private fun QueryChips(state: SearchUiState) {
         Text(
             text = stringResource(R.string.search_contradiction),
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            color = PlMailTheme.colors.danger,
+            modifier =
+                Modifier.padding(
+                    horizontal = PlMailTheme.spacing.gutter,
+                    vertical = PlMailTheme.spacing.tiny,
+                ),
         )
     }
 }
@@ -266,7 +280,7 @@ private fun EmptyState(
     onForgetRecent: (String) -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
+        modifier = Modifier.fillMaxSize().padding(PlMailTheme.spacing.xLarge),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         when (val reason = state.emptyReason) {
@@ -279,7 +293,7 @@ private fun EmptyState(
                 Text(
                     text = stringResource(R.string.search_oldest_held, reason.oldest.asDate()),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = PlMailTheme.colors.inkMuted,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(top = 8.dp),
                 )

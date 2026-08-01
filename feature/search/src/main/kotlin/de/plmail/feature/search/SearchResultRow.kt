@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.plmail.core.database.ThreadEntity
+import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.ui.ThreadRow
 import de.plmail.jmap.methods.SearchSnippet
 
@@ -46,7 +47,14 @@ fun SearchResultRow(
                 ?: snippet?.preview?.takeIf(Highlight::hasMark)
 
         if (highlighted != null) {
-            Row(modifier = Modifier.padding(start = 72.dp, end = 16.dp, bottom = 12.dp)) {
+            Row(
+                modifier =
+                    Modifier.padding(
+                        start = SNIPPET_INSET,
+                        end = PlMailTheme.spacing.gutter,
+                        bottom = PlMailTheme.spacing.medium,
+                    )
+            ) {
                 Text(
                     text =
                         Highlight.render(
@@ -56,11 +64,11 @@ fun SearchResultRow(
                                 // The theme's own emphasis colour rather than a
                                 // literal yellow: this has to stay legible in
                                 // dark mode, where a highlighter block does not.
-                                color = MaterialTheme.colorScheme.primary,
+                                color = PlMailTheme.colors.accent,
                             ),
                         ),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = PlMailTheme.colors.inkMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -68,3 +76,6 @@ fun SearchResultRow(
         }
     }
 }
+
+/** Aligned with the row's text column, so a highlight sits under the subject it belongs to. */
+private val SNIPPET_INSET = 72.dp

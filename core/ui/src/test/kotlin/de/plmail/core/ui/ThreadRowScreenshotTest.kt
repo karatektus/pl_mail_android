@@ -1,15 +1,17 @@
 package de.plmail.core.ui
 
 import androidx.compose.foundation.layout.width
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import de.plmail.core.database.ThreadEntity
+import de.plmail.core.designsystem.PlMailTheme
+import de.plmail.core.designsystem.PlMailThemeChoice
 import java.time.ZonedDateTime
 import java.util.TimeZone
 import org.junit.Before
@@ -31,6 +33,15 @@ import org.robolectric.annotation.GraphicsMode
  * The cases are the ones with a decision behind them rather than a sweep of every field: unread
  * weight, the "(no subject)" fallback, a conversation with several messages, and the affordances
  * that share the right-hand column.
+ *
+ * **Every case is captured in both schemes.** A design system's whole promise is that one change
+ * reaches every screen, and the way that promise breaks is a colour that was only ever looked at in
+ * one of the two — a muted grey that vanishes on a near-black page, an accent that turns into a
+ * smear. Rendering both is what makes the light-only mistake fail the build instead of shipping.
+ *
+ * The scheme is passed to `PlMailTheme` explicitly rather than set through Robolectric's `+night`
+ * qualifier: the qualifier decides what `isSystemInDarkTheme()` returns, and this suite is checking
+ * the palette rather than the platform's plumbing.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -98,17 +109,37 @@ class ThreadRowScreenshotTest {
     }
 
     private fun capture(name: String, thread: ThreadEntity) {
-        compose.setContent { Row(thread) }
+        // The scheme is state inside one composition rather than two calls to
+        // setContent: the rule allows exactly one per test, and recomposing is
+        // in any case closer to what a user switching themes actually does.
+        val scheme = mutableStateOf(PlMailThemeChoice.LIGHT)
 
-        compose.onRoot().captureRoboImage("src/test/screenshots/thread-row-$name.png")
+        compose.setContent { Row(thread, scheme.value) }
+
+        listOf(PlMailThemeChoice.LIGHT, PlMailThemeChoice.DARK).forEach { choice ->
+            scheme.value = choice
+            compose.waitForIdle()
+
+            compose
+                .onRoot()
+                .captureRoboImage(
+                    "src/test/screenshots/thread-row-$name-${choice.name.lowercase()}.png"
+                )
+        }
     }
 
     @Composable
-    private fun Row(thread: ThreadEntity) {
-        MaterialTheme {
+    private fun Row(thread: ThreadEntity, scheme: PlMailThemeChoice) {
+        // reduceMotion, because the alternative is asking a Robolectric
+        // ContentResolver for a system setting it has no answer for -- and a
+        // screenshot has nothing to animate anyway.
+        PlMailTheme(theme = scheme, reduceMotion = true) {
             // A fixed width so the baseline does not move with the device
             // qualifiers; the row's own layout is what is under test.
-            Surface(modifier = Modifier.width(411.dp)) {
+            Surface(
+                modifier = Modifier.width(411.dp),
+                color = PlMailTheme.colors.surface,
+            ) {
                 ThreadRow(thread = thread, onClick = {})
             }
         }

@@ -10,7 +10,12 @@ import androidx.compose.material.icons.outlined.Drafts
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.NavigationDrawerItemDefaults
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaults
+import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteItemColors
 import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import de.plmail.core.designsystem.PlMailTheme
 
 /**
  * The lists reachable from the shell.
@@ -58,19 +64,42 @@ fun MailShell(
 ) {
     var destination by rememberSaveable { mutableStateOf(MailDestination.INBOX) }
 
+    val colors = PlMailTheme.colors
+
+    // Resolved before the scaffold: `navigationSuiteItems` is a plain builder
+    // lambda rather than a composable one, so nothing inside it may read the
+    // theme.
+    val itemColors =
+        NavigationSuiteItemColors(
+            navigationBarItemColors = navigationItemColors(),
+            navigationRailItemColors = railItemColors(),
+            navigationDrawerItemColors = drawerItemColors(),
+        )
+
     NavigationSuiteScaffold(
+        // Spelled out rather than inherited. The suite's defaults draw the
+        // active item as a filled tonal pill in `secondaryContainer`, which in
+        // this palette is a neutral -- so the one thing on screen that must say
+        // "you are here" said it in grey. The accent is scarce everywhere else
+        // precisely so it can be spent here.
+        navigationSuiteColors =
+            NavigationSuiteDefaults.colors(
+                navigationBarContainerColor = colors.surface,
+                navigationRailContainerColor = colors.surface,
+                navigationDrawerContainerColor = colors.surface,
+            ),
+        containerColor = colors.surface,
         navigationSuiteItems = {
             MailDestination.entries.forEach { entry ->
                 item(
                     selected = entry == destination,
                     onClick = { destination = entry },
-                    icon = {
-                        Icon(imageVector = entry.icon, contentDescription = null)
-                    },
+                    icon = { Icon(imageVector = entry.icon, contentDescription = null) },
                     label = { Text(stringResource(entry.label)) },
+                    colors = itemColors,
                 )
             }
-        }
+        },
     ) {
         when (destination) {
             MailDestination.INBOX ->
@@ -90,6 +119,37 @@ fun MailShell(
 }
 
 @Composable
+private fun navigationItemColors() =
+    NavigationBarItemDefaults.colors(
+        selectedIconColor = PlMailTheme.colors.accent,
+        selectedTextColor = PlMailTheme.colors.accent,
+        indicatorColor = PlMailTheme.colors.accentSoft,
+        unselectedIconColor = PlMailTheme.colors.inkMuted,
+        unselectedTextColor = PlMailTheme.colors.inkMuted,
+    )
+
+@Composable
+private fun railItemColors() =
+    NavigationRailItemDefaults.colors(
+        selectedIconColor = PlMailTheme.colors.accent,
+        selectedTextColor = PlMailTheme.colors.accent,
+        indicatorColor = PlMailTheme.colors.accentSoft,
+        unselectedIconColor = PlMailTheme.colors.inkMuted,
+        unselectedTextColor = PlMailTheme.colors.inkMuted,
+    )
+
+@Composable
+private fun drawerItemColors() =
+    NavigationDrawerItemDefaults.colors(
+        selectedIconColor = PlMailTheme.colors.accent,
+        selectedTextColor = PlMailTheme.colors.accent,
+        selectedContainerColor = PlMailTheme.colors.accentSoft,
+        unselectedIconColor = PlMailTheme.colors.inkMuted,
+        unselectedTextColor = PlMailTheme.colors.inkMuted,
+        unselectedContainerColor = PlMailTheme.colors.surface,
+    )
+
+@Composable
 private fun ComingSoon(name: String) {
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -99,7 +159,7 @@ private fun ComingSoon(name: String) {
         Text(
             text = stringResource(R.string.coming_soon, name),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = PlMailTheme.colors.inkMuted,
         )
     }
 }

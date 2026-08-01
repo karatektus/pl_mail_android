@@ -5,8 +5,6 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotEquals
-import kotlin.test.assertTrue
 
 /**
  * The two bits of row rendering with a right answer.
@@ -59,30 +57,10 @@ class RowFormattingTest {
         assertEquals("", 0L.asListDate(zone, today))
     }
 
-    @Test
-    fun `an avatar colour is stable for one address`() {
-        assertEquals(avatarColour("ada@example.com"), avatarColour("ada@example.com"))
-    }
-
     /**
-     * The mapper lower-cases the address before storing it, which is what makes this hold.
-     * Colouring from the display name instead would recolour the same person whenever they
-     * reconfigured their client.
+     * Colouring is the design system's job now; what stays here is the letter, which is a
+     * formatting decision about a *name* rather than a decision about a palette.
      */
-    @Test
-    fun `two different addresses usually differ`() {
-        val colours = (1..40).map { avatarColour("person$it@example.com") }.toSet()
-
-        assertTrue(colours.size > 1, "every address landed on one colour")
-    }
-
-    @Test
-    fun `an unknown sender still gets a colour and a letter`() {
-        assertTrue(avatarColour("") != 0L)
-        assertEquals("?", avatarLetter(""))
-        assertEquals("?", avatarLetter("+++"))
-    }
-
     @Test
     fun `the letter skips punctuation`() {
         assertEquals("A", avatarLetter("\"Ada Lovelace\" <ada@example.com>"))
@@ -90,18 +68,9 @@ class RowFormattingTest {
         assertEquals("7", avatarLetter("7up@example.com"))
     }
 
-    /**
-     * `abs(Int.MIN_VALUE)` is still negative, which would index out of the palette.
-     *
-     * Finding a seed that hashes to exactly that is impractical, so this exercises the arithmetic
-     * the implementation uses rather than hunting for the input.
-     */
     @Test
-    fun `the palette index is never negative`() {
-        val size = 8u
-        val worst = (Int.MIN_VALUE.toUInt() % size).toInt()
-
-        assertTrue(worst >= 0, "index was $worst")
-        assertNotEquals(Int.MIN_VALUE, worst)
+    fun `an unknown sender still gets a letter rather than an empty circle`() {
+        assertEquals("?", avatarLetter(""))
+        assertEquals("?", avatarLetter("+++"))
     }
 }

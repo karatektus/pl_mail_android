@@ -19,6 +19,10 @@ dependencies {
     // rows can scroll without a join, and a UI model copied field for field
     // would only add a mapping to keep in sync.
     api(projects.core.database)
+    // Every screen reads tokens from here, so it is `api` rather than
+    // `implementation`: a feature drawing a ThreadRow inside PlMailTheme needs
+    // the theme type on its own classpath.
+    api(projects.core.designsystem)
 
     implementation(libs.androidx.compose.material.icons.extended)
 

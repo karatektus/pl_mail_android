@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.jmap.client.ParsedAddress
 import de.plmail.jmap.protocol.JmapError
 
@@ -120,8 +121,8 @@ internal fun OnboardingScreen(
                 Modifier.fillMaxSize()
                     .padding(insets)
                     .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(PlMailTheme.spacing.xLarge),
+            verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.large),
         ) {
             Text(
                 text = stringResource(R.string.onboarding_title),
@@ -130,7 +131,7 @@ internal fun OnboardingScreen(
             Text(
                 text = stringResource(R.string.onboarding_intro),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = PlMailTheme.colors.inkMuted,
             )
 
             OutlinedTextField(
@@ -152,7 +153,7 @@ internal fun OnboardingScreen(
                     Text(
                         text = stringResource(R.string.onboarding_cleartext_warning),
                         style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(PlMailTheme.spacing.large),
                     )
                 }
             }
@@ -176,7 +177,7 @@ internal fun OnboardingScreen(
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.error,
+                    color = PlMailTheme.colors.danger,
                 )
             }
 

@@ -45,6 +45,7 @@ android {
 dependencies {
     implementation(projects.core.data)
     implementation(projects.core.datastore)
+    implementation(projects.core.designsystem)
     implementation(projects.feature.onboarding)
     implementation(projects.feature.mail)
     implementation(projects.feature.compose)

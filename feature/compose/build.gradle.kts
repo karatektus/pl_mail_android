@@ -7,6 +7,7 @@ plugins {
 android { namespace = "de.plmail.feature.compose" }
 
 dependencies {
+    implementation(projects.core.designsystem)
     implementation(projects.core.data)
     implementation(projects.core.database)
     // EmailAddress and the reply/forward composer are this module's vocabulary:

@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -21,6 +20,10 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
+import de.plmail.core.designsystem.PlMailDensity
+import de.plmail.core.designsystem.PlMailLayout
+import de.plmail.core.designsystem.PlMailTheme
+import de.plmail.core.designsystem.PlMailThemeChoice
 import de.plmail.feature.compose.ComposeRequest
 import de.plmail.feature.compose.ComposeRequestSaver
 import de.plmail.feature.compose.ComposeScreen
@@ -51,7 +54,7 @@ class MainActivity : ComponentActivity() {
         pendingLink = intent?.data?.toString()
 
         setContent {
-            PlMailTheme {
+            PlMailAppTheme {
                 PlMailApp(pendingLink = pendingLink, onLinkHandled = { pendingLink = null })
             }
         }
@@ -157,14 +160,19 @@ private fun PlMailApp(
 }
 
 /**
- * Material 3 with the platform's own colours, for now.
+ * The app's theme, from local settings for now and from the server's `Appearance` when that is
+ * exposed.
  *
- * plMail's real appearance model is two-axis — six Themes crossed with two Layouts, plus density
- * and per-knob overrides, all resolved through semantic tokens rather than raw palette values. That
- * arrives with its own milestone. What matters until then is that no screen hardcodes a colour, so
- * swapping the source of these values touches this function and nothing else.
+ * The two-axis model lives in `:core:designsystem`; this is only the place that decides which
+ * theme, layout and density to hand it. When the settings screen arrives it replaces these defaults
+ * and touches nothing else, which is the whole reason the resolver is a separate module.
  */
 @Composable
-private fun PlMailTheme(content: @Composable () -> Unit) {
-    MaterialTheme(content = content)
+private fun PlMailAppTheme(content: @Composable () -> Unit) {
+    PlMailTheme(
+        theme = PlMailThemeChoice.SYSTEM,
+        layout = PlMailLayout.FLAT,
+        density = PlMailDensity.COMFORTABLE,
+        content = content,
+    )
 }
