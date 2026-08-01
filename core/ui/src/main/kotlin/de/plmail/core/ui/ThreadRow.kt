@@ -4,12 +4,14 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AttachFile
@@ -19,6 +21,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -46,29 +49,32 @@ import java.time.LocalDate
  * subject, a medium-weight date — and not bold on everything. A row where three lines all go bold
  * is a row that shouts, and an inbox where half the rows shout says nothing.
  *
- * **Nothing on this row is accented, and that is deliberate.** Two marks have now been taken off
- * it, for one reason each time, and the reason is the same reason.
+ * **Exactly one thing on this row is accented: the unread dot.** Getting to one took removing two
+ * marks and putting one of them back somewhere better, so the history is worth keeping.
  *
- * The first was an accent dot under the date. It was redundant — the subject was already bold — and
- * it shared a slot with the star. That column answers "what does this conversation carry": an
- * attachment, a star the user put there. Unread is not something the conversation carries, it is
- * something the reader has not done, and two kinds of fact in one slot means neither reads at a
- * glance.
+ * The dot originally sat *inside* the marks row, beside the star, at icon size. That is the version
+ * that did not work, and the slot was why: that row answers "what does this conversation carry" —
+ * an attachment, a star the user put there. Unread is not carried by the conversation, it is
+ * something the reader has not done. A starred unread thread had the two elbowing each other in the
+ * same six pixels, and neither read at a glance.
  *
- * The second was the accent on the *date*, which inherited the dot's problem rather than being
- * freed of it. Judged the only way it can be judged — `ThreadListScreenshotTest` renders fourteen
- * rows in both schemes — and the verdict was clear in both directions. With every row unread, which
- * is a fresh account, an overnight batch or a Monday, the accent appeared eleven times and
- * distinguished nothing: it was the most repeated colour on screen while carrying no information at
- * all. In dark it was worse, because the accent brightens to a mint that also appears in the avatar
- * ramp two hundred pixels to the left — the same hue on both edges of every row, meaning "unread"
- * on one side and nothing whatsoever on the other. And in the mixed case, where it did help, it was
- * never the signal doing the work: semibold sender over a semibold full-ink subject is legible from
- * across the room without it.
+ * The accent then moved to the *date*, which inherited the problem rather than being freed of it.
+ * Judged the only way it can be judged — `ThreadListScreenshotTest` renders fourteen rows in both
+ * schemes, because one row cannot show how often a colour appears — and the verdict was clear. With
+ * every row unread, which is a fresh account, an overnight batch or a Monday, the accent appeared
+ * eleven times and distinguished nothing. In dark it was worse: the accent brightens to a mint that
+ * also appears in the avatar ramp two hundred pixels to the left, so the same hue sat on both edges
+ * of every row, meaning "unread" on one side and nothing on the other.
  *
- * So the ink scale carries hierarchy *within* a row, and the accent is reserved for what the app
- * offers rather than what the mail is — the compose button, the label you are looking at, a link. A
- * date is neither.
+ * The dot is back, on its own line below the marks, because it is genuinely wanted and because the
+ * date going quiet is what made room for it. It now reads as a mark of its own rather than a
+ * competitor to the star, and it is the only accent on the row — so a screen of unread mail carries
+ * one small repeated dot in a column of its own, which scans, instead of eleven coloured dates,
+ * which did not.
+ *
+ * Everything else uses the ink scale: hierarchy *within* a row is weight and ink, and the accent is
+ * otherwise reserved for what the app offers rather than what the mail is — the compose button, the
+ * label you are looking at, a link.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -180,6 +186,12 @@ fun ThreadRow(
             )
 
             Row(
+                // Holds its height even when empty, so the dot below lands at
+                // the same offset on every row. Without it the dot sits one
+                // mark-height higher on a row carrying no star or paperclip,
+                // and a screen of mixed rows gets a visibly ragged dot column --
+                // the kind of thing nobody can name but everybody sees.
+                modifier = Modifier.heightIn(min = AFFORDANCE),
                 horizontalArrangement = Arrangement.spacedBy(spacing.tiny),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -201,11 +213,30 @@ fun ThreadRow(
                     )
                 }
             }
+
+            if (thread.isUnread) {
+                Box(
+                    modifier =
+                        Modifier.padding(top = spacing.tiny)
+                            .size(DOT)
+                            .clip(CircleShape)
+                            .background(colors.accent)
+                )
+            }
         }
     }
 }
 
 private val AFFORDANCE = 15.dp
+
+/**
+ * Smaller than the marks above it, because it is not one of them.
+ *
+ * Large enough to read as deliberate at arm's length, small enough that a screen of unread rows is
+ * a column of punctuation rather than a column of buttons — which is what the previous version,
+ * sitting at icon size inside the marks row, looked like.
+ */
+private val DOT = 8.dp
 
 /** What the screen reader says, as one sentence rather than eight disconnected fragments. */
 private fun ThreadEntity.spoken(): String = buildList {
