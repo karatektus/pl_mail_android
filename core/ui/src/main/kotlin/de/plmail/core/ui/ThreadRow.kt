@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.LocalPlMailTheme
 import de.plmail.core.designsystem.PlMailAvatar
+import java.time.LocalDate
 
 /**
  * One conversation in the list.
@@ -41,18 +42,33 @@ import de.plmail.core.designsystem.PlMailAvatar
  * the smallest line on the row, which is exactly backwards — it is the line people actually read to
  * decide whether to open the mail.
  *
- * Unread is a weight change on the sender and subject plus an accent date, not bold on everything.
- * A row where three lines all go bold is a row that shouts, and an inbox where half the rows shout
- * says nothing.
+ * Unread is a weight change and a step up the ink scale — semibold sender, semibold full-ink
+ * subject, a medium-weight date — and not bold on everything. A row where three lines all go bold
+ * is a row that shouts, and an inbox where half the rows shout says nothing.
  *
- * There was a fourth mark — an accent dot under the date — and it is gone. Two reasons, and the
- * second is the one that matters. It was redundant: the subject was already bold and the date
- * already accented, so on an inbox where most mail is unread the dot was the third time the row
- * said the same thing, and the accent this palette rations was suddenly the most repeated colour on
- * screen. Worse, it shared a slot with the star. That column answers "what does this conversation
- * carry" — an attachment, a star the user put there — and unread is not something the conversation
- * carries, it is something the reader has not done. Two different kinds of fact in one slot means
- * neither reads at a glance, and a starred unread thread had them fighting for the same six pixels.
+ * **Nothing on this row is accented, and that is deliberate.** Two marks have now been taken off
+ * it, for one reason each time, and the reason is the same reason.
+ *
+ * The first was an accent dot under the date. It was redundant — the subject was already bold — and
+ * it shared a slot with the star. That column answers "what does this conversation carry": an
+ * attachment, a star the user put there. Unread is not something the conversation carries, it is
+ * something the reader has not done, and two kinds of fact in one slot means neither reads at a
+ * glance.
+ *
+ * The second was the accent on the *date*, which inherited the dot's problem rather than being
+ * freed of it. Judged the only way it can be judged — `ThreadListScreenshotTest` renders fourteen
+ * rows in both schemes — and the verdict was clear in both directions. With every row unread, which
+ * is a fresh account, an overnight batch or a Monday, the accent appeared eleven times and
+ * distinguished nothing: it was the most repeated colour on screen while carrying no information at
+ * all. In dark it was worse, because the accent brightens to a mint that also appears in the avatar
+ * ramp two hundred pixels to the left — the same hue on both edges of every row, meaning "unread"
+ * on one side and nothing whatsoever on the other. And in the mixed case, where it did help, it was
+ * never the signal doing the work: semibold sender over a semibold full-ink subject is legible from
+ * across the room without it.
+ *
+ * So the ink scale carries hierarchy *within* a row, and the accent is reserved for what the app
+ * offers rather than what the mail is — the compose button, the label you are looking at, a link. A
+ * date is neither.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -62,6 +78,15 @@ fun ThreadRow(
     modifier: Modifier = Modifier,
     onLongClick: (() -> Unit)? = null,
     isSelected: Boolean = false,
+    /**
+     * What "today" means for the date column.
+     *
+     * Hoisted for the same reason [asListDate] hoists it one level down: the column's answer is
+     * relative, so a screenshot baseline that reads the clock is a baseline that stops matching
+     * overnight — and "time today, weekday this week, otherwise a date" is precisely the behaviour
+     * a list of rows is worth looking at. Every caller in the app takes the default.
+     */
+    today: LocalDate = LocalDate.now(),
 ) {
     val theme = LocalPlMailTheme.current
     val colors = theme.colors
@@ -142,12 +167,16 @@ fun ThreadRow(
             verticalArrangement = Arrangement.spacedBy(spacing.tiny),
         ) {
             Text(
-                text = thread.latestReceivedAt.asListDate(),
+                text = thread.latestReceivedAt.asListDate(today = today),
                 style = MaterialTheme.typography.labelSmall,
-                // The one place unread changes a *colour* rather than a weight:
-                // the date is the first thing scanned, and accent on it reads
-                // as "new" without another bold line.
-                color = if (thread.isUnread) colors.accent else colors.inkMuted,
+                // Promoted up the ink scale and one weight step, rather than
+                // accented. See the note on this composable for why the accent
+                // came off it. Null rather than Normal for the read case: the
+                // caption style is already Medium, and overriding it downward
+                // would quietly make every date in the app lighter than the
+                // scale says a caption is.
+                fontWeight = if (thread.isUnread) FontWeight.SemiBold else null,
+                color = if (thread.isUnread) colors.ink else colors.inkMuted,
             )
 
             Row(
