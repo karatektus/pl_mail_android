@@ -11,16 +11,28 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -28,12 +40,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.plmail.core.data.MailAction
 import de.plmail.core.designsystem.PlMailAvatar
 import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.ui.R as UiR
 import de.plmail.core.ui.asListDate
 import de.plmail.feature.mail.R
+import de.plmail.feature.mail.SnoozeMenu
+import de.plmail.feature.mail.SnoozePicker
 
 /** The letter shown on a sender's avatar. Skips punctuation, so "+ada@…" is still an A. */
 private fun avatarInitial(seed: String): String =
@@ -53,6 +68,19 @@ fun ReaderScreen(
     subject: String?,
     onReply: (emailId: String, all: Boolean) -> Unit,
     onForward: (emailId: String) -> Unit,
+    /** Null where the list is already on screen beside this, and there is nothing to go back to. */
+    onBack: (() -> Unit)? = null,
+    /**
+     * Applies an action to the conversation on screen.
+     *
+     * Hoisted rather than owned, and the reason is the undo. Archiving from here closes the reader,
+     * so a snackbar hosted *by* the reader would leave with it — taking the way back with it, on
+     * exactly the actions where the way back matters most. [MailPane] outlives both panes and is
+     * where the announcement belongs.
+     */
+    onAction: (MailAction) -> Unit = {},
+    /** Opens the "Label as" sheet, which is hosted a level up for the same reason. */
+    onLabel: () -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -66,16 +94,14 @@ fun ReaderScreen(
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text =
-                            state.subject?.takeIf { it.isNotBlank() }
-                                ?: stringResource(UiR.string.no_subject),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+            ReaderBar(
+                subject =
+                    state.subject?.takeIf { it.isNotBlank() }
+                        ?: stringResource(UiR.string.no_subject),
+                isSnoozed = state.snoozedUntil != null,
+                onBack = onBack,
+                onAction = onAction,
+                onLabel = onLabel,
             )
         },
     ) { insets ->
@@ -107,6 +133,143 @@ fun ReaderScreen(
             }
         }
     }
+}
+
+/**
+ * The reader's chrome: what to do with this conversation, and the way out.
+ *
+ * The two destructive moves are buttons and everything else is in the overflow, matching the
+ * selection bar above the list — the same conversation must not offer a different set of verbs
+ * depending on whether it is open. Reply is deliberately *not* here: it lives under the message it
+ * answers, because a thread has several and "reply" from an app bar quotes whichever one the code
+ * picked.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReaderBar(
+    subject: String,
+    isSnoozed: Boolean,
+    onBack: (() -> Unit)?,
+    onAction: (MailAction) -> Unit,
+    onLabel: () -> Unit,
+) {
+    var isMenuOpen by remember { mutableStateOf(false) }
+    var isSnoozeOpen by remember { mutableStateOf(false) }
+    var isPickingTime by remember { mutableStateOf(false) }
+
+    if (isPickingTime) {
+        SnoozePicker(
+            onDismiss = { isPickingTime = false },
+            onChosen = {
+                isPickingTime = false
+                onAction(MailAction.Snooze(it.toEpochMilli()))
+            },
+        )
+    }
+
+    TopAppBar(
+        colors =
+            TopAppBarDefaults.topAppBarColors(
+                // The bar is part of the page rather than a separate plane, as
+                // everywhere else in this app: Material's default tints it as
+                // the content scrolls under it, which reintroduces the elevation
+                // model this design does not use.
+                containerColor = PlMailTheme.colors.surface,
+                scrolledContainerColor = PlMailTheme.colors.surface,
+                titleContentColor = PlMailTheme.colors.ink,
+                navigationIconContentColor = PlMailTheme.colors.inkSoft,
+                actionIconContentColor = PlMailTheme.colors.inkSoft,
+            ),
+        title = { Text(text = subject, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        navigationIcon = {
+            onBack?.let { back ->
+                IconButton(onClick = back) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.reader_back),
+                    )
+                }
+            }
+        },
+        actions = {
+            IconButton(onClick = { onAction(MailAction.Archive) }) {
+                Icon(
+                    imageVector = Icons.Outlined.Archive,
+                    contentDescription = stringResource(R.string.action_archive),
+                )
+            }
+            IconButton(onClick = { onAction(MailAction.Trash) }) {
+                Icon(
+                    imageVector = Icons.Outlined.Delete,
+                    contentDescription = stringResource(R.string.action_trash),
+                )
+            }
+            IconButton(onClick = { isMenuOpen = true }) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = stringResource(R.string.more),
+                )
+            }
+
+            DropdownMenu(expanded = isMenuOpen, onDismissRequest = { isMenuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.action_star)) },
+                    onClick = {
+                        isMenuOpen = false
+                        onAction(MailAction.Star(flagged = true))
+                    },
+                )
+                // Marking unread rather than read: the reader has just marked
+                // every message it showed as read, so "mark read" here is a
+                // control that never does anything.
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.action_unread)) },
+                    onClick = {
+                        isMenuOpen = false
+                        onAction(MailAction.MarkRead(seen = false))
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.action_spam)) },
+                    onClick = {
+                        isMenuOpen = false
+                        onAction(MailAction.MarkSpam)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.labels_apply)) },
+                    onClick = {
+                        isMenuOpen = false
+                        onLabel()
+                    },
+                )
+                if (isSnoozed) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.unsnooze)) },
+                        onClick = {
+                            isMenuOpen = false
+                            onAction(MailAction.Snooze(null))
+                        },
+                    )
+                } else {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.snooze)) },
+                        onClick = {
+                            isMenuOpen = false
+                            isSnoozeOpen = true
+                        },
+                    )
+                }
+            }
+
+            SnoozeMenu(
+                isOpen = isSnoozeOpen,
+                onDismiss = { isSnoozeOpen = false },
+                onChosen = { at -> onAction(MailAction.Snooze(at.toEpochMilli())) },
+                onPickExact = { isPickingTime = true },
+            )
+        },
+    )
 }
 
 /**

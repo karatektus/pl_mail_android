@@ -30,10 +30,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -46,7 +42,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalAccessibilityManager
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -57,7 +52,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
-import de.plmail.core.data.ActionOutcome
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
@@ -67,7 +61,6 @@ import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailEmptyState
 import de.plmail.core.designsystem.PlMailTheme
 import java.time.Instant
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * The unified inbox.
@@ -100,54 +93,6 @@ fun MailScreen(
     val threads = viewModel.threads.collectAsLazyPagingItems()
     val unreachable by viewModel.unreachable.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
-    val announcement by viewModel.announcement.collectAsStateWithLifecycle()
-    val labels by viewModel.labels.collectAsStateWithLifecycle()
-    val labelSheet by viewModel.labelSheet.collectAsStateWithLifecycle()
-
-    val snackbars = remember { SnackbarHostState() }
-
-    // Resolved through the composition's own resources rather than
-    // LocalContext.resources, which does not recompose on a locale change --
-    // the snackbar would keep the language the screen was first created in.
-    val message = announcement?.let { describe(it.outcome) }.orEmpty()
-    val undoLabel = stringResource(R.string.undo)
-    val accessibility = LocalAccessibilityManager.current
-
-    LaunchedEffect(announcement?.id) {
-        val shown = announcement ?: return@LaunchedEffect
-
-        // Extended for anyone the system says needs longer. This is the one
-        // control in the app with a deadline, so it is the one place where a
-        // fixed timeout quietly excludes people -- and it is exactly the users
-        // who need the extra seconds who would lose them.
-        val window =
-            accessibility?.calculateRecommendedTimeoutMillis(
-                originalTimeoutMillis = UNDO_WINDOW_MILLIS,
-                containsIcons = false,
-                containsText = true,
-                containsControls = true,
-            ) ?: UNDO_WINDOW_MILLIS
-
-        // Indefinite plus a timeout, rather than SnackbarDuration.Short. Short
-        // is four seconds, and this code claimed six in a comment while asking
-        // for it -- four is not enough to watch a row leave, decide against it
-        // and reach a button at the other end of the screen, which is a large
-        // part of why the undo path was so hard to catch working that it
-        // shipped without anyone seeing it. Material offers no way to name a
-        // duration, so the duration is named here.
-        val result =
-            withTimeoutOrNull(window) {
-                snackbars.showSnackbar(
-                    message = message,
-                    actionLabel = undoLabel,
-                    duration = SnackbarDuration.Indefinite,
-                )
-            }
-
-        if (result == SnackbarResult.ActionPerformed) viewModel.undo(shown.outcome.undoable)
-
-        viewModel.announcementShown(shown.id)
-    }
 
     // Back clears a selection before it leaves the screen: a selection is a
     // mode, and leaving a mode is what back is for.
@@ -155,7 +100,6 @@ fun MailScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbars) },
         floatingActionButton = {
             // Hidden while rows are selected: the bar above is a mode, and a
             // compose button inside it invites tapping it by accident with
@@ -295,22 +239,6 @@ fun MailScreen(
             )
         }
     }
-
-    labelSheet?.let { sheet ->
-        LabelSheet(
-            labels = labels,
-            selection = sheet.selection,
-            targets = sheet.targets,
-            onToggle = { label, applied ->
-                viewModel.apply(MailAction.SetLabel(label, applied), sheet.targets)
-            },
-            onCreate = {
-                viewModel.closeLabelSheet()
-                onCreateLabel()
-            },
-            onDismiss = viewModel::closeLabelSheet,
-        )
-    }
 }
 
 @Composable
@@ -420,15 +348,6 @@ private val ROW_TEXT_INSET = 72.dp
 
 /** The role plMail gives the mailbox a snoozed conversation waits in. */
 private const val SNOOZED_ROLE = "snoozed"
-
-/**
- * How long the way back stays on screen.
- *
- * Six seconds is the product's window, and it is a deliberate number rather than a default: long
- * enough to see a row leave, realise it was the wrong one and reach the button, short enough that
- * it is not sitting over the list while somebody reads.
- */
-private const val UNDO_WINDOW_MILLIS = 6_000L
 
 /** Keyed, so Paging does not confuse the footer with a row when the list grows under it. */
 private const val END_OF_LIST = "end-of-list"
@@ -616,42 +535,3 @@ private fun ThreadEntity.target(): ActionTarget =
  */
 private fun LazyPagingItems<ThreadEntity>.targetsFor(selection: Set<String>): List<ActionTarget> =
     (0 until itemCount).mapNotNull { peek(it) }.filter { it.uid in selection }.map { it.target() }
-
-/** What the snackbar says. Conversations, because conversations are what the user acted on. */
-@Composable
-private fun describe(outcome: ActionOutcome): String {
-    val undoable = outcome.undoable
-    val count = undoable.threadCount
-
-    val action = undoable.action
-
-    val done =
-        when {
-            // The way back took more than one change -- a bulk unsnooze put
-            // conversations back to times that differed. Naming one of them
-            // would be a lie about the rest, and the count is the part the user
-            // is checking anyway.
-            action == null -> pluralStringResource(R.plurals.put_back, count, count)
-            action == MailAction.Archive -> pluralStringResource(R.plurals.archived, count, count)
-            action == MailAction.Trash -> pluralStringResource(R.plurals.trashed, count, count)
-            action == MailAction.MoveToInbox ->
-                pluralStringResource(R.plurals.moved_to_inbox, count, count)
-            action == MailAction.MarkSpam ->
-                pluralStringResource(R.plurals.marked_spam, count, count)
-            action is MailAction.SetLabel && action.applied ->
-                pluralStringResource(R.plurals.labelled, count, count)
-            action is MailAction.SetLabel ->
-                pluralStringResource(R.plurals.unlabelled, count, count)
-            action is MailAction.Snooze && action.until != null ->
-                pluralStringResource(R.plurals.snoozed, count, count)
-            action is MailAction.Snooze -> pluralStringResource(R.plurals.unsnoozed, count, count)
-            else -> stringResource(R.string.changed)
-        }
-
-    return when (outcome) {
-        is ActionOutcome.Applied -> done
-        // Said out loud: the row already moved, so a rejection nobody mentions
-        // leaves the user believing something happened that did not.
-        is ActionOutcome.Rejected -> stringResource(R.string.action_rejected, done)
-    }
-}

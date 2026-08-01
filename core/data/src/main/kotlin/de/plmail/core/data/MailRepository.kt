@@ -179,6 +179,15 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
     suspend fun messagesInThread(accountKey: String, threadId: String): List<EmailEntity> =
         database.emails().inThread(accountKey, threadId)
 
+    /**
+     * The conversation's own row, for the things that are not properties of any message.
+     *
+     * Snooze is the only one today, and it is the reason this exists: the reader has to offer
+     * "unsnooze" rather than "snooze" for something already put away, and no message carries that.
+     */
+    suspend fun thread(accountKey: String, threadId: String): ThreadEntity? =
+        database.threads().byUid(StoreKey.objectKey(accountKey, threadId))
+
     suspend fun body(emailUid: String): EmailBodyEntity? = database.emails().body(emailUid)
 
     /**

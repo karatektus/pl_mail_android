@@ -534,9 +534,16 @@ Landed on 2026-08-01:
   and unsnooze from the Snoozed list.
 
 Still open: **colour is blocked on the server** — absent from `Mailbox/get`, refused on `update`,
-silently dropped on `create`. Filed in `docs/SERVER_REQUESTS.md`. Also outstanding: the label sheet
-and the snooze menu are reachable from the selection bar but not yet from inside the reader, and
-mail rules / block sender have no client surface.
+silently dropped on `create`. Filed in `docs/SERVER_REQUESTS.md`. Mail rules and block sender still
+have no client surface.
+
+The reader gained its own chrome on 2026-08-01 — back, archive, trash, and an overflow carrying
+star, mark-unread, spam, "Label as" and snooze — which is the last of M9's leftovers. Two
+decisions in it are worth keeping. Reply stays *under the message it answers* rather than moving
+into the app bar, because a thread has several messages and an app-bar reply quotes whichever one
+the code picked. And the announcement, its undo and the label sheet all moved up to `MailPane`:
+archiving from the reader closes the reader, so a snackbar hosted by the reader left with it,
+taking the way back off screen on exactly the actions where it matters most.
 
 Undo of a snooze was shipped without ever being watched work, and it did not. Closed on 2026-08-01,
 and the three defects behind it are worth remembering because none of them was in the undo code:

@@ -45,6 +45,13 @@ data class ReaderUiState(
     val subject: String? = null,
     val messages: List<ReaderMessage> = emptyList(),
     val isLoading: Boolean = true,
+    /**
+     * When this conversation is sleeping until, or null.
+     *
+     * Read so the reader offers the opposite verb: "snooze" on something already put away replaces
+     * a time the user cannot see with another one, which is a control whose effect is invisible.
+     */
+    val snoozedUntil: Long? = null,
 )
 
 /**
@@ -91,6 +98,7 @@ constructor(private val mail: MailRepository, private val loader: MessageLoader)
      */
     private suspend fun show(accountKey: String, threadId: String, subject: String?) {
         val emails = mail.messagesInThread(accountKey, threadId)
+        val thread = mail.thread(accountKey, threadId)
         val newest = emails.maxByOrNull { it.receivedAt ?: Long.MIN_VALUE }
         val existing = _state.value.messages.associateBy { it.email.uid }
 
@@ -125,6 +133,7 @@ constructor(private val mail: MailRepository, private val loader: MessageLoader)
                     subject?.takeIf { it.isNotBlank() } ?: messages.firstOrNull()?.email?.subject,
                 messages = messages,
                 isLoading = false,
+                snoozedUntil = thread?.snoozedUntil,
             )
         }
     }

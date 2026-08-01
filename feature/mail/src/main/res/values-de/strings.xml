@@ -18,8 +18,10 @@
     <string name="action_trash">In den Papierkorb</string>
     <string name="action_star">Markieren</string>
     <string name="action_read">Als gelesen markieren</string>
+    <string name="action_unread">Als ungelesen markieren</string>
     <string name="action_spam">Als Spam markieren</string>
     <string name="undo">Rückgängig</string>
+    <string name="reader_back">Zurück zur Liste</string>
     <plurals name="archived">
         <item quantity="one">1 Unterhaltung archiviert</item>
         <item quantity="other">%1$d Unterhaltungen archiviert</item>

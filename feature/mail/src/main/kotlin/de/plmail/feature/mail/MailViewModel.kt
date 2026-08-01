@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import dagger.hilt.android.lifecycle.HiltViewModel
-import de.plmail.core.data.ActionOutcome
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.FeedRepository
 import de.plmail.core.data.Label
@@ -37,15 +36,6 @@ data class UnreachableAccount(val accountKey: String, val displayName: String)
 /** The "Label as" sheet, once its ticks have been resolved. */
 data class LabelSheetState(val targets: List<ActionTarget>, val selection: LabelSelection)
 
-/** A change to announce, with the undo that reverses it. */
-data class ActionAnnouncement(
-    val outcome: ActionOutcome,
-    /**
-     * Distinguishes two identical archives so the snackbar re-shows rather than being deduplicated.
-     */
-    val id: Long,
-)
-
 @HiltViewModel
 class MailViewModel
 @Inject
@@ -56,13 +46,11 @@ constructor(
     private val labelRepository: LabelRepository,
 ) : ViewModel() {
 
-    private val _announcement = MutableStateFlow<ActionAnnouncement?>(null)
-    val announcement: StateFlow<ActionAnnouncement?> = _announcement.asStateFlow()
+    private val announcements = ActionAnnouncements()
+    val announcement: StateFlow<ActionAnnouncement?> = announcements.announcement
 
     private val _selection = MutableStateFlow<Set<String>>(emptySet())
     val selection: StateFlow<Set<String>> = _selection.asStateFlow()
-
-    private var announcements = 0L
 
     fun toggleSelected(uid: String) {
         _selection.update { if (uid in it) it - uid else it + uid }
@@ -83,21 +71,15 @@ constructor(
         if (targets.isEmpty()) return
         clearSelection()
 
-        viewModelScope.launch {
-            val outcome = actions.apply(action, targets)
-            _announcement.update { ActionAnnouncement(outcome, announcements++) }
-        }
+        viewModelScope.launch { announcements.announce(actions.apply(action, targets)) }
     }
 
     fun undo(undoable: UndoableAction) {
-        viewModelScope.launch {
-            val outcome = actions.undo(undoable)
-            _announcement.update { ActionAnnouncement(outcome, announcements++) }
-        }
+        viewModelScope.launch { announcements.announce(actions.undo(undoable)) }
     }
 
     fun announcementShown(id: Long) {
-        _announcement.update { current -> current?.takeIf { it.id != id } }
+        announcements.shown(id)
     }
 
     /**

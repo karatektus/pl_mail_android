@@ -22,8 +22,14 @@
     <string name="action_trash">Trash</string>
     <string name="action_star">Star</string>
     <string name="action_read">Mark read</string>
+    <!--
+      The reader offers the opposite verb: it marks every message it shows as read, so "mark read"
+      there is a control that can never do anything.
+    -->
+    <string name="action_unread">Mark unread</string>
     <string name="action_spam">Mark as spam</string>
     <string name="undo">Undo</string>
+    <string name="reader_back">Back to the list</string>
     <!-- Conversations, not messages: conversations are what the user acted on. -->
     <plurals name="archived">
         <item quantity="one">1 conversation archived</item>

@@ -2,10 +2,14 @@ package de.plmail.feature.mail
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi
 import androidx.compose.material3.adaptive.layout.AnimatedPane
@@ -16,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -23,7 +28,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.Label
+import de.plmail.core.data.MailAction
 import de.plmail.feature.mail.reader.ReaderScreen
 import kotlinx.coroutines.launch
 
@@ -52,6 +61,7 @@ fun MailPane(
     onForward: (accountKey: String, emailId: String) -> Unit,
     openThread: ThreadTarget? = null,
     onThreadOpened: () -> Unit = {},
+    viewModel: MailViewModel = hiltViewModel(),
 ) {
     val navigator = rememberListDetailPaneScaffoldNavigator<Nothing>()
     val scope = rememberCoroutineScope()
@@ -59,6 +69,25 @@ fun MailPane(
     var selectedSubject by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedAccount by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedThread by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // Both panes act on mail, and neither is on screen for the whole life of
+    // what it started. Archiving from the reader closes the reader; archiving
+    // from the list leaves the row's own pane composed but is the same change --
+    // so the announcement, its undo and the label sheet all live here, at the
+    // one level that outlives either pane. Hosting the snackbar inside the
+    // reader was the first version and it took the way back off screen at
+    // exactly the moment it was needed.
+    val announcement by viewModel.announcement.collectAsStateWithLifecycle()
+    val labels by viewModel.labels.collectAsStateWithLifecycle()
+    val labelSheet by viewModel.labelSheet.collectAsStateWithLifecycle()
+    val snackbars = remember { SnackbarHostState() }
+
+    UndoSnackbar(
+        announcement = announcement,
+        snackbars = snackbars,
+        onUndo = viewModel::undo,
+        onShown = viewModel::announcementShown,
+    )
 
     // A conversation chosen somewhere this screen cannot see -- a notification
     // tap. Keyed on the target so tapping a second notification while the first
@@ -87,49 +116,130 @@ fun MailPane(
         scope.launch { navigator.navigateBack() }
     }
 
-    NavigableListDetailPaneScaffold(
-        navigator = navigator,
-        listPane = {
-            AnimatedPane {
-                MailScreen(
-                    label = label,
-                    onOpenSidebar = onOpenSidebar,
-                    onEditLabel = onEditLabel,
-                    onCreateLabel = onCreateLabel,
-                    onSearch = onSearch,
-                    onCompose = onCompose,
-                    onThreadSelected = { thread ->
-                        selectedUid = thread.uid
-                        selectedSubject = thread.subject
-                        selectedAccount = thread.accountKey
-                        selectedThread = thread.threadId
-                        scope.launch {
-                            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail)
-                        }
-                    },
-                )
-            }
-        },
-        detailPane = {
-            AnimatedPane {
-                val account = selectedAccount
-                val thread = selectedThread
-
-                if (account == null || thread == null) {
-                    NothingSelected()
-                } else {
-                    ReaderScreen(
-                        accountKey = account,
-                        threadId = thread,
-                        subject = selectedSubject,
-                        onReply = { emailId, all -> onReply(account, emailId, all) },
-                        onForward = { emailId -> onForward(account, emailId) },
+    Box(modifier = Modifier.fillMaxSize()) {
+        NavigableListDetailPaneScaffold(
+            navigator = navigator,
+            listPane = {
+                AnimatedPane {
+                    MailScreen(
+                        label = label,
+                        onOpenSidebar = onOpenSidebar,
+                        onEditLabel = onEditLabel,
+                        onCreateLabel = onCreateLabel,
+                        onSearch = onSearch,
+                        onCompose = onCompose,
+                        viewModel = viewModel,
+                        onThreadSelected = { thread ->
+                            selectedUid = thread.uid
+                            selectedSubject = thread.subject
+                            selectedAccount = thread.accountKey
+                            selectedThread = thread.threadId
+                            scope.launch {
+                                navigator.navigateTo(ListDetailPaneScaffoldRole.Detail)
+                            }
+                        },
                     )
                 }
-            }
-        },
-    )
+            },
+            detailPane = {
+                AnimatedPane {
+                    val account = selectedAccount
+                    val thread = selectedThread
+
+                    if (account == null || thread == null) {
+                        NothingSelected()
+                    } else {
+                        ReaderScreen(
+                            accountKey = account,
+                            threadId = thread,
+                            subject = selectedSubject,
+                            onReply = { emailId, all -> onReply(account, emailId, all) },
+                            onForward = { emailId -> onForward(account, emailId) },
+                            onAction = { action ->
+                                viewModel.apply(action, listOf(ActionTarget(account, thread)))
+
+                                // Archiving, trashing, marking spam and snoozing all
+                                // take the conversation out of the list it was
+                                // opened from, so the reader stops being a view of
+                                // anything. Starring and labelling do not, and
+                                // closing on those would be a screen that vanishes
+                                // when somebody stars a message.
+                                if (action.leavesTheList)
+                                    close(navigator, scope) {
+                                        selectedAccount = null
+                                        selectedThread = null
+                                        selectedSubject = null
+                                        selectedUid = null
+                                    }
+                            },
+                            onLabel = {
+                                viewModel.openLabelSheet(listOf(ActionTarget(account, thread)))
+                            },
+                            // Only where there is a list to go back *to*. On a
+                            // tablet both panes are on screen and an arrow that
+                            // leaves a pane already beside its list is a control
+                            // pointing at nothing.
+                            onBack =
+                                if (navigator.canNavigateBack()) {
+                                    { scope.launch { navigator.navigateBack() } }
+                                } else {
+                                    null
+                                },
+                        )
+                    }
+                }
+            },
+        )
+
+        // Last, so it draws over whichever pane is showing, and inset only
+        // against the navigation bar: it floats above content rather than being
+        // laid out with it.
+        SnackbarHost(
+            hostState = snackbars,
+            modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+        )
+    }
+
+    labelSheet?.let { sheet ->
+        LabelSheet(
+            labels = labels,
+            selection = sheet.selection,
+            targets = sheet.targets,
+            onToggle = { label, applied ->
+                viewModel.apply(MailAction.SetLabel(label, applied), sheet.targets)
+            },
+            onCreate = {
+                viewModel.closeLabelSheet()
+                onCreateLabel()
+            },
+            onDismiss = viewModel::closeLabelSheet,
+        )
+    }
 }
+
+/**
+ * Leaves the reader, whichever way "leaving" means on this window.
+ *
+ * On a phone the detail pane is a navigation step and back returns to the list. On a tablet both
+ * panes are on screen, so there is nothing to go back from and the detail pane empties instead —
+ * otherwise it keeps describing a row that is no longer in the list beside it.
+ */
+@OptIn(ExperimentalMaterial3AdaptiveApi::class)
+private fun close(
+    navigator: androidx.compose.material3.adaptive.navigation.ThreePaneScaffoldNavigator<Nothing>,
+    scope: kotlinx.coroutines.CoroutineScope,
+    clearSelection: () -> Unit,
+) {
+    if (navigator.canNavigateBack()) scope.launch { navigator.navigateBack() } else clearSelection()
+}
+
+/** Whether an action takes the conversation out of the list it was opened from. */
+private val MailAction.leavesTheList: Boolean
+    get() =
+        this == MailAction.Archive ||
+            this == MailAction.Trash ||
+            this == MailAction.MarkSpam ||
+            (this is MailAction.Snooze && until != null)
 
 /**
  * A conversation to open, pushed in from outside the screen.
