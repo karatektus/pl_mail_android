@@ -44,6 +44,9 @@ fun MailShell(
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
+    /** A conversation to open straight away, from a notification tap. */
+    openThread: ThreadTarget? = null,
+    onThreadOpened: () -> Unit = {},
     viewModel: SidebarViewModel = hiltViewModel(),
 ) {
     val labels by viewModel.labels.collectAsStateWithLifecycle()
@@ -94,6 +97,8 @@ fun MailShell(
                 onCompose = onCompose,
                 onReply = onReply,
                 onForward = onForward,
+                openThread = openThread,
+                onThreadOpened = onThreadOpened,
             )
         }
 

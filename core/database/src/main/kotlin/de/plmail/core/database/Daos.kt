@@ -116,6 +116,18 @@ interface EmailDao {
     @Query("DELETE FROM emails WHERE uid IN (:uids)") suspend fun delete(uids: List<String>)
 
     /**
+     * Which of these the cache already holds.
+     *
+     * The question a sync asks to work out what is *new to this device*, which is a different
+     * question from what the server calls created — a re-indexed message, or one that arrives on a
+     * server that reports every touched row as created, is old mail as far as the person holding
+     * the phone is concerned. Returning the known ids rather than the unknown ones keeps the query
+     * a plain `IN` over the primary key.
+     */
+    @Query("SELECT uid FROM emails WHERE uid IN (:uids)")
+    suspend fun known(uids: List<String>): List<String>
+
+    /**
      * Senders whose name or address matches, newest first.
      *
      * The composer's address book. Not `DISTINCT`: SQLite refuses a `DISTINCT` whose `ORDER BY`

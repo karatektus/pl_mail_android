@@ -57,6 +57,14 @@ constructor(
     private val database: PlMailDatabase,
     private val clients: AccountClients,
     private val mail: MailRepository,
+    /**
+     * Told about mail that has just arrived.
+     *
+     * A set rather than a single listener, and multibound rather than required, so that a module
+     * which does not exist in a given build — or in a test — leaves this empty and nothing here has
+     * to know. Announcing is the last thing a sync does, not part of it.
+     */
+    private val announce: Set<@JvmSuppressWildcards NewMailListener> = emptySet(),
 ) {
 
     suspend fun sync(accountKey: String): SyncResult {
@@ -151,6 +159,13 @@ constructor(
     ): Int {
         var count = 0
 
+        // Resolved once for the whole hydration rather than per chunk. Null when
+        // the account has never synced its mailboxes, in which case nothing is
+        // announced: a message this client cannot place in the inbox is one it
+        // cannot honestly call new mail.
+        val inbox = database.mailboxes().byRole(accountKey, INBOX_ROLE)?.mailboxId
+        val account = database.accounts().byUid(accountKey)
+
         ids.chunked(HYDRATION_CHUNK).forEach { chunk ->
             val request = RequestBuilder()
             val get = request.add(EmailGet(accountId, ids = chunk))
@@ -167,6 +182,31 @@ constructor(
             val results = client.send(request)
             val emails = results.result(get).list
 
+            // Asked *before* the write, because the write is what makes them
+            // known. This is the whole definition of "new": mail this device has
+            // never held, rather than mail the server chose to call created.
+            // The two differ on a re-indexed message, on a server that reports
+            // every touched row as created, and after a cursor is discarded and
+            // rebuilt -- and each of those would announce mail from March at
+            // three in the morning.
+            val arrived =
+                if (announce.isEmpty() || inbox == null || account == null) emptyList()
+                else {
+                    val known =
+                        database
+                            .emails()
+                            .known(emails.map { StoreKey.objectKey(accountKey, it.id.value) })
+                            .toSet()
+
+                    newArrivals(
+                        emails = emails,
+                        accountKey = accountKey,
+                        accountName = account.name,
+                        inboxMailboxId = inbox,
+                        known = known,
+                    )
+                }
+
             mail.storeEmails(
                 accountKey,
                 emails,
@@ -174,6 +214,13 @@ constructor(
                 fetchedAt = System.currentTimeMillis(),
             )
             count += emails.size
+
+            // After the write, so a notification the user taps opens a
+            // conversation the cache already holds. Tapping through to a reader
+            // that has to fetch the message first is the difference between
+            // instant and "loading" on the one screen where the mail is
+            // guaranteed to be a second old.
+            if (arrived.isNotEmpty()) announce.forEach { it.onNewMail(arrived) }
         }
 
         return count
@@ -195,5 +242,7 @@ constructor(
          * that the pages it would rebuild are the ones the user is going to look at anyway.
          */
         const val MAX_ROUNDS = 20
+
+        const val INBOX_ROLE = "inbox"
     }
 }

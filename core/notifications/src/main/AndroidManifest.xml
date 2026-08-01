@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!--
+          Archive and mark-read from the shade.
+
+          Not exported, and that is the whole security model here: the only way
+          to reach it is a PendingIntent this app created and handed to the
+          system, which carries the right to fire it without the receiver being
+          public. Nothing outside the app has any business archiving somebody's
+          mail.
+        -->
+        <receiver
+            android:name=".NotificationActionReceiver"
+            android:enabled="true"
+            android:exported="false" />
+    </application>
+
+</manifest>

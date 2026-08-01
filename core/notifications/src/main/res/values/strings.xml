@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The channel group. One credential reaches several mailboxes, so the
+      settings screen lists a channel per account under this heading.
+    -->
+    <string name="channel_group_accounts">Accounts</string>
+    <string name="channel_description">New mail in this account\'s inbox.</string>
+
+    <!--
+      MessagingStyle needs a name for the reader as well as the sender. It is
+      never drawn for an incoming message, but the style requires one and a
+      blank there renders as a stray separator.
+    -->
+    <string name="notification_you">You</string>
+    <string name="no_subject">(no subject)</string>
+
+    <string name="action_archive">Archive</string>
+    <string name="action_mark_read">Mark read</string>
+    <string name="action_reply">Reply</string>
+
+    <plurals name="new_messages">
+        <item quantity="one">1 new message</item>
+        <item quantity="other">%1$d new messages</item>
+    </plurals>
+    <plurals name="and_more">
+        <item quantity="one">and 1 more</item>
+        <item quantity="other">and %1$d more</item>
+    </plurals>
+</resources>

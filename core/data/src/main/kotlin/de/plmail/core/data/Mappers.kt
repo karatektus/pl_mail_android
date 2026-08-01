@@ -113,6 +113,36 @@ fun Identity.toEntity(accountKey: String, sortIndex: Int = 0): IdentityEntity =
         sortIndex = sortIndex,
     )
 
+/**
+ * The same message in the shape a notification is built from.
+ *
+ * Separate from [toEntity] rather than derived from it, because the two answer different questions.
+ * The entity is a cache row and may legitimately hold nulls that get filled in later; this has to
+ * be complete the moment it is made, since what it becomes is a line of text in the shade with no
+ * second chance to look anything up.
+ *
+ * The thread id falls back to the message's own, exactly as the feed row does. A message the server
+ * has not threaded is a conversation of one, and a notification that cannot name a conversation is
+ * one that cannot be tapped.
+ */
+internal fun Email.asNewMessage(accountKey: String, accountName: String): NewMessage {
+    val sender = from.firstOrNull()
+
+    return NewMessage(
+        accountKey = accountKey,
+        accountName = accountName,
+        emailId = id.value,
+        threadId = threadId?.value ?: id.value,
+        // The display name where the sender set one, the bare address otherwise
+        // — never an empty line, because a notification with no sender reads as
+        // a bug rather than as mail from someone anonymous.
+        sender = sender?.display?.takeIf { it.isNotBlank() } ?: sender?.email.orEmpty(),
+        subject = subject?.takeIf { it.isNotBlank() },
+        preview = preview,
+        receivedAt = receivedAt.toEpochMillis() ?: System.currentTimeMillis(),
+    )
+}
+
 fun Email.toEntity(accountKey: String): EmailEntity {
     val sender = from.firstOrNull()
 

@@ -13,6 +13,7 @@ import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffoldRole
 import androidx.compose.material3.adaptive.navigation.NavigableListDetailPaneScaffold
 import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -49,6 +50,8 @@ fun MailPane(
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
+    openThread: ThreadTarget? = null,
+    onThreadOpened: () -> Unit = {},
 ) {
     val navigator = rememberListDetailPaneScaffoldNavigator<Nothing>()
     val scope = rememberCoroutineScope()
@@ -56,6 +59,26 @@ fun MailPane(
     var selectedSubject by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedAccount by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedThread by rememberSaveable { mutableStateOf<String?>(null) }
+
+    // A conversation chosen somewhere this screen cannot see -- a notification
+    // tap. Keyed on the target so tapping a second notification while the first
+    // conversation is open switches to it, and acknowledged immediately so that
+    // pressing back and then rotating does not silently reopen it.
+    LaunchedEffect(openThread) {
+        openThread?.let { target ->
+            selectedUid = null
+            // Null rather than a guess, and the reader falls back to the
+            // conversation's own subject. Inventing one here — from the
+            // notification's line, say — would put a "Re:" prefix in the title
+            // of a thread the list titles by its opening message.
+            selectedSubject = null
+            selectedAccount = target.accountKey
+            selectedThread = target.threadId
+
+            navigator.navigateTo(ListDetailPaneScaffoldRole.Detail)
+            onThreadOpened()
+        }
+    }
 
     // Only when the detail pane is the one being shown. On a tablet both panes
     // are visible and there is nothing to go back *from*, so intercepting here
@@ -107,6 +130,14 @@ fun MailPane(
         },
     )
 }
+
+/**
+ * A conversation to open, pushed in from outside the screen.
+ *
+ * Carries no subject and no row, only the two ids the reader needs, because whoever is asking --
+ * today a notification tap -- has no access to the cache and no business holding an entity.
+ */
+data class ThreadTarget(val accountKey: String, val threadId: String)
 
 /** The detail pane before anything has been chosen, which only a tablet ever shows. */
 @Composable

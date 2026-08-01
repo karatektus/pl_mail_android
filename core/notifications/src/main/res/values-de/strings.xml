@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="channel_group_accounts">Konten</string>
+    <string name="channel_description">Neue Nachrichten im Posteingang dieses Kontos.</string>
+
+    <string name="notification_you">Ich</string>
+    <string name="no_subject">(kein Betreff)</string>
+
+    <string name="action_archive">Archivieren</string>
+    <string name="action_mark_read">Als gelesen markieren</string>
+    <string name="action_reply">Antworten</string>
+
+    <plurals name="new_messages">
+        <item quantity="one">1 neue Nachricht</item>
+        <item quantity="other">%1$d neue Nachrichten</item>
+    </plurals>
+    <plurals name="and_more">
+        <item quantity="one">und 1 weitere</item>
+        <item quantity="other">und %1$d weitere</item>
+    </plurals>
+</resources>

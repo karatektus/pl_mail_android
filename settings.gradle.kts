@@ -53,6 +53,8 @@ include(":core:designsystem")
 
 include(":core:ui")
 
+include(":core:notifications")
+
 include(":feature:onboarding")
 
 include(":feature:mail")

@@ -111,7 +111,22 @@ constructor(private val mail: MailRepository, private val loader: MessageLoader)
                     )
                 }
 
-        _state.update { ReaderUiState(subject = subject, messages = messages, isLoading = false) }
+        _state.update {
+            ReaderUiState(
+                // The caller's subject where there is one, the conversation's
+                // own otherwise. A list row already knows it and passes it, so
+                // the title is right on the first frame before anything is read
+                // from disk — but a notification tap has only two ids, and
+                // without this fallback it opened a perfectly good conversation
+                // under the heading "(no subject)". The opening message's, not
+                // the newest, matching how the list titles a thread: a reply
+                // prefixed "Re:" must not rename the conversation.
+                subject =
+                    subject?.takeIf { it.isNotBlank() } ?: messages.firstOrNull()?.email?.subject,
+                messages = messages,
+                isLoading = false,
+            )
+        }
     }
 
     fun toggleExpanded(uid: String) {

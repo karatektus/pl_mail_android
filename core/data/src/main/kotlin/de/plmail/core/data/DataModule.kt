@@ -8,6 +8,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dagger.multibindings.Multibinds
 import javax.inject.Qualifier
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -21,6 +22,15 @@ abstract class DataModule {
     @Binds @Singleton abstract fun transportFactory(real: OkHttpTransportFactory): TransportFactory
 
     @Binds @Singleton abstract fun draftSender(real: ComposeRepository): DraftSender
+
+    /**
+     * Declares the listener set so it can be empty.
+     *
+     * Without this, a graph with no `@IntoSet NewMailListener` fails to compile rather than
+     * injecting nothing — which would make `:core:data` unbuildable on its own and tie syncing to a
+     * module that only exists to draw things.
+     */
+    @Multibinds abstract fun newMailListeners(): Set<NewMailListener>
 
     companion object {
 

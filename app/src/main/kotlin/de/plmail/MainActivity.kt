@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -30,8 +31,12 @@ import de.plmail.feature.compose.ComposeRequest
 import de.plmail.feature.compose.ComposeRequestSaver
 import de.plmail.feature.compose.SendStatusHost
 import de.plmail.feature.mail.MailShell
+import de.plmail.feature.mail.ThreadTarget
 import de.plmail.feature.onboarding.OnboardingScreen
 import de.plmail.feature.search.SearchScreen
+import de.plmail.notifications.NotificationRequest
+import de.plmail.notifications.RequestNotificationPermission
+import de.plmail.notifications.notificationRequest
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -46,6 +51,16 @@ class MainActivity : ComponentActivity() {
      */
     private var pendingLink by mutableStateOf<String?>(null)
 
+    /**
+     * What a tapped notification asked for, if this launch came from one.
+     *
+     * Held beside [pendingLink] rather than folded into it: a pairing link and a notification are
+     * both "the intent that started us", and both arrive through [onNewIntent] as well, but they
+     * are consumed by different screens and one of them is only meaningful once a server is
+     * connected.
+     */
+    private var pendingNotification by mutableStateOf<NotificationRequest?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Before setContent, so the first frame is already drawn edge to edge
         // rather than being inset and then jumping.
@@ -53,10 +68,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         pendingLink = intent?.data?.toString()
+        pendingNotification = intent?.notificationRequest()
 
         setContent {
             PlMailAppTheme {
-                PlMailApp(pendingLink = pendingLink, onLinkHandled = { pendingLink = null })
+                PlMailApp(
+                    pendingLink = pendingLink,
+                    onLinkHandled = { pendingLink = null },
+                    notification = pendingNotification,
+                    onNotificationHandled = { pendingNotification = null },
+                )
             }
         }
     }
@@ -68,6 +89,11 @@ class MainActivity : ComponentActivity() {
         // one that is actually being acted on rather than the launch intent.
         setIntent(intent)
         pendingLink = intent.data?.toString()
+
+        // Replaced rather than merged. Tapping a second notification while the
+        // first conversation is open means "show me that one instead", and a
+        // queue would make the second tap open the first mail again.
+        pendingNotification = intent.notificationRequest()
     }
 }
 
@@ -83,6 +109,8 @@ class MainActivity : ComponentActivity() {
 private fun PlMailApp(
     pendingLink: String?,
     onLinkHandled: () -> Unit,
+    notification: NotificationRequest?,
+    onNotificationHandled: () -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val connection by viewModel.connection.collectAsStateWithLifecycle()
@@ -98,6 +126,25 @@ private fun PlMailApp(
     // the time the undo window is running, which is the whole point of a window
     // rather than a confirmation.
     val snackbars = remember { SnackbarHostState() }
+
+    // A notification tap, split into the two things it can mean. Reply is
+    // translated into a compose request straight away because the composer is
+    // already hoisted here; opening a conversation is handed down to the shell,
+    // which owns the pane that shows it.
+    val openThread =
+        (notification as? NotificationRequest.OpenConversation)?.let {
+            ThreadTarget(accountKey = it.accountKey, threadId = it.threadId)
+        }
+
+    LaunchedEffect(notification) {
+        val reply = notification as? NotificationRequest.Reply ?: return@LaunchedEffect
+
+        // Search would otherwise still be on screen behind the composer after a
+        // tap that arrived while the user was mid-query.
+        isSearching = false
+        composing = ComposeRequest.Reply(reply.accountKey, reply.emailId, all = false)
+        onNotificationHandled()
+    }
 
     when (connection) {
         ConnectionState.Unknown -> Unit // The very first frame, before the store has been read.
@@ -124,6 +171,12 @@ private fun PlMailApp(
         // avoids them, and nothing at this level draws any.
         is ConnectionState.Connected ->
             Box(modifier = Modifier.fillMaxSize()) {
+                // Here rather than at launch: a permission prompt asked before
+                // there is a mailbox to notify about is a question nobody can
+                // answer. See the composable's own note for why it is not asked
+                // again after a refusal.
+                RequestNotificationPermission()
+
                 // Mounted for every screen below, so an undo remains reachable
                 // after the user has navigated on. Reopening replaces whatever
                 // is showing, because the message being recovered is the thing
@@ -142,7 +195,7 @@ private fun PlMailApp(
                 // cases disagree about whether it should exist at all -- see
                 // ComposeHost.
                 ComposeHost(request = composing, onClose = { composing = null }) {
-                    if (isSearching) {
+                    if (isSearching && openThread == null) {
                         SearchScreen(
                             // The reader is M4's and reached from the list;
                             // opening a result closes search, so Back returns to
@@ -161,6 +214,8 @@ private fun PlMailApp(
                             onForward = { accountKey, emailId ->
                                 composing = ComposeRequest.Forward(accountKey, emailId)
                             },
+                            openThread = openThread,
+                            onThreadOpened = onNotificationHandled,
                         )
                     }
                 }

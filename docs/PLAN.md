@@ -272,7 +272,7 @@ depends on nothing, so its tests run on the JVM in seconds instead of booting an
 :core:data              repositories, DeltaSync, UnifiedFeed, AccountPager, search compiler, blob cache
 :core:designsystem      ★ semantic tokens, PlMailTheme, primitive composables — landed early, see M10
 :core:ui                shared stateful composables (thread row, avatar, undo host, empty states)
-:core:notifications     UnifiedPush receiver, channels, notification actions
+:core:notifications     channels, the grouped mail notification and its actions
 :core:testing           Hilt test runner, fakes, Robolectric config, Roborazzi rules
 :feature:onboarding  :feature:mail  :feature:search  :feature:compose  :feature:labels  :feature:settings
 :benchmark              Macrobenchmark + baseline profile (M11)
@@ -431,6 +431,20 @@ configurable actions, each also reachable as an explicit control. Multi-select +
   degradation when no distributor is installed → WorkManager only, and the UI says "last checked",
   never "up to date".
 - Notifications: per-account channels, grouped summary, actions (archive, mark read, reply).
+  **Landed 2026-08-01**, in `:core:notifications`. Push delivery had worked for a while and
+  produced nothing anybody could see, which made it the largest hole in the product rather than the
+  last piece of polish.
+
+  What decides that mail is *new* lives in `DeltaSync` and is deliberately not "what the server
+  called created": it is what this device has never held, which is the only definition that
+  survives a discarded cursor. Only the delta sync announces — paging a list also writes messages
+  the cache has never seen, and every one of them is older mail somebody scrolled to.
+
+  The module depends on `:core:data` and nothing depends on it; the seam is a multibound
+  `NewMailListener`, so a build without it syncs and simply says nothing. `MailDestinations` runs
+  the other way, implemented in `:app`, because only `:app` can name `MainActivity` — an implicit
+  `plmail://` intent would have needed `BROWSABLE`, which turns "open this conversation" into
+  something a web page can link to.
 
 ### M7 · Search
 Gmail operator syntax parsed client-side into JMAP filters — `SearchQuery` / `SearchQueryCompiler`

@@ -251,6 +251,32 @@ That is the behaviour the plan assumed, and it means a snooze must never be mode
 a flag on the row: the mail genuinely leaves the inbox, and a client that only hid the row would
 disagree with the web UI the moment either changed.
 
+### There is no way to make inbound mail through JMAP, and three reasons why
+
+Worth writing down because notifications, delta sync and push all need one and the obvious routes
+all fail differently. Established on 2026-08-01 against the 8002 stack while trying to make a
+message *arrive*.
+
+- **`Email/set` `create` always files into Drafts**, whatever `mailboxIds` says. Creating with
+  `{"mailboxIds":{"1":true},"keywords":{}}` — Inbox, no keywords — answers `created` and produces a
+  message in mailbox 3 with `$draft` and `$seen` both set. `JmapDraftWriter` is the only creation
+  path and a draft is what it writes.
+- **`$draft` cannot be removed.** Not by `keywords/$draft: null`, which reports `updated` and
+  changes nothing, and not by replacing the whole map with `"keywords": {}`, which also reports
+  `updated` and leaves `$draft` in place. `$seen` and `mailboxIds` in the *same* patch are applied
+  correctly, so this is one silently-ignored key rather than a rejected request.
+- **A `#creationId` key in an `Email/set` `update` map is refused** with
+  `notUpdated: {"#n1": {"type":"notFound","description":"No such Email in this account."}}`, in the
+  same request that created it. That is worth knowing next to the note above about submission,
+  where the creation-id form *does* work — the two mechanisms look identical and only one exists.
+
+The workable recipe, for whoever needs it next: create the draft, read its real id out of
+`createdIds`, then patch `mailboxIds/1: true`, `mailboxIds/3: null`, `keywords/$seen: null` in a
+second request. The result is an unread message in the Inbox that still carries `$draft`, which is
+close enough to test everything downstream and is a state the product itself can never produce.
+
+None of this is filed as an ask. It is a test-harness problem, not a client one.
+
 ### JMAP state moves only on real mutations
 
 `app:test:seed-mail` writes messages directly without advancing the Email state, so it cannot

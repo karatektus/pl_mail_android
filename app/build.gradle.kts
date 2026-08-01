@@ -46,6 +46,9 @@ dependencies {
     implementation(projects.core.data)
     implementation(projects.core.datastore)
     implementation(projects.core.designsystem)
+    // :app is the only module that knows which activity a notification tap
+    // reaches, so it is the one that supplies MailDestinations.
+    implementation(projects.core.notifications)
     implementation(projects.feature.onboarding)
     implementation(projects.feature.mail)
     implementation(projects.feature.compose)
