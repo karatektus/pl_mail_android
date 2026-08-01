@@ -217,15 +217,26 @@ fun ThreadEntity.rowLabels(
             .filter { it.key in carried && !it.isSystem && it.key != viewing?.key }
             .map { it.name }
 
-    return RowLabels(names = shown.take(limit), hidden = (shown.size - limit).coerceAtLeast(0))
+    // The counter is one of the [limit] chips rather than an extra one after
+    // them, which is why this is not `take(limit)`. See [ROW_LABEL_LIMIT].
+    if (shown.size <= limit) return RowLabels(names = shown, hidden = 0)
+
+    val named = shown.take(limit - 1)
+
+    return RowLabels(names = named, hidden = shown.size - named.size)
 }
 
 /**
- * Two chips, then a counter.
+ * How many chips a row may carry — **counting the "+n" as one of them**.
  *
- * Three fits a phone row only when all three names are short, and the failure mode is the one that
- * matters most on this row: the chips share their line with the snippet, so a third chip eats the
- * text people actually read to decide whether to open the mail. Two plus "+n" says the same thing
- * in less space and never varies with the length of somebody's label names.
+ * So two labels draw two names, and three draw one name and "+2". The counter taking a slot rather
+ * than sitting after the names is what keeps the cluster's worst case to two chips, and the worst
+ * case is the only case worth designing for here: the chips share their line with the snippet, and
+ * three of them left the preview showing three words.
+ *
+ * The alternative — keep both names and let the cluster's width budget squeeze them — was tried and
+ * is worse. Two names and a counter inside that budget come out at about fifty dp each, which is
+ * four characters and an ellipsis: not a label, a smudge. One name that can be read plus an honest
+ * count of what is not shown says more in less room.
  */
 const val ROW_LABEL_LIMIT = 2

@@ -270,7 +270,26 @@ fun PlMailLabelChip(text: String, modifier: Modifier = Modifier) {
                 .clip(shape)
                 .background(theme.colors.sunken)
                 .border(width = theme.spacing.hair, color = theme.colors.line, shape = shape)
-                .padding(horizontal = theme.spacing.small, vertical = CHIP_VERTICAL)
+                // Horizontal padding only, and that is a layout constraint
+                // rather than taste. A chip shares the snippet's line on a list
+                // row, so anything that makes it taller than one line of that
+                // text makes every labelled conversation taller than every
+                // unlabelled one — and a list that scrolls at two heights looks
+                // broken for a reason nobody can name.
+                //
+                // One dp top and bottom was the previous version, under a
+                // comment saying it had been chosen so this would not happen. It
+                // did: 19.4dp against the snippet's 18.3dp, which is three pixels
+                // at 420dpi — invisible on any one row and visible down a
+                // screenful. `ThreadRowLayoutTest` now measures the labelled
+                // cases against the unlabelled one, so the next version of this
+                // mistake fails a build instead of shipping.
+                //
+                // The room the padding was there for is already inside the text:
+                // the style asks for a 1.3 line and the platform's font padding
+                // adds to that, so the border clears the glyphs by about two dp
+                // on each side without the box growing.
+                .padding(horizontal = theme.spacing.small)
     ) {
         Text(
             text = text,
@@ -287,20 +306,14 @@ fun PlMailLabelChip(text: String, modifier: Modifier = Modifier) {
 }
 
 /**
- * Tighter than the spacing scale's smallest step.
- *
- * A chip on a list row has to sit inside the line height of the text beside it, and `tiny` at
- * comfortable density already pushes it past that — which lifts the whole row by a couple of pixels
- * on labelled conversations only, and a list whose rows are two heights is a list that looks broken
- * for a reason nobody can name.
- */
-private val CHIP_VERTICAL = 1.dp
-
-/**
  * How wide one chip may get.
  *
  * Long label names exist — "Steuer 2025", "Wohnung/Nebenkosten" — and one of them must not take the
  * line the snippet needs. Capped rather than scaled, because the cap is about the *row*, and the
  * row's width is the same whatever the chip says.
+ *
+ * This is the cap on *one* chip. What a row's whole cluster may take is the row's own business and
+ * lives there — a chip drawn somewhere else should not inherit a bound that was reasoned about
+ * against a thread row's snippet.
  */
 private val CHIP_MAX_WIDTH = 96.dp

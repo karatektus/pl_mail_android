@@ -121,12 +121,19 @@ class ThreadRowScreenshotTest {
         )
     }
 
+    /** One label, which is what most labelled conversations actually carry. */
+    @Test
+    fun withOneLabel() {
+        capture("labels-one", thread(), labels = listOf("Steuer"))
+    }
+
     /**
      * Chips beside a snippet, which is the arrangement they have to survive.
      *
      * They share that line rather than taking one of their own, so what this baseline is really
-     * guarding is that the snippet still gets read: two chips and a legible remainder, not two
-     * chips and three words.
+     * guarding is that the snippet still gets read — and that it is read *first*. The chips trail
+     * it: the preview starts at the same left edge as the sender and the subject above it, and what
+     * gives way is the end of the sentence rather than its beginning.
      */
     @Test
     fun withLabels() {
@@ -134,21 +141,29 @@ class ThreadRowScreenshotTest {
     }
 
     /**
-     * The overflow counter, and the case that sets the cap at two.
+     * Two labels named the way German users name them, which is what the cluster budget is for.
      *
-     * A conversation with five labels on a phone row: two names, "+3", and whatever snippet fits
-     * after them. The date must still be where it is on every other row — the chips live inside the
-     * text column, so a third one would eat the snippet rather than push the date off, and this is
-     * the baseline that says so.
+     * Each of these is inside the per-chip cap and together they would take two thirds of the line,
+     * so the cap that matters here is the one on the pair. What the baseline is watching for is the
+     * snippet keeping the majority of its line — the failure is a preview cut to three words by
+     * chips that are individually well-behaved.
+     */
+    @Test
+    fun withTwoLongLabels() {
+        capture("labels-long", thread(), labels = listOf("Wohnung/Nebenkosten", "Steuer 2025"))
+    }
+
+    /**
+     * The overflow counter, and the case that sets the cap at two *chips* rather than two names.
+     *
+     * A conversation with five labels on a phone row: one name, "+4", and a preview that is still a
+     * sentence. `rowLabels` produces exactly this shape — the counter takes one of the two slots —
+     * and the reason is legible here: two names and a counter inside the same budget come out at
+     * four characters each, which names nothing.
      */
     @Test
     fun withMoreLabelsThanFit() {
-        capture(
-            "labels-overflow",
-            thread(),
-            labels = listOf("Work", "Wohnung/Nebenkosten"),
-            hiddenLabels = 3,
-        )
+        capture("labels-overflow", thread(), labels = listOf("Work"), hiddenLabels = 4)
     }
 
     private fun capture(

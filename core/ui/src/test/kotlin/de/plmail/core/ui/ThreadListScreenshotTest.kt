@@ -204,7 +204,10 @@ class ThreadListScreenshotTest {
             0 to (listOf("Arbeit") to 0),
             4 to (listOf("Wohnung") to 0),
             7 to (listOf("Arbeit", "Lesen") to 0),
-            10 to (listOf("Steuer", "Wohnung") to 2),
+            // One name and a counter, because that is what `rowLabels` hands the
+            // row once a conversation carries more labels than fit: the counter
+            // takes one of the two chip slots rather than sitting after them.
+            10 to (listOf("Steuer") to 3),
         )
 
     private fun capture(name: String, threads: List<ThreadEntity>) {

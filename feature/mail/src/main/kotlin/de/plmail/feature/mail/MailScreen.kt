@@ -3,6 +3,7 @@ package de.plmail.feature.mail
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -285,7 +286,24 @@ private fun ThreadList(
         return
     }
 
-    LazyColumn(modifier = Modifier.fillMaxSize()) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        // Room under the last row for the compose button to sit in.
+        //
+        // `Scaffold` positions the FAB *over* its content and reports nothing
+        // about it in the padding it hands back, so without this the button
+        // covers whatever the list happens to end on -- a row's chips and date on
+        // a long list, and on a short one the "That's everything on this device"
+        // line, which is precisely the thing that tells someone the list is
+        // finished rather than broken.
+        //
+        // `contentPadding` rather than a padded modifier or a spacer item,
+        // because it has to scroll: padding the list would leave a permanent
+        // dead band at the bottom of the viewport, and a trailing item would sit
+        // below the end-of-list footer and be counted by anything that walks the
+        // list's children.
+        contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
+    ) {
         items(
             count = threads.itemCount,
             // Keyed on the row's own identity, so an inserted message does not
@@ -403,6 +421,16 @@ internal fun hasNothingToShow(state: CombinedLoadStates, rowsInFeed: Int?): Bool
  * separating.
  */
 private val ROW_TEXT_INSET = 72.dp
+
+/**
+ * How far the list scrolls past the compose button.
+ *
+ * The button is 56dp and `Scaffold` insets it 16dp from the bottom, so 72dp is where it stops
+ * covering things and 88dp is where the last row stops looking crowded by it. Spelled out as an
+ * addition rather than as the number 88 so it is obvious what has to change if the button ever does
+ * — a bare constant here is one that quietly stops matching a resized FAB.
+ */
+private val FAB_CLEARANCE = 56.dp + 16.dp + 16.dp
 
 /** The role plMail gives the mailbox a snoozed conversation waits in. */
 private const val SNOOZED_ROLE = "snoozed"

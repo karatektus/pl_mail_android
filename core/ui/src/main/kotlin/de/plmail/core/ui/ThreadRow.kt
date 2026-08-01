@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
@@ -198,29 +199,92 @@ fun ThreadRow(
             // subject for the first look. The snippet is muted furniture already,
             // and it is the line that degrades most gracefully -- it simply says
             // less.
+            //
+            // **The snippet leads and the chips trail it.** The first version had
+            // it the other way round, and it contradicted the reason the preview
+            // is set at nearly the size of the subject: a bordered box in front
+            // of the sentence pushed the preview into the middle of the row and
+            // cut it to three words -- "E2E Label | Steuer | +1 | Hallo, anbei
+            // die b..." -- so the one line people read to decide whether to open
+            // the mail was mostly furniture. Trailing them keeps the preview
+            // starting at the same left edge as the sender and the subject, and
+            // puts what truncates at the end of the sentence where an ellipsis
+            // belongs.
             Row(
                 horizontalArrangement = Arrangement.spacedBy(spacing.tiny),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                labels.forEach { PlMailLabelChip(text = it) }
-
-                if (hiddenLabels > 0) {
-                    PlMailLabelChip(text = "+$hiddenLabels")
-                }
-
                 Text(
                     text = thread.snippet,
                     style = MaterialTheme.typography.bodySmall,
                     color = colors.inkMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    // `weight` rather than `fillMaxWidth`, so the chips take
-                    // their intrinsic width first and the snippet gets what is
-                    // left. Without it a long snippet measures at full width and
-                    // pushes the chips out of the row entirely -- they are
-                    // laid out, they just have nowhere to be.
+                    // Weighted, so the chips are measured first and this takes
+                    // what they leave. Compose places children in composition
+                    // order regardless of the order it measured them in, which
+                    // is what lets the snippet lead the line while still being
+                    // the part that gives way -- without the weight it measures
+                    // at the width of the whole paragraph and leaves the chips
+                    // nowhere to be.
+                    //
+                    // Filling rather than `fill = false`, so the chips end flush
+                    // against the date column instead of hugging the end of the
+                    // preview. Hugging is what Gmail does and it looks unplaced
+                    // here: a two-word snippet parks its chip in the middle of
+                    // the row, and a screenful of those is chips scattered at
+                    // eight different offsets rather than a column the eye can
+                    // skip down.
                     modifier = Modifier.weight(1f),
                 )
+
+                if (labels.isNotEmpty() || hiddenLabels > 0) {
+                    Row(
+                        // A budget for the cluster, not just for each chip. Two
+                        // long names -- "Wohnung/Nebenkosten", "Steuer 2025" --
+                        // are each under the per-chip cap and together take two
+                        // thirds of the line, which is the same defect the
+                        // reorder above was fixing, arriving from the other
+                        // direction. Fixed dp rather than a fraction of the row
+                        // for the same reason the per-chip cap is: the thing
+                        // being bounded is a piece of text at a fixed size, so a
+                        // proportional budget would leave a short chip stranded
+                        // in a wide empty box on a tablet.
+                        modifier = Modifier.widthIn(max = CHIP_CLUSTER),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.tiny),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        // The names share the budget equally, and `fill = false`
+                        // is what keeps a short name short: a chip takes its own
+                        // width and only ellipsises once the budget has genuinely
+                        // run out, so "Work" does not get stretched into a
+                        // lozenge by the space its neighbour did not need.
+                        //
+                        // First-come was tried instead — earlier chips take what
+                        // they need, the last takes the remainder — on the theory
+                        // that one readable label beats two truncated ones. Two
+                        // long German names produced "Wohnung/Nebe…" beside a
+                        // pill containing an ellipsis and nothing else: a mark
+                        // that says a label is there and refuses to name it,
+                        // which is worse than either name being short. An equal
+                        // share can starve a chip down to about six characters
+                        // and never below it.
+                        labels.forEach { name ->
+                            PlMailLabelChip(
+                                text = name,
+                                modifier = Modifier.weight(1f, fill = false),
+                            )
+                        }
+
+                        // Unweighted, so it is measured before the name that
+                        // gives way and always at its full width: "+4"
+                        // abbreviated to "+" would be a mark that says there is
+                        // more without saying how much more.
+                        if (hiddenLabels > 0) {
+                            PlMailLabelChip(text = "+$hiddenLabels")
+                        }
+                    }
+                }
             }
         }
 
@@ -288,6 +352,31 @@ fun ThreadRow(
 }
 
 private val AFFORDANCE = 15.dp
+
+/**
+ * How much of the snippet's line the chips may take between them.
+ *
+ * A ceiling rather than a reservation — it costs the preview nothing until it bites. Two ordinary
+ * names ("Steuer", "Wohnung") come to about 110dp on their own and are never touched by it; the
+ * text column on a 411dp phone is 243dp once the date has taken its share, so those rows keep the
+ * larger part of the line for the preview, which is the whole point of the reorder above.
+ *
+ * The number is set by the case that decides it, which is two names *at* the cap rather than past
+ * it: sharing 160dp gives each about ten characters, and ten is where ordinary label names —
+ * "Rechnungen", "E2E Label", "Wohnung" — stop being truncated. 140dp was tried first and cut "E2E
+ * Label" to "E2E La…", which is a chip that has stopped naming the thing it names.
+ *
+ * **The honest cost:** two genuinely long names — "Wohnung/Nebenkosten" and "Steuer 2025" on the
+ * same conversation — do spend two thirds of the line and leave the preview about ten characters.
+ * That case is bounded and both chips stay partly readable, which is the best any arrangement
+ * manages on a phone row: the alternatives are two chips that name nothing, or dropping one of them
+ * silently. `thread-row-labels-long-*.png` is the baseline that keeps it honest.
+ *
+ * Not scaled by density, deliberately: what is being bounded is text at a fixed point size, so a
+ * compact layout does not make a label name any shorter, and a budget that shrank with the spacing
+ * scale would ellipsise chips that fit perfectly well.
+ */
+private val CHIP_CLUSTER = 160.dp
 
 /**
  * Smaller than the marks above it, because it is not one of them.

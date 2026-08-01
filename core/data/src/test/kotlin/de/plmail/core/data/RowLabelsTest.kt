@@ -69,13 +69,33 @@ class RowLabelsTest {
      *
      * "+2" is a small thing to draw and the whole difference between a row that has run out of
      * space and a row that is simply wrong about what it carries.
+     *
+     * The count includes the label whose slot the counter took, which is the part worth pinning:
+     * four labels with a cap of two draw one name and "+3", not one name and "+2". A counter that
+     * excluded itself would understate every overflowing row by exactly one.
      */
     @Test
-    fun `beyond the cap the remainder is counted`() {
+    fun `beyond the cap the remainder is counted, including the name the counter displaced`() {
         val row = thread("10,11,12,13").rowLabels(all, viewing = null, limit = 2)
 
-        assertEquals(2, row.names.size)
-        assertEquals(2, row.hidden)
+        assertEquals(listOf("Work"), row.names)
+        assertEquals(3, row.hidden)
+    }
+
+    /**
+     * Exactly at the cap, and the boundary the counter must not appear at.
+     *
+     * Two labels with a cap of two are both drawn: there is nothing hidden, so a "+0" chip would be
+     * a chip that says nothing while taking the space a name was using. The off-by-one here is the
+     * kind that survives review — `take(limit - 1)` applied unconditionally would silently turn
+     * every second label into a counter.
+     */
+    @Test
+    fun `at the cap every label is named and nothing is counted`() {
+        val row = thread("10,12").rowLabels(all, viewing = null, limit = 2)
+
+        assertEquals(listOf("Work", "Holiday"), row.names)
+        assertEquals(0, row.hidden)
     }
 
     /**

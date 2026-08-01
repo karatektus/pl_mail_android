@@ -575,9 +575,31 @@ conversation to be re-synced.
 
 Three things are removed before a chip is drawn, and each would otherwise appear on nearly every
 row: the label being looked at, every system role (by `role`, never by name), and any key the
-sidebar does not know. Two chips then a counter. They share the snippet's line rather than taking
-one of their own — a line of their own makes labelled conversations taller than unlabelled ones,
-and a list that scrolls at two heights looks broken for a reason nobody can name.
+sidebar does not know. They share the snippet's line rather than taking one of their own — a line of
+their own makes labelled conversations taller than unlabelled ones, and a list that scrolls at two
+heights looks broken for a reason nobody can name.
+
+**Corrected on 2026-08-01, on the device rather than in a baseline.** Three things were wrong and
+each of them contradicted something this repo had already written down.
+
+1. The chips sat *before* the snippet, so a labelled conversation read
+   "E2E Label | Steuer | +1 | Hallo, anbei die b…" — the preview cut to three words by furniture, on
+   the one line `ThreadRow`'s own doc calls "the line people actually read". They now trail it: the
+   preview starts at the same left edge as the sender and the subject, and what truncates is the end
+   of the sentence, where an ellipsis belongs.
+2. Two chips **plus** a counter is three chips, and three do not fit beside a preview. The counter
+   now takes one of the two slots (`ROW_LABEL_LIMIT` counts it), so a conversation with five labels
+   draws one name and "+4" rather than two names and "+3". The cluster also has a width budget of
+   its own, because two long German names are each inside the per-chip cap and together take two
+   thirds of the line.
+3. The chips were a dp taller than the line they sat on, so every labelled row was three pixels
+   taller than its neighbours — under a comment saying the padding had been chosen so that would not
+   happen. `ThreadRowLayoutTest` now measures the four cases against each other, which is a thing no
+   screenshot baseline can do: each one is a single row, and the defect only exists between rows.
+
+The list also gained bottom `contentPadding` clearing the compose button. `Scaffold` draws the FAB
+over its content and reports nothing about it in the padding it hands back, so the last rows and the
+"That's everything on this device" footer sat underneath it with no way to scroll them out.
 
 Still open: **colour is blocked on the server** — absent from `Mailbox/get`, refused on `update`,
 silently dropped on `create`. Filed in `docs/SERVER_REQUESTS.md`. Mail rules and block sender still
