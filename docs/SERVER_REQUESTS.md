@@ -120,6 +120,39 @@ single query method would do. It does not need to be RFC 8621 Contacts.
 a suggestion list that is shorter than it could be — which is why this was built rather than
 blocked. It should be replaced rather than extended.
 
+### Label colour has no JMAP surface, and `create` accepts one without storing it
+
+**What the client wants to do.** Let someone colour a label, and draw that colour on the sidebar row
+and on the label chips shown against a conversation. Colour is how a label list stops being a wall
+of identical grey text once it is longer than about six entries, and plMail already models it —
+`Label::$color` is a real column with a real setter.
+
+**What it can do today.** Nothing. The Android label editor offers a name and a parent and no
+colour, because there is nothing to send it to and nothing to read it back from. Every label in the
+sidebar is drawn in the same ink.
+
+**What was checked.** Against the running 8002 stack on 2026-08-01.
+
+- `Mailbox/get` never returns a `color` key. The full property set is
+  `id, labelId, name, parentId, role, sortOrder, totalEmails, unreadEmails, totalThreads,
+  unreadThreads, myRights, isSubscribed` — `App\Jmap\Mapper\MailboxMapper::toJmap()` builds that
+  list literally and `color` is not in it.
+- `Mailbox/set` **update** with `{"color":"#ff8800"}` is correctly refused:
+  `notUpdated: {"2": {"type":"invalidPatch","description":"Property \"color\" cannot be updated."}}`.
+- `Mailbox/set` **create** with the same key **succeeds and drops it**: `created: {"c1": {"id":"5"}}`,
+  no `notCreated`, and the following `Mailbox/get` shows no colour anywhere. That asymmetry is worth
+  fixing on its own — update tells the client the truth and create does not.
+
+**Smallest change that would unblock it.** Add `color` to `MailboxMapper::toJmap()` and to the
+patch arm in `MailboxSetMethod`, over the column that already exists. If colour is deliberately
+web-only, then reject it on `create` the way `update` already does, so a client cannot believe it
+worked.
+
+**Client-side workaround.** None worth having. The obvious one — colouring by a hash of the label
+name, the way the avatars are coloured — would give the same label a different colour on the phone
+than on the web, which is worse than no colour at all: the whole point of colouring a label is that
+it is the same colour everywhere the user sees it.
+
 ### Scheduled send: `maxDelayedSend` is 0
 
 **What the client wants to do.** "Send tomorrow at 8am", which is table stakes against Gmail.
@@ -184,6 +217,39 @@ forever. `MAILER_DSN=null://null` as well, so nothing would leave the box regard
 
 That means the client's *request* is verifiable against this stack and the draft→sent transition is
 not. Worth knowing before spending an evening deciding whether the send path is broken.
+
+### System labels are created lazily, so an account can have no Spam and no Archive
+
+The seeded 8002 account reports exactly four mailboxes — Inbox, Drafts, Trash and one custom label.
+There is no Sent, no Spam and no Archive until something needs one: snoozing a conversation caused a
+`snoozed`-role Snoozed mailbox to appear out of nowhere, on the same request.
+
+This is `LabelResolver::systemLabel` doing its job and it is not a bug. It does mean a client cannot
+assume a role binding exists, and cannot create one either — `Mailbox/set` `create` makes a *custom*
+label, with no role, whatever it is named. So "mark as spam" on a fresh account has nothing to move
+the message to, and the honest answer is the error the client already raises rather than a silently
+successful no-op.
+
+Written down because the obvious reading of `Mailbox/get` is that these mailboxes are missing.
+
+### Destroying a label with children is refused, not cascaded
+
+`Mailbox/set` `destroy` on a parent answers
+`notDestroyed: {"5": {"type":"mailboxHasChild","description":"Destroy the child mailboxes first."}}`.
+Destroying a leaf that still has mail in it is fine, and the mail keeps its other bindings —
+verified: a message in Inbox and a custom label came back with `mailboxIds: {"1": true}` after the
+label was destroyed. So the client deletes depth-first and never has to warn about losing mail.
+
+### `Thread/set` snooze moves the mail, it does not flag it
+
+Verified end to end on 2026-08-01. `{"snoozedUntil":"2026-08-05T08:00:00Z"}` answers
+`updated: {"6": null}`, `Thread/get` returns the timestamp, and the conversation's messages come
+back **out of Inbox and into a `snoozed`-role mailbox** — `mailboxIds` went from `{"1":true}` to
+`{"7":true}`. Setting it back to `null` returns them to Inbox.
+
+That is the behaviour the plan assumed, and it means a snooze must never be modelled client-side as
+a flag on the row: the mail genuinely leaves the inbox, and a client that only hid the row would
+disagree with the web UI the moment either changed.
 
 ### JMAP state moves only on real mutations
 

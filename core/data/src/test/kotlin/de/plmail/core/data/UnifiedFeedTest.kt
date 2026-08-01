@@ -1,8 +1,10 @@
 package de.plmail.core.data
 
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
@@ -241,6 +243,30 @@ class UnifiedFeedTest {
         FeedRow(accountKey = account, id = id, threadId = "t-$id", sortDate = sortDate)
 
     /** Answers everything at once, then reports exhaustion. */
+    /**
+     * Cancellation is not an unreachable server.
+     *
+     * `CancellationException` is an `Exception` in Kotlin, so the arm that absorbs a failing
+     * account absorbed this one too — and the app then told the user its own server could not be
+     * reached because they had tapped a different label. The page in flight is cancelled every time
+     * the list switches, so this was not an edge case; it was one tap away at all times.
+     */
+    @Test
+    fun `a cancelled page is not reported as a failed account`() = runTest {
+        val cancelled =
+            object : FeedSource {
+                override val accountKey = "work"
+
+                override suspend fun page(
+                    atOrBefore: Long?,
+                    alreadyEmitted: Set<String>,
+                    limit: Int,
+                ): FeedPage = throw CancellationException("the list moved on")
+            }
+
+        assertFailsWith<CancellationException> { UnifiedFeed(listOf(cancelled)).next(10) }
+    }
+
     private fun source(account: String, vararg rows: FeedRow): FeedSource =
         PagingSource(account, rows.toList(), pageEverything = true)
 

@@ -8,24 +8,34 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.ActionOutcome
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.FeedRepository
+import de.plmail.core.data.Label
+import de.plmail.core.data.LabelRepository
+import de.plmail.core.data.LabelSelection
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
 import de.plmail.core.data.UndoableAction
 import de.plmail.core.database.ThreadEntity
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /** An account that is not answering, named so the banner can say which. */
 data class UnreachableAccount(val accountKey: String, val displayName: String)
+
+/** The "Label as" sheet, once its ticks have been resolved. */
+data class LabelSheetState(val targets: List<ActionTarget>, val selection: LabelSelection)
 
 /** A change to announce, with the undo that reverses it. */
 data class ActionAnnouncement(
@@ -43,6 +53,7 @@ constructor(
     feed: FeedRepository,
     private val mail: MailRepository,
     private val actions: MailActions,
+    private val labelRepository: LabelRepository,
 ) : ViewModel() {
 
     private val _announcement = MutableStateFlow<ActionAnnouncement?>(null)
@@ -90,12 +101,75 @@ constructor(
     }
 
     /**
+     * Every label, for the "Label as" sheet. The sidebar reads the same list through its own VM.
+     */
+    val labels: StateFlow<List<Label>> =
+        labelRepository
+            .observeLabels()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = emptyList(),
+            )
+
+    private val _labelSheet = MutableStateFlow<LabelSheetState?>(null)
+    val labelSheet: StateFlow<LabelSheetState?> = _labelSheet.asStateFlow()
+
+    /**
+     * Opens the sheet over a set of conversations, having first worked out which labels they carry.
+     *
+     * Resolved before the sheet is shown rather than inside it, so the ticks are right on the first
+     * frame. A sheet that opens with everything unticked and then corrects itself teaches people
+     * that the ticks cannot be trusted.
+     */
+    fun openLabelSheet(targets: List<ActionTarget>) {
+        if (targets.isEmpty()) return
+
+        viewModelScope.launch {
+            val applied = labelRepository.appliedTo(labels.value, targets)
+
+            _labelSheet.update { LabelSheetState(targets = targets, selection = applied) }
+        }
+    }
+
+    fun closeLabelSheet() {
+        _labelSheet.update { null }
+    }
+
+    private val shown = MutableStateFlow<Label?>(null)
+
+    /**
+     * Which label the list is showing. Null until the sidebar has been read, which means the inbox.
+     */
+    fun show(label: Label?) {
+        shown.value = label
+    }
+
+    /**
      * `cachedIn` so the pages survive a rotation.
      *
      * Without it the list re-collects on every configuration change, which on this product means
      * re-querying somebody's NAS because the user turned their phone sideways.
+     *
+     * `flatMapLatest` rather than a pager per label held open: switching label has to cancel the
+     * previous list's loading, or a slow first page for Archive keeps writing into the feed table
+     * after the user has moved on to Sent.
      */
-    val threads: Flow<PagingData<ThreadEntity>> = feed.unifiedInbox().cachedIn(viewModelScope)
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val threads: Flow<PagingData<ThreadEntity>> =
+        shown
+            // The Inbox label and the unified inbox are the same mail seen two
+            // ways, so both collapse to null here and neither restarts the
+            // other. That is not tidiness: the sidebar arrives a moment after
+            // the first frame, so the list is created with no label and then
+            // told about Inbox -- and without this the second one cancels the
+            // page already in flight and starts again for the same rows.
+            .map { label -> label?.takeIf { it.role != INBOX_ROLE } }
+            .distinctUntilChanged { old, new -> old?.feedId == new?.feedId }
+            .flatMapLatest { label ->
+                if (label == null) feed.unifiedInbox() else feed.labelled(label)
+            }
+            .cachedIn(viewModelScope)
 
     /**
      * Failures resolved to names the user recognises.
@@ -122,5 +196,6 @@ constructor(
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
+        const val INBOX_ROLE = "inbox"
     }
 }

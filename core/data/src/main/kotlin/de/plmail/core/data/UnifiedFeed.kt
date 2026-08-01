@@ -1,5 +1,7 @@
 package de.plmail.core.data
 
+import kotlin.coroutines.cancellation.CancellationException
+
 /**
  * One row of a merged list: the newest message of one conversation, in one account.
  *
@@ -155,6 +157,15 @@ class UnifiedFeed(sources: List<FeedSource>, private val pageSize: Int = DEFAULT
 
                 state.buffer.addAll(page.rows)
                 if (page.rows.isEmpty() || page.isExhausted) state.isExhausted = true
+            } catch (cancelled: CancellationException) {
+                // Never a failure, and this catch exists only because Kotlin's
+                // CancellationException is an Exception and would otherwise be
+                // swallowed by the arm below. It was: switching from one list to
+                // another cancels the page in flight, which was then reported as
+                // "could not reach your server" -- a banner accusing a server
+                // that was answering perfectly well, raised by the app's own
+                // navigation.
+                throw cancelled
             } catch (unreachable: Exception) {
                 // Recorded rather than thrown. The other accounts' rows are
                 // still correct and still ordered, and a list that refuses to

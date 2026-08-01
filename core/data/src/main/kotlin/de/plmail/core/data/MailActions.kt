@@ -1,16 +1,23 @@
 package de.plmail.core.data
 
 import androidx.room.withTransaction
+import de.plmail.core.database.EmailEntity
 import de.plmail.core.database.FeedEntryEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
 import de.plmail.jmap.methods.EmailPatch
 import de.plmail.jmap.methods.EmailSet
+import de.plmail.jmap.methods.ThreadPatch
+import de.plmail.jmap.methods.ThreadSet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.EmailId
 import de.plmail.jmap.protocol.MailboxId
 import de.plmail.jmap.protocol.RequestBuilder
 import de.plmail.jmap.protocol.StateToken
+import de.plmail.jmap.protocol.ThreadId
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -114,6 +121,42 @@ constructor(
                                     .upsert(changed.map { it.copy(isSeen = action.seen) })
                             }
                     }
+
+                    // The bindings on the message rows, so the label sheet
+                    // reflects the tick the moment it is tapped rather than
+                    // after a round trip -- and the label's own feed, so the
+                    // conversation appears in or leaves that list at the same
+                    // moment.
+                    is MailAction.SetLabel -> {
+                        val binding = action.label.bindings.bindingIn(target.accountKey)
+
+                        if (binding != null) {
+                            database.emails().inThread(target.accountKey, target.threadId).let {
+                                messages ->
+                                database
+                                    .emails()
+                                    .upsert(
+                                        messages.map { it.withBinding(binding, action.applied) }
+                                    )
+                            }
+
+                            if (!action.applied) {
+                                database.feed().clearThread(action.label.feedId, threadUid)
+                            }
+                        }
+                    }
+
+                    is MailAction.Snooze -> {
+                        database.threads().setSnoozedUntil(threadUid, action.until)
+
+                        // Snoozing takes the conversation out of the inbox on
+                        // the server, so the local list has to lose it too --
+                        // otherwise the row sits there until the next refresh
+                        // and the snooze looks like it did nothing.
+                        if (action.until != null) {
+                            database.feed().clearThread(Feed.UNIFIED_INBOX.id, threadUid)
+                        }
+                    }
                 }
             }
         }
@@ -126,6 +169,8 @@ constructor(
      * trip per account, and the server's `maxObjectsInSet` is 500.
      */
     private suspend fun send(action: MailAction, targets: List<ActionTarget>) {
+        if (action is MailAction.Snooze) return sendSnooze(action, targets)
+
         targets
             .groupBy { it.accountKey }
             .forEach { (accountKey, forAccount) ->
@@ -192,6 +237,55 @@ constructor(
             }
     }
 
+    /**
+     * Snooze, which is `Thread/set` and therefore its own path.
+     *
+     * A conversation is the unit here, not a message, so this is the one action that does not have
+     * to resolve thread ids into email ids first — and the one that would be wrong if it did, since
+     * snoozing half a conversation is not a thing the product offers.
+     */
+    private suspend fun sendSnooze(action: MailAction.Snooze, targets: List<ActionTarget>) {
+        val at = action.until?.let(::asUtcDateTime)
+
+        targets
+            .groupBy { it.accountKey }
+            .forEach { (accountKey, forAccount) ->
+                val account = database.accounts().byUid(accountKey) ?: return@forEach
+                val client = clients.forAccount(accountKey) ?: return@forEach
+
+                val request = RequestBuilder()
+                val handle =
+                    request.add(
+                        ThreadSet(
+                            accountId = AccountId(account.accountId),
+                            update =
+                                forAccount.associate {
+                                    ThreadId(it.threadId) to ThreadPatch.snoozedUntil(at)
+                                },
+                        )
+                    )
+
+                val result = client.send(request).result(handle)
+
+                if (result.notUpdated.isNotEmpty()) {
+                    val failure = result.notUpdated.values.first()
+
+                    error(failure.description ?: failure.type)
+                }
+            }
+    }
+
+    /**
+     * The wire form of a snooze time: UTC, seconds, `Z`.
+     *
+     * Spelled out rather than left to a default formatter. JMAP's UTCDate is a specific shape and a
+     * local-zone timestamp would snooze somebody's mail to the wrong hour without failing.
+     */
+    private fun asUtcDateTime(epochMillis: Long): String =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
+            .withZone(ZoneOffset.UTC)
+            .format(Instant.ofEpochMilli(epochMillis))
+
     private fun state(token: String?): StateToken? = token?.let(::StateToken)
 
     /**
@@ -242,6 +336,22 @@ constructor(
                 }
             }
 
+            is MailAction.SetLabel -> {
+                val binding =
+                    action.label.bindings.bindingIn(accountKey)
+                        ?: error(
+                            "\"${action.label.name}\" is not one of this account's labels, so it " +
+                                "cannot be put on mail here."
+                        )
+
+                EmailPatch.build {
+                    if (action.applied) addMailbox(binding) else removeMailbox(binding)
+                }
+            }
+
+            // Handled by sendSnooze, which speaks Thread/set.
+            is MailAction.Snooze -> null
+
             MailAction.Trash -> null
         }
 
@@ -261,4 +371,25 @@ constructor(
 
     private suspend fun binding(accountKey: String, role: String): MailboxId? =
         database.mailboxes().byRole(accountKey, role)?.let { MailboxId(it.mailboxId) }
+}
+
+/** Where a label lives in one account, or null when it is not bound there at all. */
+internal fun List<LabelBinding>.bindingIn(accountKey: String): MailboxId? = firstOrNull {
+    it.accountKey == accountKey
+}
+    ?.let { MailboxId(it.mailboxId) }
+
+/**
+ * The same message with one binding added or removed.
+ *
+ * `mailboxIds` is stored as a comma-separated list rather than a table, because nothing joins on it
+ * — but that makes naive string editing dangerous, so this goes through a set: adding twice is
+ * idempotent and removing "12" must not also strike "120".
+ */
+internal fun EmailEntity.withBinding(binding: MailboxId, applied: Boolean): EmailEntity {
+    val current = mailboxIds.split(",").filter { it.isNotBlank() }.toMutableSet()
+
+    if (applied) current.add(binding.value) else current.remove(binding.value)
+
+    return copy(mailboxIds = current.joinToString(","))
 }

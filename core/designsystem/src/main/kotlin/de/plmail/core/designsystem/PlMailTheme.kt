@@ -45,6 +45,16 @@ val LocalPlMailTheme =
 
 object PlMailTheme {
 
+    /**
+     * Every group at once.
+     *
+     * For a composable that reads several of them — a screen touching colours, spacing and radii in
+     * the same block reads better holding one value than repeating the CompositionLocal lookup six
+     * times.
+     */
+    val values: PlMailThemeValues
+        @Composable @ReadOnlyComposable get() = LocalPlMailTheme.current
+
     val colors: PlMailColors
         @Composable @ReadOnlyComposable get() = LocalPlMailTheme.current.colors
 
@@ -101,7 +111,7 @@ fun PlMailTheme(
     CompositionLocalProvider(LocalPlMailTheme provides values) {
         MaterialTheme(
             colorScheme = colors.asMaterialScheme(),
-            typography = plMailTypography(colors),
+            typography = plMailTypography(),
             shapes = shapesFor(values.radii),
             content = content,
         )
@@ -187,8 +197,15 @@ private val ScrimColor = androidx.compose.ui.graphics.Color(0x99000000)
  *
  * Line heights are generous — 1.4 or better on anything that is a sentence. Mail is prose, and
  * prose set at 1.2 reads as a form.
+ *
+ * **No colour is baked into any style, and that is load-bearing.** A colour on a `TextStyle` beats
+ * `LocalContentColor`, so a scale carrying `ink` paints ink everywhere — including inside the
+ * components that deliberately invert it. The symptom was a snackbar that rendered as a blank white
+ * bar: near-white ink on the near-white inverse surface, with the text present in the semantics
+ * tree and simply not visible. Leaving the colour unspecified lets each surface answer for its own
+ * contents, which is what `contentColorFor` exists to do.
  */
-internal fun plMailTypography(colors: PlMailColors): Typography {
+internal fun plMailTypography(): Typography {
     val base = Typography()
     val family = FontFamily.SansSerif
 
@@ -204,7 +221,6 @@ internal fun plMailTypography(colors: PlMailColors): Typography {
             fontWeight = weight,
             lineHeight = (size.value * lineHeight).sp,
             letterSpacing = letterSpacing.sp,
-            color = colors.ink,
         )
 
     return base.copy(

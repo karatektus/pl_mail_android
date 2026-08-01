@@ -476,7 +476,7 @@ Still to do: the six-theme × two-layout × three-density *chooser* is M10's, al
 screen that drives it. The resolver is built for it — `PlMailThemeChoice` names the three schemes
 that exist rather than promising six nobody can select yet.
 
-### M8 · Compose — **done, apart from the tablet dialog presentation**
+### M8 · Compose — **done**
 Rich text (`richeditor-compose`, the open decision below, settled), reply / reply-all / forward with
 quoting and `In-Reply-To`/`References`, an always-visible From picker, autosave to Drafts through
 `Email/set`, attachments staged locally and uploaded at **send**, contact autocomplete from cached
@@ -498,15 +498,31 @@ while doing nothing.** All four are written up in `docs/SERVER_REQUESTS.md`; the
 The undo window writes the draft to Drafts **first**, then waits, then submits — so a process death
 inside those seconds leaves the mail in Drafts rather than losing it.
 
-Not done: the tablet presentation is still fullscreen rather than a dialog, and scheduled send is
-blocked on the server (`maxDelayedSend` is 0).
+The tablet presentation landed on 2026-08-01: `ComposeHost` decides from the window size class —
+both axes, so a phone in landscape stays full screen — and presents the composer as a dialog over
+the mailbox where there is room. Scheduled send remains blocked on the server (`maxDelayedSend` is
+0).
 
-### M9 · Organising
-Labels: apply, remove, create, delete, colour. **Collapse one label across accounts using
-`Mailbox.labelId`**, never by matching on `name` — that breaks the moment the label is renamed in one
-account. Sidebar order is fixed for system labels (Inbox 0, Sent 10, Drafts 20, Spam 30, Trash 40,
-Archive 50 — created hidden), custom labels alphabetical after. Snooze via `Thread/set` with presets
-+ exact time. Nested labels flat-with-paths.
+### M9 · Organising — **in progress**
+
+Landed on 2026-08-01:
+
+- The **label list as the app's navigation**. `Labels.kt` collapses per-account Mailboxes into one
+  `Label` on `labelId`, never on `name`, with twelve tests pinning the ways name-matching fails.
+  Fixed order for system roles, alphabetical for the user's own, nested labels flat-with-paths. The
+  bottom bar is gone: a label list is as long as the user made it, so it is a modal drawer on a
+  phone and a permanent one where there is room.
+- **Browsing any label.** `FeedRepository.labelled()` generalises the unified inbox; accounts with
+  no binding for a label are dropped from the merge rather than queried unfiltered.
+- **Apply and remove**, tri-state over a multi-selection — "on some" ticks up, never down.
+- **Create, rename and delete**, deepest-first so the server's `mailboxHasChild` never surfaces.
+- **Snooze** via `Thread/set`, four presets computed in the device's own zone plus an exact time,
+  and unsnooze from the Snoozed list.
+
+Still open: **colour is blocked on the server** — absent from `Mailbox/get`, refused on `update`,
+silently dropped on `create`. Filed in `docs/SERVER_REQUESTS.md`. Also outstanding: the label sheet
+and the snooze menu are reachable from the selection bar but not yet from inside the reader, and
+mail rules / block sender have no client surface.
 
 ### Design system — **pulled forward from M10, 2026-08-01**
 Look and feel is a first-class requirement, not polish: the app has to feel modern, functional and

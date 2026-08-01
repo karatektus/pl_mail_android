@@ -12,15 +12,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.MarkEmailRead
-import androidx.compose.material.icons.outlined.Report
-import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
@@ -39,12 +41,15 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -53,12 +58,14 @@ import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import de.plmail.core.data.ActionOutcome
 import de.plmail.core.data.ActionTarget
+import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PlMailBanner
 import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailEmptyState
 import de.plmail.core.designsystem.PlMailTheme
+import java.time.Instant
 
 /**
  * The unified inbox.
@@ -77,12 +84,23 @@ fun MailScreen(
     // exist to prevent. :app owns the swap.
     onSearch: () -> Unit,
     onCompose: () -> Unit,
+    label: Label? = null,
+    /** Null where the sidebar is already on screen and there is nothing to open. */
+    onOpenSidebar: (() -> Unit)? = null,
+    onEditLabel: (Label) -> Unit = {},
+    onCreateLabel: () -> Unit = {},
     viewModel: MailViewModel = hiltViewModel(),
 ) {
+    // Keyed on the label rather than done once: switching label has to switch
+    // the list, and the ViewModel is the thing that owns which pager is running.
+    LaunchedEffect(label?.key) { viewModel.show(label) }
+
     val threads = viewModel.threads.collectAsLazyPagingItems()
     val unreachable by viewModel.unreachable.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     val announcement by viewModel.announcement.collectAsStateWithLifecycle()
+    val labels by viewModel.labels.collectAsStateWithLifecycle()
+    val labelSheet by viewModel.labelSheet.collectAsStateWithLifecycle()
 
     val snackbars = remember { SnackbarHostState() }
 
@@ -156,7 +174,11 @@ fun MailScreen(
         topBar = {
             if (selection.isEmpty()) {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.inbox_title)) },
+                    // The label's own name, and its leaf rather than its path:
+                    // the path belongs in the sidebar, where it disambiguates
+                    // between two labels shown at once. Here there is only one,
+                    // and "Work/Invoices" as a screen title is noise.
+                    title = { Text(label?.name ?: stringResource(R.string.inbox_title)) },
                     colors =
                         TopAppBarDefaults.topAppBarColors(
                             // The bar is part of the page rather than a
@@ -166,14 +188,38 @@ fun MailScreen(
                             containerColor = PlMailTheme.colors.surface,
                             scrolledContainerColor = PlMailTheme.colors.surface,
                             titleContentColor = PlMailTheme.colors.ink,
+                            navigationIconContentColor = PlMailTheme.colors.inkSoft,
                             actionIconContentColor = PlMailTheme.colors.inkSoft,
                         ),
+                    navigationIcon = {
+                        onOpenSidebar?.let { open ->
+                            IconButton(onClick = open) {
+                                Icon(
+                                    Icons.Default.Menu,
+                                    contentDescription = stringResource(R.string.open_labels),
+                                )
+                            }
+                        }
+                    },
                     actions = {
                         IconButton(onClick = onSearch) {
                             Icon(
                                 Icons.Default.Search,
                                 contentDescription = stringResource(R.string.search),
                             )
+                        }
+
+                        // Only where there is something to edit. A system label
+                        // reports mayRename false and the server enforces it, so
+                        // offering the control would be a button that always
+                        // fails.
+                        if (label?.mayRename == true || label?.mayDelete == true) {
+                            IconButton(onClick = { onEditLabel(label) }) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.label_edit),
+                                )
+                            }
                         }
                     },
                 )
@@ -184,6 +230,17 @@ fun MailScreen(
                     onAction = { action ->
                         viewModel.apply(action, threads.targetsFor(selection))
                     },
+                    onLabel = { viewModel.openLabelSheet(threads.targetsFor(selection)) },
+                    onSnooze = { at ->
+                        viewModel.apply(
+                            MailAction.Snooze(at?.toEpochMilli()),
+                            threads.targetsFor(selection),
+                        )
+                    },
+                    // Already snoozed mail gets the opposite verb. Offering
+                    // "snooze" on the Snoozed list is a control whose effect is
+                    // to replace a time the user cannot see with another one.
+                    isSnoozed = label?.role == SNOOZED_ROLE,
                 )
             }
         },
@@ -215,6 +272,22 @@ fun MailScreen(
                 onAction = { thread, action -> viewModel.apply(action, listOf(thread.target())) },
             )
         }
+    }
+
+    labelSheet?.let { sheet ->
+        LabelSheet(
+            labels = labels,
+            selection = sheet.selection,
+            targets = sheet.targets,
+            onToggle = { label, applied ->
+                viewModel.apply(MailAction.SetLabel(label, applied), sheet.targets)
+            },
+            onCreate = {
+                viewModel.closeLabelSheet()
+                onCreateLabel()
+            },
+            onDismiss = viewModel::closeLabelSheet,
+        )
     }
 }
 
@@ -323,6 +396,9 @@ private fun ThreadList(
  */
 private val ROW_TEXT_INSET = 72.dp
 
+/** The role plMail gives the mailbox a snoozed conversation waits in. */
+private const val SNOOZED_ROLE = "snoozed"
+
 /** Keyed, so Paging does not confuse the footer with a row when the list grows under it. */
 private const val END_OF_LIST = "end-of-list"
 
@@ -371,9 +447,43 @@ private fun Message(text: String) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SelectionBar(count: Int, onClear: () -> Unit, onAction: (MailAction) -> Unit) {
+private fun SelectionBar(
+    count: Int,
+    onClear: () -> Unit,
+    onAction: (MailAction) -> Unit,
+    onLabel: () -> Unit,
+    onSnooze: (Instant?) -> Unit,
+    isSnoozed: Boolean,
+) {
+    var isMenuOpen by remember { mutableStateOf(false) }
+    var isSnoozeOpen by remember { mutableStateOf(false) }
+    var isPickingTime by remember { mutableStateOf(false) }
+
+    if (isPickingTime) {
+        SnoozePicker(
+            onDismiss = { isPickingTime = false },
+            onChosen = {
+                isPickingTime = false
+                onSnooze(it)
+            },
+        )
+    }
+
     TopAppBar(
-        title = { Text(pluralStringResource(R.plurals.selected_count, count, count)) },
+        title = {
+            Text(
+                text = pluralStringResource(R.plurals.selected_count, count, count),
+                // One line, always. "40 selected" beside five icon buttons and
+                // an overflow does not fit a phone, and Material's default is to
+                // wrap the title rather than to give up any of the actions -- so
+                // "1 selected" came out over three lines and the bar was 150dp
+                // tall. Three of the actions moved into the overflow below for
+                // the same reason; what stays are the ones a bulk selection is
+                // usually made for.
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
         navigationIcon = {
             IconButton(onClick = onClear) {
                 Icon(
@@ -389,30 +499,76 @@ private fun SelectionBar(count: Int, onClear: () -> Unit, onAction: (MailAction)
                     contentDescription = stringResource(R.string.action_archive),
                 )
             }
-            IconButton(onClick = { onAction(MailAction.MarkRead(seen = true)) }) {
-                Icon(
-                    imageVector = Icons.Outlined.MarkEmailRead,
-                    contentDescription = stringResource(R.string.action_read),
-                )
-            }
-            IconButton(onClick = { onAction(MailAction.Star(flagged = true)) }) {
-                Icon(
-                    imageVector = Icons.Outlined.StarOutline,
-                    contentDescription = stringResource(R.string.action_star),
-                )
-            }
-            IconButton(onClick = { onAction(MailAction.MarkSpam) }) {
-                Icon(
-                    imageVector = Icons.Outlined.Report,
-                    contentDescription = stringResource(R.string.action_spam),
-                )
-            }
             IconButton(onClick = { onAction(MailAction.Trash) }) {
                 Icon(
                     imageVector = Icons.Outlined.Delete,
                     contentDescription = stringResource(R.string.action_trash),
                 )
             }
+            IconButton(onClick = { onAction(MailAction.MarkRead(seen = true)) }) {
+                Icon(
+                    imageVector = Icons.Outlined.MarkEmailRead,
+                    contentDescription = stringResource(R.string.action_read),
+                )
+            }
+
+            // The two that are not one tap: labelling needs a list and snoozing
+            // needs a time, so neither belongs in a row of icon buttons where
+            // every other control acts immediately.
+            IconButton(onClick = { isMenuOpen = true }) {
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = stringResource(R.string.more),
+                )
+            }
+
+            DropdownMenu(expanded = isMenuOpen, onDismissRequest = { isMenuOpen = false }) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.action_star)) },
+                    onClick = {
+                        isMenuOpen = false
+                        onAction(MailAction.Star(flagged = true))
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.action_spam)) },
+                    onClick = {
+                        isMenuOpen = false
+                        onAction(MailAction.MarkSpam)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.labels_apply)) },
+                    onClick = {
+                        isMenuOpen = false
+                        onLabel()
+                    },
+                )
+                if (isSnoozed) {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.unsnooze)) },
+                        onClick = {
+                            isMenuOpen = false
+                            onSnooze(null)
+                        },
+                    )
+                } else {
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.snooze)) },
+                        onClick = {
+                            isMenuOpen = false
+                            isSnoozeOpen = true
+                        },
+                    )
+                }
+            }
+
+            SnoozeMenu(
+                isOpen = isSnoozeOpen,
+                onDismiss = { isSnoozeOpen = false },
+                onChosen = onSnooze,
+                onPickExact = { isPickingTime = true },
+            )
         },
     )
 }
@@ -436,12 +592,23 @@ private fun describe(outcome: ActionOutcome): String {
     val undoable = outcome.undoable
     val count = undoable.threadCount
 
+    val action = undoable.action
+
     val done =
-        when (undoable.action) {
-            MailAction.Archive -> pluralStringResource(R.plurals.archived, count, count)
-            MailAction.Trash -> pluralStringResource(R.plurals.trashed, count, count)
-            MailAction.MoveToInbox -> pluralStringResource(R.plurals.moved_to_inbox, count, count)
-            MailAction.MarkSpam -> pluralStringResource(R.plurals.marked_spam, count, count)
+        when {
+            action == MailAction.Archive -> pluralStringResource(R.plurals.archived, count, count)
+            action == MailAction.Trash -> pluralStringResource(R.plurals.trashed, count, count)
+            action == MailAction.MoveToInbox ->
+                pluralStringResource(R.plurals.moved_to_inbox, count, count)
+            action == MailAction.MarkSpam ->
+                pluralStringResource(R.plurals.marked_spam, count, count)
+            action is MailAction.SetLabel && action.applied ->
+                pluralStringResource(R.plurals.labelled, count, count)
+            action is MailAction.SetLabel ->
+                pluralStringResource(R.plurals.unlabelled, count, count)
+            action is MailAction.Snooze && action.until != null ->
+                pluralStringResource(R.plurals.snoozed, count, count)
+            action is MailAction.Snooze -> pluralStringResource(R.plurals.unsnoozed, count, count)
             else -> stringResource(R.string.changed)
         }
 

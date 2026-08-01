@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import de.plmail.core.data.Label
 import de.plmail.feature.mail.reader.ReaderScreen
 import kotlinx.coroutines.launch
 
@@ -40,6 +41,10 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun MailPane(
+    label: Label?,
+    onOpenSidebar: (() -> Unit)?,
+    onEditLabel: (Label) -> Unit,
+    onCreateLabel: () -> Unit,
     onSearch: () -> Unit,
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
@@ -64,6 +69,10 @@ fun MailPane(
         listPane = {
             AnimatedPane {
                 MailScreen(
+                    label = label,
+                    onOpenSidebar = onOpenSidebar,
+                    onEditLabel = onEditLabel,
+                    onCreateLabel = onCreateLabel,
                     onSearch = onSearch,
                     onCompose = onCompose,
                     onThreadSelected = { thread ->

@@ -49,6 +49,34 @@ sealed interface MailAction {
         override val inverse: MailAction
             get() = MoveToInbox
     }
+
+    /**
+     * Putting a label on a conversation, or taking it off.
+     *
+     * Carries the whole [Label] rather than an id, because the id a conversation has to be patched
+     * with depends on which account it is in — one label, one row in the sidebar, a different
+     * mailbox id per account.
+     */
+    data class SetLabel(val label: Label, val applied: Boolean) : MailAction {
+        override val inverse: MailAction
+            get() = SetLabel(label, !applied)
+    }
+
+    /**
+     * Putting a conversation away until a time, or bringing it back.
+     *
+     * `Thread/set` rather than `Email/set`, and a move rather than a flag: the server takes the
+     * mail out of Inbox and into a Snoozed mailbox, and a scheduled job puts it back. Verified
+     * against the running server — see `docs/SERVER_REQUESTS.md`.
+     *
+     * [previous] is carried so the inverse is exact in both directions. Undoing a snooze restores
+     * the time that was there before, which for the ordinary case is "not snoozed at all" and for a
+     * re-snooze is the time the user is replacing.
+     */
+    data class Snooze(val until: Long?, val previous: Long? = null) : MailAction {
+        override val inverse: MailAction
+            get() = Snooze(until = previous, previous = until)
+    }
 }
 
 /**

@@ -13,6 +13,7 @@ import de.plmail.jmap.mail.EmailFilter
 import de.plmail.jmap.methods.IdentityGet
 import de.plmail.jmap.methods.MailboxGet
 import de.plmail.jmap.protocol.AccountId
+import de.plmail.jmap.protocol.MailboxId
 import de.plmail.jmap.protocol.RequestBuilder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -64,8 +65,47 @@ constructor(
      */
     val failures = _failures.asStateFlow()
 
+    /**
+     * Every account's inbox, merged.
+     *
+     * Resolved by *role* rather than by a label the caller chose, because the inbox is the one list
+     * that must work before anything has been synced — including the mailbox table it would
+     * otherwise be looked up in.
+     */
+    fun unifiedInbox(pageSize: Int = PAGE_SIZE): Flow<PagingData<ThreadEntity>> =
+        feed(Feed.UNIFIED_INBOX.id, pageSize) { accountKey, _ ->
+            // Null pages everything rather than nothing: an account whose
+            // mailboxes have not been synced yet would otherwise contribute no
+            // rows at all, and the unified inbox would silently be missing a
+            // whole mailbox on first run.
+            database.mailboxes().byRole(accountKey, INBOX_ROLE)?.let {
+                EmailFilter.InMailbox(MailboxId(it.mailboxId))
+            }
+        }
+
+    /**
+     * One label's mail, merged across every account that binds it.
+     *
+     * Accounts with no binding for the label are **dropped from the merge entirely**, not queried
+     * unfiltered. That distinction is the whole difference between "this label, everywhere" and
+     * "this label in one account plus the other account's entire mailbox", and the second one looks
+     * exactly like a broken filter to whoever is reading it.
+     */
+    fun labelled(label: Label, pageSize: Int = PAGE_SIZE): Flow<PagingData<ThreadEntity>> {
+        val byAccount = label.bindings.associate { it.accountKey to it.mailboxId }
+
+        return feed(label.feedId, pageSize, skipAccountsWithoutFilter = true) { accountKey, _ ->
+            byAccount[accountKey]?.let { EmailFilter.InMailbox(MailboxId(it)) }
+        }
+    }
+
     @OptIn(ExperimentalPagingApi::class)
-    fun unifiedInbox(pageSize: Int = PAGE_SIZE): Flow<PagingData<ThreadEntity>> = flow {
+    private fun feed(
+        feedId: String,
+        pageSize: Int,
+        skipAccountsWithoutFilter: Boolean = false,
+        filterFor: suspend (accountKey: String, accountId: AccountId) -> EmailFilter?,
+    ): Flow<PagingData<ThreadEntity>> = flow {
         val connection = credentials.connection.first()
 
         if (connection == null) {
@@ -102,7 +142,7 @@ constructor(
                 // expired credential must not empty someone's inbox on
                 // screen; it stops it being refreshed, which the banner
                 // says.
-                emitAll(cachedOnly(pageSize))
+                emitAll(cachedOnly(feedId, pageSize))
                 return@flow
             }
 
@@ -136,17 +176,24 @@ constructor(
         }
 
         val sources =
-            session.accountIds.map { accountId ->
+            session.accountIds.mapNotNull { accountId ->
                 val accountKey = StoreKey.account(server, accountId.value)
+                // "In this label" is a binding id, and the binding differs per
+                // account -- resolved per account rather than shared.
+                val filter = filterFor(accountKey, AccountId(accountId.value))
+
+                // A list scoped to one label must exclude an account that does
+                // not have it. Falling through to an unfiltered pager here would
+                // merge that account's *whole* mailbox into the label's rows,
+                // which reads as a filter that stopped working rather than as an
+                // account that never had the label.
+                if (filter == null && skipAccountsWithoutFilter) return@mapNotNull null
 
                 AccountPager(
                     accountKey = accountKey,
                     accountId = AccountId(accountId.value),
                     client = client,
-                    // "In the inbox" is a label binding, and the binding id
-                    // differs per account -- resolved per account rather than
-                    // shared.
-                    filter = inboxFilter(accountKey),
+                    filter = filter,
                     onPage = { emails, state ->
                         mail.storeEmails(accountKey, emails, fetchedAt = now())
 
@@ -171,12 +218,12 @@ constructor(
                         ),
                     remoteMediator =
                         FeedMediator(
-                            feedId = Feed.UNIFIED_INBOX.id,
+                            feedId = feedId,
                             database = database,
                             sources = sources,
                             onFailures = { failed -> _failures.update { failed } },
                         ),
-                    pagingSourceFactory = { database.feed().pagingSource(Feed.UNIFIED_INBOX.id) },
+                    pagingSourceFactory = { database.feed().pagingSource(feedId) },
                 )
                 .flow
         )
@@ -189,7 +236,7 @@ constructor(
      * `RemoteMediator` simply never appends, which is the honest behaviour: there is nothing to
      * append from.
      */
-    private fun cachedOnly(pageSize: Int): Flow<PagingData<ThreadEntity>> =
+    private fun cachedOnly(feedId: String, pageSize: Int): Flow<PagingData<ThreadEntity>> =
         Pager(
                 config =
                     PagingConfig(
@@ -197,21 +244,9 @@ constructor(
                         prefetchDistance = pageSize,
                         enablePlaceholders = false,
                     ),
-                pagingSourceFactory = { database.feed().pagingSource(Feed.UNIFIED_INBOX.id) },
+                pagingSourceFactory = { database.feed().pagingSource(feedId) },
             )
             .flow
-
-    /**
-     * The Inbox binding for one account, or null when it has none.
-     *
-     * Null pages everything rather than nothing: an account whose mailboxes have not been synced
-     * yet would otherwise contribute no rows at all, and the unified inbox would silently be
-     * missing an entire mailbox on first run.
-     */
-    private suspend fun inboxFilter(accountKey: String): EmailFilter? =
-        database.mailboxes().byRole(accountKey, INBOX_ROLE)?.let {
-            EmailFilter.InMailbox(de.plmail.jmap.protocol.MailboxId(it.mailboxId))
-        }
 
     private fun now(): Long = System.currentTimeMillis()
 

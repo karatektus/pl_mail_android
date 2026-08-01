@@ -14,9 +14,6 @@
     <string name="retry">Try again</string>
 
     <string name="reader_placeholder">Select a conversation.</string>
-    <string name="sent_title">Sent</string>
-    <string name="drafts_title">Drafts</string>
-    <string name="coming_soon">%1$s arrives in a later milestone.</string>
     <string name="show_remote_images">Show pictures</string>
     <string name="show_original">Show original</string>
     <string name="show_adapted">Show adapted</string>
@@ -62,4 +59,47 @@
       a claim about the server, which the app cannot make between syncs.
     -->
     <string name="inbox_end">That\'s everything on this device</string>
+    <string name="drawer_title">plMail</string>
+    <string name="open_labels">Labels</string>
+    <string name="labels_loading">Loading your labels…</string>
+    <string name="label_new">New label</string>
+    <string name="label_new_title">New label</string>
+    <string name="label_edit">Edit label</string>
+    <string name="label_edit_title">Edit label</string>
+    <string name="label_name">Name</string>
+    <!-- Said before the round trip: the server refuses a slash, because Gmail encodes nesting in it. -->
+    <string name="label_name_hint">Use the parent label for nesting, not a slash.</string>
+    <string name="label_save">Save</string>
+    <string name="label_cancel">Cancel</string>
+    <string name="label_delete">Delete label</string>
+    <string name="label_delete_title">Delete “%1$s”?</string>
+    <!-- Names what is kept. "Delete label" over a list of mail reads as "delete the mail". -->
+    <string name="label_delete_body">The label goes; the mail in it stays where it is.</string>
+    <string name="label_delete_confirm">Delete</string>
+    <string name="more">More</string>
+    <string name="labels_apply">Label as</string>
+    <string name="labels_none">You have no labels of your own yet.</string>
+    <string name="snooze">Snooze</string>
+    <string name="snooze_later_today">Later today</string>
+    <string name="snooze_tomorrow">Tomorrow morning</string>
+    <string name="snooze_this_weekend">This weekend</string>
+    <string name="snooze_next_week">Next week</string>
+    <string name="snooze_pick">Pick a date and time</string>
+    <string name="unsnooze">Unsnooze</string>
+    <plurals name="snoozed">
+        <item quantity="one">1 conversation snoozed</item>
+        <item quantity="other">%1$d conversations snoozed</item>
+    </plurals>
+    <plurals name="unsnoozed">
+        <item quantity="one">1 conversation brought back</item>
+        <item quantity="other">%1$d conversations brought back</item>
+    </plurals>
+    <plurals name="labelled">
+        <item quantity="one">Label added to 1 conversation</item>
+        <item quantity="other">Label added to %1$d conversations</item>
+    </plurals>
+    <plurals name="unlabelled">
+        <item quantity="one">Label removed from 1 conversation</item>
+        <item quantity="other">Label removed from %1$d conversations</item>
+    </plurals>
 </resources>

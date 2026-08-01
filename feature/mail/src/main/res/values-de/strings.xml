@@ -10,9 +10,6 @@
     <string name="retry">Erneut versuchen</string>
 
     <string name="reader_placeholder">Wähle eine Unterhaltung.</string>
-    <string name="sent_title">Gesendet</string>
-    <string name="drafts_title">Entwürfe</string>
-    <string name="coming_soon">%1$s kommt in einem späteren Meilenstein.</string>
     <string name="show_remote_images">Bilder anzeigen</string>
     <string name="show_original">Original anzeigen</string>
     <string name="show_adapted">Angepasst anzeigen</string>
@@ -52,4 +49,45 @@
     <string name="reader_forward">Weiterleiten</string>
     <string name="inbox_empty_body">Neue Nachrichten erscheinen hier, sobald sie eintreffen.</string>
     <string name="inbox_end">Mehr liegt auf diesem Gerät nicht</string>
+    <string name="drawer_title">plMail</string>
+    <string name="open_labels">Labels</string>
+    <string name="labels_loading">Labels werden geladen…</string>
+    <string name="label_new">Neues Label</string>
+    <string name="label_new_title">Neues Label</string>
+    <string name="label_edit">Label bearbeiten</string>
+    <string name="label_edit_title">Label bearbeiten</string>
+    <string name="label_name">Name</string>
+    <string name="label_name_hint">Für Verschachtelung das übergeordnete Label wählen, keinen Schrägstrich.</string>
+    <string name="label_save">Speichern</string>
+    <string name="label_cancel">Abbrechen</string>
+    <string name="label_delete">Label löschen</string>
+    <string name="label_delete_title">„%1$s“ löschen?</string>
+    <string name="label_delete_body">Das Label verschwindet; die Nachrichten darin bleiben.</string>
+    <string name="label_delete_confirm">Löschen</string>
+    <string name="more">Mehr</string>
+    <string name="labels_apply">Label vergeben</string>
+    <string name="labels_none">Du hast noch keine eigenen Labels.</string>
+    <string name="snooze">Erinnern</string>
+    <string name="snooze_later_today">Später heute</string>
+    <string name="snooze_tomorrow">Morgen früh</string>
+    <string name="snooze_this_weekend">Am Wochenende</string>
+    <string name="snooze_next_week">Nächste Woche</string>
+    <string name="snooze_pick">Datum und Uhrzeit wählen</string>
+    <string name="unsnooze">Jetzt zurückholen</string>
+    <plurals name="snoozed">
+        <item quantity="one">1 Unterhaltung zurückgestellt</item>
+        <item quantity="other">%1$d Unterhaltungen zurückgestellt</item>
+    </plurals>
+    <plurals name="unsnoozed">
+        <item quantity="one">1 Unterhaltung zurückgeholt</item>
+        <item quantity="other">%1$d Unterhaltungen zurückgeholt</item>
+    </plurals>
+    <plurals name="labelled">
+        <item quantity="one">Label zu 1 Unterhaltung hinzugefügt</item>
+        <item quantity="other">Label zu %1$d Unterhaltungen hinzugefügt</item>
+    </plurals>
+    <plurals name="unlabelled">
+        <item quantity="one">Label von 1 Unterhaltung entfernt</item>
+        <item quantity="other">Label von %1$d Unterhaltungen entfernt</item>
+    </plurals>
 </resources>

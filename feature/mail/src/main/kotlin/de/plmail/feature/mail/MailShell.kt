@@ -1,165 +1,155 @@
 package de.plmail.feature.mail
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.Send
-import androidx.compose.material.icons.outlined.Drafts
-import androidx.compose.material.icons.outlined.Inbox
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.NavigationDrawerItemDefaults
-import androidx.compose.material3.NavigationRailItemDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteDefaults
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteItemColors
-import androidx.compose.material3.adaptive.navigationsuite.NavigationSuiteScaffold
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
+import androidx.compose.material3.PermanentDrawerSheet
+import androidx.compose.material3.PermanentNavigationDrawer
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.window.core.layout.WindowSizeClass
 import de.plmail.core.designsystem.PlMailTheme
+import kotlinx.coroutines.launch
 
 /**
- * The lists reachable from the shell.
+ * The app's navigation frame: the label list beside, or behind, the mail.
  *
- * Only the three plMail already models as roles. Labels are the user-facing concept and arrive with
- * M9 — until then this deliberately does not invent a sidebar that the server cannot fill, because
- * a navigation item that leads nowhere is worse than an absent one.
- */
-enum class MailDestination(val label: Int, val icon: ImageVector) {
-    INBOX(R.string.inbox_title, Icons.Outlined.Inbox),
-    SENT(R.string.sent_title, Icons.AutoMirrored.Outlined.Send),
-    DRAFTS(R.string.drafts_title, Icons.Outlined.Drafts),
-}
-
-/**
- * The app's navigation frame.
- *
- * `NavigationSuiteScaffold` picks the presentation from the window size itself — a bottom bar or
- * modal drawer on a phone, a permanent rail on a tablet — which is the whole reason for using it
- * rather than branching on a width breakpoint by hand. Getting that branch right is easy; keeping
- * it right through a foldable unfolding, a split-screen resize and a desktop window being dragged
- * narrower is not, and those are all resize events rather than new activities.
+ * A drawer rather than a bottom bar, and that changed with M9. Three destinations fitted a bottom
+ * bar; a label list does not — it is as long as the user made it, and it grows. The presentation
+ * still adapts: modal and reached from the app bar where the window is narrow, permanently open
+ * where there is room for it beside two panes.
  *
  * Inside it sits [MailPane], which owns the list/detail split independently. The two adapt on
- * different axes and must not be conflated: a tablet shows the rail *and* both panes, a phone shows
- * a bottom bar and one pane at a time.
+ * different axes and must not be conflated: a tablet shows the sidebar *and* both panes, a phone
+ * shows a drawer over one pane at a time.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MailShell(
     onSearch: () -> Unit,
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
+    viewModel: SidebarViewModel = hiltViewModel(),
 ) {
-    var destination by rememberSaveable { mutableStateOf(MailDestination.INBOX) }
+    val labels by viewModel.labels.collectAsStateWithLifecycle()
 
-    val colors = PlMailTheme.colors
+    // The key rather than the Label, because a Label carries its bindings and
+    // its counts -- both of which change under it on every sync. Saving the key
+    // and resolving it back is what keeps the selection through a process death
+    // pointing at the same label rather than at a stale copy of it.
+    var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
+    var editing by rememberSaveable(stateSaver = LabelEditorSaver) { mutableStateOf(null) }
 
-    // Resolved before the scaffold: `navigationSuiteItems` is a plain builder
-    // lambda rather than a composable one, so nothing inside it may read the
-    // theme.
-    val itemColors =
-        NavigationSuiteItemColors(
-            navigationBarItemColors = navigationItemColors(),
-            navigationRailItemColors = railItemColors(),
-            navigationDrawerItemColors = drawerItemColors(),
-        )
+    val selected = labels.firstOrNull { it.key == selectedKey } ?: labels.firstOrNull()
 
-    NavigationSuiteScaffold(
-        // Spelled out rather than inherited. The suite's defaults draw the
-        // active item as a filled tonal pill in `secondaryContainer`, which in
-        // this palette is a neutral -- so the one thing on screen that must say
-        // "you are here" said it in grey. The accent is scarce everywhere else
-        // precisely so it can be spent here.
-        navigationSuiteColors =
-            NavigationSuiteDefaults.colors(
-                navigationBarContainerColor = colors.surface,
-                navigationRailContainerColor = colors.surface,
-                navigationDrawerContainerColor = colors.surface,
-            ),
-        containerColor = colors.surface,
-        navigationSuiteItems = {
-            MailDestination.entries.forEach { entry ->
-                item(
-                    selected = entry == destination,
-                    onClick = { destination = entry },
-                    icon = { Icon(imageVector = entry.icon, contentDescription = null) },
-                    label = { Text(stringResource(entry.label)) },
-                    colors = itemColors,
-                )
-            }
-        },
-    ) {
-        when (destination) {
-            MailDestination.INBOX ->
-                MailPane(
-                    onSearch = onSearch,
-                    onCompose = onCompose,
-                    onReply = onReply,
-                    onForward = onForward,
-                )
-            // Sent and Drafts are the same list against a different mailbox
-            // binding, which needs the per-role filter M9 introduces. Named
-            // here rather than hidden so the shape of the shell is visible.
-            MailDestination.SENT,
-            MailDestination.DRAFTS -> ComingSoon(stringResource(destination.label))
+    val isWide =
+        currentWindowAdaptiveInfo()
+            .windowSizeClass
+            .isWidthAtLeastBreakpoint(WindowSizeClass.WIDTH_DP_EXPANDED_LOWER_BOUND)
+
+    val drawer = rememberDrawerState(DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
+    val sidebar =
+        @Composable {
+            LabelSidebar(
+                labels = labels,
+                selected = selected,
+                onSelect = { label ->
+                    selectedKey = label.key
+                    scope.launch { drawer.close() }
+                },
+                onCreate = {
+                    editing = LabelEditorRequest.New
+                    scope.launch { drawer.close() }
+                },
+            )
         }
+
+    val content =
+        @Composable {
+            MailPane(
+                label = selected,
+                // Null where the sidebar is already on screen: a hamburger that
+                // opens something already open is a control that does nothing.
+                onOpenSidebar = if (isWide) null else ({ scope.launch { drawer.open() } }),
+                onEditLabel = { editing = LabelEditorRequest.Edit(it.key) },
+                onCreateLabel = { editing = LabelEditorRequest.New },
+                onSearch = onSearch,
+                onCompose = onCompose,
+                onReply = onReply,
+                onForward = onForward,
+            )
+        }
+
+    if (isWide) {
+        PermanentNavigationDrawer(
+            drawerContent = {
+                PermanentDrawerSheet(
+                    drawerContainerColor = PlMailTheme.colors.surface,
+                    modifier = Modifier.width(SIDEBAR_WIDTH).fillMaxHeight(),
+                ) {
+                    sidebar()
+                }
+            },
+            content = content,
+        )
+    } else {
+        // Closing the drawer is a navigation step of its own. Without this, back
+        // on an open drawer leaves the screen entirely and the drawer is still
+        // open when the user comes back.
+        BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
+
+        ModalNavigationDrawer(
+            drawerState = drawer,
+            drawerContent = {
+                ModalDrawerSheet(
+                    drawerState = drawer,
+                    drawerContainerColor = PlMailTheme.colors.surface,
+                    modifier = Modifier.width(SIDEBAR_WIDTH),
+                ) {
+                    sidebar()
+                }
+            },
+            content = content,
+        )
     }
-}
 
-@Composable
-private fun navigationItemColors() =
-    NavigationBarItemDefaults.colors(
-        selectedIconColor = PlMailTheme.colors.accent,
-        selectedTextColor = PlMailTheme.colors.accent,
-        indicatorColor = PlMailTheme.colors.accentSoft,
-        unselectedIconColor = PlMailTheme.colors.inkMuted,
-        unselectedTextColor = PlMailTheme.colors.inkMuted,
-    )
-
-@Composable
-private fun railItemColors() =
-    NavigationRailItemDefaults.colors(
-        selectedIconColor = PlMailTheme.colors.accent,
-        selectedTextColor = PlMailTheme.colors.accent,
-        indicatorColor = PlMailTheme.colors.accentSoft,
-        unselectedIconColor = PlMailTheme.colors.inkMuted,
-        unselectedTextColor = PlMailTheme.colors.inkMuted,
-    )
-
-@Composable
-private fun drawerItemColors() =
-    NavigationDrawerItemDefaults.colors(
-        selectedIconColor = PlMailTheme.colors.accent,
-        selectedTextColor = PlMailTheme.colors.accent,
-        selectedContainerColor = PlMailTheme.colors.accentSoft,
-        unselectedIconColor = PlMailTheme.colors.inkMuted,
-        unselectedTextColor = PlMailTheme.colors.inkMuted,
-        unselectedContainerColor = PlMailTheme.colors.surface,
-    )
-
-@Composable
-private fun ComingSoon(name: String) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = stringResource(R.string.coming_soon, name),
-            style = MaterialTheme.typography.bodyMedium,
-            color = PlMailTheme.colors.inkMuted,
+    editing?.let { request ->
+        LabelEditor(
+            request = request,
+            labels = labels,
+            onDismiss = { editing = null },
+            onDeleted = { deleted ->
+                // Back to the inbox rather than to a label that no longer
+                // exists -- otherwise the list keeps paging a mailbox the server
+                // has forgotten and reports it as an unreachable account.
+                if (deleted.key == selectedKey) selectedKey = null
+                editing = null
+            },
         )
     }
 }
+
+/**
+ * How wide the sidebar is.
+ *
+ * Fixed rather than a fraction. Material's default drawer is 360dp, which on a 1280dp tablet leaves
+ * the list pane too narrow to hold a subject; 280dp is enough for `Work/Invoices` and a count.
+ */
+private val SIDEBAR_WIDTH = 280.dp
