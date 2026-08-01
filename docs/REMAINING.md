@@ -222,6 +222,18 @@ category group never appears).
   how many unread of that category it has *paged*, and JMAP publishes no per-category total — a
   badge disagreeing with the web's is worse than none.
 
+**Watched work on the device**, against a patched server on its own stack (8003, own volumes, the
+8002 one untouched) seeded across all five categories: the drawer group and its indentation, the
+Promotions tab returning exactly its three conversations and ending there, the same for Updates, two
+chips of different colours on one row, recolouring a label from the phone reaching the server
+(`Reisen` → `violet`) and the chip redrawing, and the whole thing again in **dark and in German** —
+"Allgemein / Soziale Netzwerke / Werbung / Benachrichtigungen / Foren", the longest of which fits the
+280dp drawer without truncating.
+
+**Not watched:** Nord, Dusk and Solar, which are covered numerically by `PaletteContrastTest`'s
+54-pair sweep rather than by an eye; and a tablet, where the permanent drawer draws the same rows in
+a pane of a different width.
+
 ---
 
 ## Traps worth inheriting
@@ -242,6 +254,14 @@ New from this session:
   covered the screen mid-capture. Put a whole navigation into **one** `adb shell "...; sleep n; ..."`
   rather than a sequence of `adb shell input tap` calls, and screenshot immediately after — the
   window between two `adb` invocations is where the other session gets in.
+- **The other session's install will silently downgrade your schema, and it looks like your bug.**
+  Mid-verification the app stopped drawing colours and stopped showing the category rows, with a
+  healthy server that was demonstrably still returning both. The cause was the *other* session
+  installing its own APK, built before the version-3 schema; Room saw a downgrade and recreated the
+  database at version 2, without the two new columns. Nothing in the app says so. The tell is
+  `adb shell run-as de.plmail.debug cat databases/plmail.db` piped to a file and
+  `PRAGMA user_version` — thirty seconds, and it turns "my feature is broken" into "somebody else
+  installed over me". Re-install immediately before every observation, not once at the start.
 - **`adb` is not on a non-interactive shell's PATH.** `/etc/profile.d/jdk20.sh` and the `.bashrc`
   early return mean a `bash -c` gets neither `ANDROID_HOME` nor platform-tools. Export both
   explicitly in any script.
