@@ -290,6 +290,17 @@ what enforces it: an accidental `import android.*` fails to compile.
 
 ## Milestones
 
+> **Status, honestly, lives in [REMAINING.md](REMAINING.md).** This file is the architecture, the
+> decisions and the history — why each thing is the way it is. That one is the current state of
+> every milestone, the carried unverified list, the loose ends nobody has chased, and what adopting
+> the unmerged label-colour branch will take. Read it first; come back here for the reasoning.
+>
+> Short version as of 2026-08-01: **M0–M10 and the design system are done. M11 is partial** —
+> German at real length, the narrow-screen row and offline-as-a-state have landed; TalkBack, the
+> contrast sweep, predictive back, shortcuts, the widget, R8 verification, the baseline profile and
+> the Roborazzi matrix have not.
+
+
 Each milestone ends green: `./gradlew build test lint spotlessCheck` clean, and the app runnable on
 both AVDs. Each is one commit (or a small series), with tests written alongside — not after.
 
@@ -746,7 +757,10 @@ silent forever — indistinguishable from push being broken, which is the one fa
 cannot afford to fake. The check is made in `DeltaSync`, where the announcement is raised, so a
 listener added later cannot forget it.
 
-### M10 · Appearance and settings — the rest
+### M10 · Appearance and settings — **complete**
+
+Nothing is outstanding in M10. The section below is the original scope statement, kept because it
+is where the two-axis model and the token vocabulary are written down.
 The two-axis **Theme × Layout** model with density and knobs on top, in a `LocalPlMailTheme`
 `CompositionLocal` over semantic tokens (`surface`, `line`, `raised`/`hover`,
 `ink`/`ink-soft`/`ink-muted`/`ink-faint`, `accent*`, `sunken`, `field*`,
@@ -760,12 +774,64 @@ nothing else. Plus: account list and order, sync window display, notification pr
 diagnostics screen (per-account last sync, last error, push state) — users self-host, so when
 something breaks they are the one who has to fix it.
 
-### M11 · Polish and ship-readiness
+### M11 · Polish and ship-readiness — **partial**
+
 German + English strings from M0 onward, checked (design for German ~30% longer); TalkBack and
 contrast sweep across all six themes; ≥48 dp targets, ≥16 sp body; predictive back; app shortcuts and
 a home-screen unread widget; offline as a first-class state (cached mail, queued mutations, plain
 "can't reach your server" naming the hostname); R8 rules; baseline profile + Macrobenchmark;
 Roborazzi screenshot suite across themes × densities × phone/tablet.
+
+**Three of those landed on 2026-08-01. The rest have not started** — see
+[REMAINING.md](REMAINING.md) for the split, which is the file to trust on status.
+
+**German at real length, on a narrow screen**, which is the combination nothing here had been
+looked at under: every baseline is 411dp and every string had been read in English. Shrinking the
+emulator to 320dp and setting the app's locale to German found two defects immediately.
+
+The chip cluster had a cap and no floor. 160dp is comfortable on a 411dp phone, where the text
+column is 243dp; at 320dp the column is 188dp and the same 160dp left the preview about three
+characters — which is exactly the defect that putting the chips *behind* the snippet had been meant
+to fix, arriving again from a direction nobody had looked at. A cap cannot express it, because the
+number being capped is not the number that matters. The cluster now takes the smaller of the cap and
+whatever remains above a preview floor, measured with `Modifier.layout` rather than
+`BoxWithConstraints` — fifty rows are scrolling, and a subcomposition per row to learn a width the
+measure pass is already handing over is a cost on every frame. *How many* chips fit is a separate,
+composition-time question, decided once per list from the **pane's** width rather than the window's:
+a tablet's list pane is a fraction of an 840dp window and is easily narrower than a phone.
+
+And the sidebar was in English on a German device, because those names come off the wire and the
+server produces them from `LabelRole` with no catalogue near them. plMail's *web* client does not
+draw them at all — it renders `sidebar.nav.inbox`, which `messages.de.yaml` turns into
+"Posteingang". Resolving a system role to the app's own word is not a workaround for a missing
+server feature; it is what makes the two surfaces agree. By `role`, never by name, so a label
+somebody made and called "Trash" keeps its name.
+
+**Offline as a first-class state**, which the local-first rule made necessary rather than optional.
+Every action is applied to the cache first and never rolled back, so offline the conversation left
+the inbox, a snackbar reported a rejection, and the change was then gone. There is now a durable
+queue, and the rule it turns on is that **a transport failure queues and a server rejection does
+not**: a refusal is an answer, and replaying it produces a loop that terminates never. It lives in
+DataStore rather than Room, which is the clearest case in the app for that rule — a queued mutation
+is the one piece of state the server does not have, so the destructive-migration policy would
+silently discard something the user did.
+
+It stores the label *key* rather than the `Label`, because bindings are cache and may have been
+renumbered between the tap and the send. It drains oldest-first and stops at the first transport
+failure, keeping everything from there including the one that failed: star-then-unstar and
+unstar-then-star are different end states. The flush is a network-constrained WorkManager job rather
+than a coroutine watching connectivity, because a queued archive has to survive the app being swiped
+away — and it runs *before* the delta sync in the same worker, because the server's copy still
+carries the Inbox label and syncing first would write the change back out.
+
+Two banner defects fell out of turning the radios off. A **session** failure was being drawn with
+the per-account wording, so it read "Could not reach http://10.0.2.2:8002 at 10.0.2.2. The other
+accounts are still up to date" — the server named twice, then a claim about accounts nobody had
+enumerated, because the call that lists them is the one that failed. And with no network at all the
+per-account banners are copies of a fact the offline banner has already stated, in the one state
+where "the other accounts are still up to date" is false. One known defect remains and is written
+up in REMAINING.md: the failure banner is **sticky**, because `_failures` is only rewritten by a
+page load, so it survives the network coming back until something re-pages.
 
 ---
 
