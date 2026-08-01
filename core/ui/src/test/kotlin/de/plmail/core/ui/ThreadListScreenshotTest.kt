@@ -191,6 +191,22 @@ class ThreadListScreenshotTest {
             ),
         )
 
+    /**
+     * Which rows carry chips, by index into [inbox].
+     *
+     * A few rather than all of them, because the question this file exists to answer is *how often*
+     * a mark appears — and a list where every row is labelled is a list nobody has, while a list
+     * where none is answers nothing. Four of fourteen is roughly what a mailbox with a handful of
+     * rules looks like, and it includes one row that overflows the cap.
+     */
+    private val labelled =
+        mapOf(
+            0 to (listOf("Arbeit") to 0),
+            4 to (listOf("Wohnung") to 0),
+            7 to (listOf("Arbeit", "Lesen") to 0),
+            10 to (listOf("Steuer", "Wohnung") to 2),
+        )
+
     private fun capture(name: String, threads: List<ThreadEntity>) {
         val scheme = mutableStateOf(PlMailThemeChoice.LIGHT)
 
@@ -221,7 +237,15 @@ class ThreadListScreenshotTest {
                         // a hairline under the last row promises another one.
                         if (index > 0) PlMailDivider(startIndent = 72.dp)
 
-                        ThreadRow(thread = thread, onClick = {}, today = NOW.toLocalDate())
+                        val chips = labelled[index]
+
+                        ThreadRow(
+                            thread = thread,
+                            onClick = {},
+                            today = NOW.toLocalDate(),
+                            labels = chips?.first.orEmpty(),
+                            hiddenLabels = chips?.second ?: 0,
+                        )
                     }
                 }
             }

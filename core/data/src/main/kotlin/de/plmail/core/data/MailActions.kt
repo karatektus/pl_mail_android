@@ -38,6 +38,7 @@ class MailActions
 constructor(
     private val database: PlMailDatabase,
     private val clients: AccountClients,
+    private val mail: MailRepository,
 ) {
 
     /**
@@ -180,6 +181,15 @@ constructor(
                             if (!action.applied) {
                                 database.feed().clearThread(action.label.feedId, threadUid)
                             }
+
+                            // And the row's own copy of which labels it carries,
+                            // which is what the list draws chips from. Without
+                            // this the sheet ticks the label immediately and the
+                            // row behind it keeps its old chips until some later
+                            // sync happens to touch the conversation -- so the
+                            // two halves of the same gesture disagree, on
+                            // screen, for an unpredictable length of time.
+                            mail.refreshLabelsOf(target.accountKey, target.threadId)
                         }
                     }
 

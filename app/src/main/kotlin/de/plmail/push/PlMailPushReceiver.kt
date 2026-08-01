@@ -125,7 +125,7 @@ class PlMailPushReceiver : MessagingReceiver() {
         reason: org.unifiedpush.android.connector.FailedReason,
         instance: String,
     ) {
-        Log.w(TAG, "Distributor refused to register: ${'$'}reason")
+        Log.w(TAG, "Distributor refused to register: $reason")
         launch(context) { _, state -> state.failed(reason.name) }
     }
 

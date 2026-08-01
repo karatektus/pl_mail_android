@@ -230,7 +230,18 @@ fun Email.toAttachmentEntities(accountKey: String): List<AttachmentEntity> {
  * [messages] may be empty: threads arrive over several pages, and a row built from what is known
  * beats no row at all.
  */
-fun MailThread.toEntity(accountKey: String, messages: List<EmailEntity>): ThreadEntity {
+fun MailThread.toEntity(
+    accountKey: String,
+    messages: List<EmailEntity>,
+    /**
+     * Every mailbox binding in this account, as binding id to collapse key.
+     *
+     * Passed in rather than looked up, because this runs once per touched thread inside one
+     * transaction and the account's mailbox list is the same for all of them — resolving it per
+     * thread would be the read-time join the whole table exists to avoid, moved to write time.
+     */
+    bindings: Map<String, String> = emptyMap(),
+): ThreadEntity {
     val dated = messages.sortedBy { it.receivedAt ?: Long.MIN_VALUE }
     val newest = dated.lastOrNull()
 
@@ -256,8 +267,31 @@ fun MailThread.toEntity(accountKey: String, messages: List<EmailEntity>): Thread
         isFlagged = messages.any { it.isFlagged },
         hasAttachment = messages.any { it.hasAttachment },
         snoozedUntil = snoozedUntil.toEpochMillis(),
+        // The union across the conversation's messages, not the newest one's.
+        // A label applied to a single reply is a label the conversation
+        // carries -- that is what the sidebar's count says and what browsing the
+        // label shows, so a row that disagreed would be the odd one out.
+        labelKeys = messages.labelKeysVia(bindings),
     )
 }
+
+/**
+ * The collapse keys of every label the messages are bound to.
+ *
+ * Sorted, and that is not tidiness: the value is compared against the previous one on every write,
+ * so an order that depended on which message happened to be read first would rewrite the row — and
+ * invalidate the list — on syncs that changed nothing.
+ */
+private fun List<EmailEntity>.labelKeysVia(bindings: Map<String, String>): String =
+    asSequence()
+        .flatMap { it.mailboxIds.splitIds() }
+        .mapNotNull { bindings[it] }
+        .distinct()
+        .sorted()
+        .joinToString(",")
+
+/** Blank-tolerant, because an unbound message stores an empty string rather than a null. */
+internal fun String.splitIds(): List<String> = split(",").filter { it.isNotBlank() }
 
 /**
  * Participants oldest first, each named once.

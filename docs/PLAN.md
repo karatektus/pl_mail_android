@@ -564,6 +564,21 @@ Landed on 2026-08-01:
 - **Snooze** via `Thread/set`, four presets computed in the device's own zone plus an exact time,
   and unsnooze from the Snoozed list.
 
+Labels reached the **thread rows** on 2026-08-01, which was the last place they existed everywhere
+except: navigation, management and mutation all understood them and the row itself never said what
+a conversation carried. `ThreadEntity` grew `labelKeys` — collapse *keys*, not names, comma-separated
+and written when the row is summarised — and the schema went to version 2 by falling through to the
+destructive upgrade rather than growing its first hand-written migration, which is exactly what the
+"everything is a cache" rule was for. The names are resolved at draw time against the label list the
+sidebar already holds, so a rename shows on every row at once instead of waiting for each
+conversation to be re-synced.
+
+Three things are removed before a chip is drawn, and each would otherwise appear on nearly every
+row: the label being looked at, every system role (by `role`, never by name), and any key the
+sidebar does not know. Two chips then a counter. They share the snippet's line rather than taking
+one of their own — a line of their own makes labelled conversations taller than unlabelled ones,
+and a list that scrolls at two heights looks broken for a reason nobody can name.
+
 Still open: **colour is blocked on the server** — absent from `Mailbox/get`, refused on `update`,
 silently dropped on `create`. Filed in `docs/SERVER_REQUESTS.md`. Mail rules and block sender still
 have no client surface.

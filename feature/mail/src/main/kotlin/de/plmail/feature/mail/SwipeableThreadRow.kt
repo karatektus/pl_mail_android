@@ -20,6 +20,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import de.plmail.core.data.MailAction
+import de.plmail.core.data.RowLabels
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.ui.ThreadRow
 
@@ -38,6 +39,7 @@ import de.plmail.core.ui.ThreadRow
 fun SwipeableThreadRow(
     thread: ThreadEntity,
     isSelected: Boolean,
+    labels: RowLabels,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onAction: (MailAction) -> Unit,
@@ -72,6 +74,8 @@ fun SwipeableThreadRow(
                     onClick = onClick,
                     onLongClick = onLongClick,
                     isSelected = isSelected,
+                    labels = labels.names,
+                    hiddenLabels = labels.hidden,
                 )
             },
         )

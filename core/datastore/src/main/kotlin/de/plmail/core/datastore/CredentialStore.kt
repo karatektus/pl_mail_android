@@ -9,6 +9,7 @@ import de.plmail.jmap.client.KeyFingerprint
 import de.plmail.jmap.client.ParsedAddress
 import de.plmail.jmap.client.ServerAddress
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 /**
@@ -53,15 +54,29 @@ class CredentialStore(
 ) {
 
     /**
-     * The stored connection, or null when there is none *or* when it can no longer be read.
+     * The stored connection, or null when there is none *or* when it can no longer be read — and
+     * emitted **only when it actually changes**.
      *
      * An unopenable secret deliberately reads as absent: the app's answer to both is the same
      * onboarding screen. It is logged as distinct at the point of failure rather than modelled as a
      * separate state here, because a caller that had to handle "there is a credential but it is
      * unreadable" would only ever do what it does for "there is none".
+     *
+     * `dataStore.data` emits the whole preference map on every write to the *file*, whichever key
+     * moved — and this app keeps everything in one file, so a push registration timestamp being
+     * recorded re-emits this too. Without the dedupe that is not merely wasteful: `MainViewModel`
+     * reacts to each emission by scheduling background sync and calling `PushSetup.enable`, so a
+     * write from the push path re-registers with the distributor, which issues a new endpoint,
+     * which is recorded, which writes the file again. A closed loop, running as fast as DataStore
+     * can commit, hammering the distributor and the server with it.
+     *
+     * Found exactly that way: adding `PushStateStore` to the same file turned a latent hazard into
+     * a live one within a second of launch. The dedupe belongs here rather than at the one caller,
+     * because "the server this app is connected to" is what this flow means, and re-announcing it
+     * unchanged is wrong for every subscriber rather than inconvenient for one.
      */
     val connection: Flow<ServerConnection?>
-        get() = dataStore.data.map(::read)
+        get() = dataStore.data.map(::read).distinctUntilChanged()
 
     suspend fun save(connection: ServerConnection) {
         val sealed = cipher.seal(connection.credential.secret)

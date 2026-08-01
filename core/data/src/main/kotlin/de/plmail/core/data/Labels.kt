@@ -2,6 +2,7 @@ package de.plmail.core.data
 
 import de.plmail.core.database.MailboxEntity
 import de.plmail.core.database.StoreKey
+import de.plmail.core.database.ThreadEntity
 
 /**
  * One label as the user thinks of it: a single thing, however many accounts bind it.
@@ -165,3 +166,66 @@ private val HIDDEN_ROLES = setOf("all")
 
 private const val MAX_DEPTH = 8
 private const val SEPARATOR = "/"
+
+/**
+ * The labels a list row shows, and how many it could not fit.
+ *
+ * [names] is what gets drawn; [hidden] is everything past the cap, counted rather than dropped —
+ * "+2" is a small thing to draw and the difference between a row that is short of space and a row
+ * that is wrong.
+ */
+data class RowLabels(val names: List<String>, val hidden: Int) {
+    val isEmpty: Boolean
+        get() = names.isEmpty() && hidden == 0
+
+    companion object {
+        val NONE = RowLabels(emptyList(), 0)
+    }
+}
+
+/**
+ * Which of a conversation's labels are worth putting on its row.
+ *
+ * Three things are removed, and each of them is a chip that would appear on nearly every row while
+ * telling nobody anything:
+ *
+ * - **The label being looked at.** Every conversation in the Work list carries Work. A column of
+ *   identical chips down the side of a filtered list is pure noise, and it is noise precisely where
+ *   the screen is at its most crowded.
+ * - **System roles.** Inbox, Sent, Drafts, Trash, Junk, Archive. Where the mail *is* is what the
+ *   list already says; a chip repeating it is a second copy of the screen's own title. This is by
+ *   `role`, never by name, for the same reason the sidebar's icons are: a label somebody made and
+ *   called "Archive" is theirs, and hiding it would silently drop it off every row it is on.
+ * - **Anything the sidebar does not know.** A key with no matching label is a binding this device
+ *   has not synced yet, or one hidden by the user's own subscription choices — either way, drawing
+ *   a chip for it would mean drawing a label they cannot see anywhere else in the app.
+ *
+ * Order comes from [labels] rather than from the stored keys, so the same two labels appear in the
+ * same order on every row rather than in whatever order the mailbox bindings happened to resolve.
+ */
+fun ThreadEntity.rowLabels(
+    labels: List<Label>,
+    viewing: Label?,
+    limit: Int = ROW_LABEL_LIMIT,
+): RowLabels {
+    if (labelKeys.isBlank()) return RowLabels.NONE
+
+    val carried = labelKeys.split(",").filter { it.isNotBlank() }.toSet()
+
+    val shown =
+        labels
+            .filter { it.key in carried && !it.isSystem && it.key != viewing?.key }
+            .map { it.name }
+
+    return RowLabels(names = shown.take(limit), hidden = (shown.size - limit).coerceAtLeast(0))
+}
+
+/**
+ * Two chips, then a counter.
+ *
+ * Three fits a phone row only when all three names are short, and the failure mode is the one that
+ * matters most on this row: the chips share their line with the snippet, so a third chip eats the
+ * text people actually read to decide whether to open the mail. Two plus "+n" says the same thing
+ * in less space and never varies with the length of somebody's label names.
+ */
+const val ROW_LABEL_LIMIT = 2

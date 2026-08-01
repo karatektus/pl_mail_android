@@ -121,13 +121,48 @@ class ThreadRowScreenshotTest {
         )
     }
 
-    private fun capture(name: String, thread: ThreadEntity) {
+    /**
+     * Chips beside a snippet, which is the arrangement they have to survive.
+     *
+     * They share that line rather than taking one of their own, so what this baseline is really
+     * guarding is that the snippet still gets read: two chips and a legible remainder, not two
+     * chips and three words.
+     */
+    @Test
+    fun withLabels() {
+        capture("labels", thread(), labels = listOf("Work", "Steuer"))
+    }
+
+    /**
+     * The overflow counter, and the case that sets the cap at two.
+     *
+     * A conversation with five labels on a phone row: two names, "+3", and whatever snippet fits
+     * after them. The date must still be where it is on every other row — the chips live inside the
+     * text column, so a third one would eat the snippet rather than push the date off, and this is
+     * the baseline that says so.
+     */
+    @Test
+    fun withMoreLabelsThanFit() {
+        capture(
+            "labels-overflow",
+            thread(),
+            labels = listOf("Work", "Wohnung/Nebenkosten"),
+            hiddenLabels = 3,
+        )
+    }
+
+    private fun capture(
+        name: String,
+        thread: ThreadEntity,
+        labels: List<String> = emptyList(),
+        hiddenLabels: Int = 0,
+    ) {
         // The scheme is state inside one composition rather than two calls to
         // setContent: the rule allows exactly one per test, and recomposing is
         // in any case closer to what a user switching themes actually does.
         val scheme = mutableStateOf(PlMailThemeChoice.LIGHT)
 
-        compose.setContent { Row(thread, scheme.value) }
+        compose.setContent { Row(thread, scheme.value, labels, hiddenLabels) }
 
         listOf(PlMailThemeChoice.LIGHT, PlMailThemeChoice.DARK).forEach { choice ->
             scheme.value = choice
@@ -142,7 +177,12 @@ class ThreadRowScreenshotTest {
     }
 
     @Composable
-    private fun Row(thread: ThreadEntity, scheme: PlMailThemeChoice) {
+    private fun Row(
+        thread: ThreadEntity,
+        scheme: PlMailThemeChoice,
+        labels: List<String>,
+        hiddenLabels: Int,
+    ) {
         // reduceMotion, because the alternative is asking a Robolectric
         // ContentResolver for a system setting it has no answer for -- and a
         // screenshot has nothing to animate anyway.
@@ -153,7 +193,12 @@ class ThreadRowScreenshotTest {
                 modifier = Modifier.width(411.dp),
                 color = PlMailTheme.colors.surface,
             ) {
-                ThreadRow(thread = thread, onClick = {})
+                ThreadRow(
+                    thread = thread,
+                    onClick = {},
+                    labels = labels,
+                    hiddenLabels = hiddenLabels,
+                )
             }
         }
     }

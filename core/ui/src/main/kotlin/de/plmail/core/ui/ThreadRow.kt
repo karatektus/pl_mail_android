@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.LocalPlMailTheme
 import de.plmail.core.designsystem.PlMailAvatar
+import de.plmail.core.designsystem.PlMailLabelChip
 import java.time.LocalDate
 
 /**
@@ -91,6 +92,18 @@ fun ThreadRow(
     onLongClick: (() -> Unit)? = null,
     isSelected: Boolean = false,
     /**
+     * The labels to draw, already resolved and already filtered.
+     *
+     * Names rather than ids, and chosen by the caller rather than derived here, because *which*
+     * labels belong on a row is a question about the screen: the list you are looking at must not
+     * chip every row with its own name, and a system role is where the mail is rather than
+     * something the user put on it. `ThreadEntity.rowLabels` in `:core:data` owns those rules and
+     * this module cannot see them — which is the module boundary working, not a gap.
+     */
+    labels: List<String> = emptyList(),
+    /** How many more the row could not fit, drawn as a counter rather than silently dropped. */
+    hiddenLabels: Int = 0,
+    /**
      * What "today" means for the date column.
      *
      * Hoisted for the same reason [asListDate] hoists it one level down: the column's answer is
@@ -115,7 +128,9 @@ fun ThreadRow(
                 // walking.
                 .heightIn(min = spacing.touchTarget)
                 .padding(horizontal = spacing.gutter, vertical = spacing.medium)
-                .clearAndSetSemantics { contentDescription = thread.spoken() },
+                .clearAndSetSemantics {
+                    contentDescription = thread.spoken(labels, hiddenLabels)
+                },
         horizontalArrangement = Arrangement.spacedBy(spacing.medium),
         verticalAlignment = Alignment.Top,
     ) {
@@ -170,13 +185,43 @@ fun ThreadRow(
                 overflow = TextOverflow.Ellipsis,
             )
 
-            Text(
-                text = thread.snippet,
-                style = MaterialTheme.typography.bodySmall,
-                color = colors.inkMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            // Chips share the snippet's line rather than taking one of their
+            // own, and that is a decision about the *list* rather than about the
+            // row. Their own line would make labelled conversations taller than
+            // unlabelled ones, so a mailbox where some mail is labelled scrolls
+            // as a ragged column -- and this row's height is already the thing
+            // that makes fifty of them scroll predictably.
+            //
+            // The snippet is the line they join because it is the one that can
+            // afford them: sender and subject are what the row is identified by,
+            // and a bordered chip beside bold subject text competes with the
+            // subject for the first look. The snippet is muted furniture already,
+            // and it is the line that degrades most gracefully -- it simply says
+            // less.
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.tiny),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                labels.forEach { PlMailLabelChip(text = it) }
+
+                if (hiddenLabels > 0) {
+                    PlMailLabelChip(text = "+$hiddenLabels")
+                }
+
+                Text(
+                    text = thread.snippet,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = colors.inkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    // `weight` rather than `fillMaxWidth`, so the chips take
+                    // their intrinsic width first and the snippet gets what is
+                    // left. Without it a long snippet measures at full width and
+                    // pushes the chips out of the row entirely -- they are
+                    // laid out, they just have nowhere to be.
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
 
         Column(
@@ -253,13 +298,21 @@ private val AFFORDANCE = 15.dp
  */
 private val DOT = 8.dp
 
-/** What the screen reader says, as one sentence rather than eight disconnected fragments. */
-private fun ThreadEntity.spoken(): String = buildList {
+/**
+ * What the screen reader says, as one sentence rather than eight disconnected fragments.
+ *
+ * The labels are in it because the row's semantics are cleared and replaced wholesale — a chip that
+ * is not named here is a chip that does not exist for anyone using TalkBack, and "which labels does
+ * this carry" is exactly the question the chips were added to answer.
+ */
+private fun ThreadEntity.spoken(labels: List<String>, hiddenLabels: Int): String = buildList {
     if (isUnread) add("Unread")
     add(participantsSummary.ifBlank { "Unknown sender" })
     add(subject?.takeIf { it.isNotBlank() } ?: "No subject")
     if (messageCount > 1) add("$messageCount messages")
     if (hasAttachment) add("has attachment")
     if (isFlagged) add("starred")
+    if (labels.isNotEmpty()) add("labelled " + labels.joinToString(", "))
+    if (hiddenLabels > 0) add("and $hiddenLabels more")
 }
     .joinToString(", ")

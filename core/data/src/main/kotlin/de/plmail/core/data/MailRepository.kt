@@ -5,6 +5,7 @@ import de.plmail.core.database.AccountEntity
 import de.plmail.core.database.AttachmentEntity
 import de.plmail.core.database.EmailBodyEntity
 import de.plmail.core.database.EmailEntity
+import de.plmail.core.database.MailboxDao
 import de.plmail.core.database.MailboxEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
@@ -144,6 +145,12 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
             val fetched = threads.associateBy { it.id.value }
             val touched = (fetched.keys + emails.mapNotNull { it.threadId?.value }).toSet()
 
+            // Read once for the whole page. Every thread in it belongs to the
+            // same account and therefore resolves its labels through the same
+            // bindings, so doing this per thread would be one query per row on
+            // the exact path the denormalised table exists to keep cheap.
+            val bindings = database.mailboxes().bindingKeys(accountKey)
+
             // Read back rather than reusing `emails`: the summary has to cover
             // every message the thread now has, not just the ones in this page.
             database
@@ -157,6 +164,7 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
                             thread.toEntity(
                                 accountKey,
                                 database.emails().inThread(accountKey, threadId),
+                                bindings,
                             )
 
                         // Every field on that row is derived from the messages
@@ -242,6 +250,36 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
         database.accounts().setEmailState(accountKey, state)
     }
 
+    /**
+     * Recomputes one conversation's labels from the messages the cache now holds.
+     *
+     * For the local half of applying a label. `MailActions` writes the binding onto the message
+     * rows so the sheet's tick is right immediately, and without this the *row* would keep its old
+     * chips until the next sync happened to touch the thread — so the label sheet and the list
+     * behind it would disagree about the label that had just been applied through them.
+     *
+     * Only this one field, deliberately. Re-deriving the whole summary here would need the Thread
+     * object for the snooze time, which the caller does not have and which a `null` would destroy.
+     */
+    suspend fun refreshLabelsOf(accountKey: String, threadId: String) {
+        val uid = StoreKey.objectKey(accountKey, threadId)
+        val existing = database.threads().byUid(uid) ?: return
+        val bindings = database.mailboxes().bindingKeys(accountKey)
+
+        val keys =
+            database
+                .emails()
+                .inThread(accountKey, threadId)
+                .flatMap { it.mailboxIds.splitIds() }
+                .mapNotNull { bindings[it] }
+                .distinct()
+                .sorted()
+                .joinToString(",")
+
+        if (keys != existing.labelKeys)
+            database.threads().upsert(listOf(existing.copy(labelKeys = keys)))
+    }
+
     /** Records a sync that worked, so the diagnostics screen can say when. */
     suspend fun recordSyncSucceeded(accountKey: String, at: Long) {
         database.accounts().recordSyncSucceeded(accountKey, at)
@@ -261,3 +299,12 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
     /** The composite key for one account on one server. */
     fun accountKey(server: String, accountId: String): String = StoreKey.account(server, accountId)
 }
+
+/**
+ * Binding id to label collapse key, as a map.
+ *
+ * Projected in SQL and assembled here rather than loading whole `MailboxEntity` rows: this runs on
+ * the write path of every synced page, and the only two columns it needs are the two it selects.
+ */
+private suspend fun MailboxDao.bindingKeys(accountKey: String): Map<String, String> =
+    bindingKeyRows(accountKey).associate { it.mailboxId to it.labelKey }

@@ -113,6 +113,25 @@ data class ThreadEntity(
      * is always still pending — nothing has to re-check the clock to know that.
      */
     val snoozedUntil: Long? = null,
+    /**
+     * Which labels this conversation carries, as collapse *keys*, comma-separated.
+     *
+     * Denormalised onto the row for the same reason every other field here is: the list draws fifty
+     * of these and a join per row to work out its labels is the one thing this table exists to
+     * avoid. Written when the row is summarised, from the `mailboxIds` of the messages in it.
+     *
+     * **Keys, not names.** The key is plMail's `labelId`, which is the same value in every account
+     * that binds the label, so a conversation labelled "Work" in two accounts stores one entry
+     * rather than two — the same collapse the sidebar performs, and for the same reason. Storing
+     * the *names* instead would have been fewer moving parts and wrong twice over: a renamed label
+     * would keep its old name on every cached row until each was re-synced, and the row would have
+     * no way to tell a system role from one the user made, which is what decides whether a chip is
+     * drawn at all.
+     *
+     * Comma-separated, matching `EmailEntity.mailboxIds` and the feed cursors' boundary ids. The
+     * separator is safe for the same reason it is there: these are server-issued ids.
+     */
+    val labelKeys: String = "",
 )
 
 @Entity(

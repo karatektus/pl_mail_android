@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -19,9 +20,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
@@ -232,3 +235,72 @@ fun PlMailBanner(
         }
     }
 }
+
+/**
+ * A label, as it appears on a conversation.
+ *
+ * Small, quiet and **never accented**. The row it sits on has exactly one accent — the unread dot —
+ * and that is the whole reason the dot works: a screen of unread mail carries one small repeated
+ * mark in a column of its own. A coloured chip beside it would put a second repeated mark on every
+ * labelled row and the dot would stop meaning anything.
+ *
+ * So a chip is a surface shift and a hairline, like every other separated thing in this product,
+ * with `inkMuted` text — metadata, which is what a label is next to a subject.
+ *
+ * **Colour is coming and is not here yet.** `Label::$color` is a real column in plMail and JMAP
+ * does not expose it: `Mailbox/get` never returns it, `update` refuses it, and `create` accepts it
+ * and silently drops it. That is queued in `docs/SERVER_REQUESTS.md`, and the reason a colour is
+ * not invented locally in the meantime is that a hash of the name would give the same label a
+ * different colour on the phone than on the web, which is worse than no colour at all — the entire
+ * point of colouring a label is that it is the same everywhere. When the server does expose it,
+ * this composable takes a colour parameter and the two lines below resolve from it instead; nothing
+ * about the shape, size or placement changes.
+ */
+@Composable
+fun PlMailLabelChip(text: String, modifier: Modifier = Modifier) {
+    val theme = LocalPlMailTheme.current
+    val shape = RoundedCornerShape(theme.radii.control)
+
+    Box(
+        modifier =
+            modifier
+                // Radius from `control`, not `pane`: a chip is a control, and a
+                // theme that rounds panes generously must not turn a 16dp chip
+                // into a lozenge.
+                .clip(shape)
+                .background(theme.colors.sunken)
+                .border(width = theme.spacing.hair, color = theme.colors.line, shape = shape)
+                .padding(horizontal = theme.spacing.small, vertical = CHIP_VERTICAL)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            color = theme.colors.inkMuted,
+            maxLines = 1,
+            // The end, not the middle. A label name is read left to right and
+            // its first word is nearly always the one that identifies it —
+            // unlike a nested *path* in the sidebar, where both ends matter.
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = CHIP_MAX_WIDTH),
+        )
+    }
+}
+
+/**
+ * Tighter than the spacing scale's smallest step.
+ *
+ * A chip on a list row has to sit inside the line height of the text beside it, and `tiny` at
+ * comfortable density already pushes it past that — which lifts the whole row by a couple of pixels
+ * on labelled conversations only, and a list whose rows are two heights is a list that looks broken
+ * for a reason nobody can name.
+ */
+private val CHIP_VERTICAL = 1.dp
+
+/**
+ * How wide one chip may get.
+ *
+ * Long label names exist — "Steuer 2025", "Wohnung/Nebenkosten" — and one of them must not take the
+ * line the snippet needs. Capped rather than scaled, because the cap is about the *row*, and the
+ * row's width is the same whatever the chip says.
+ */
+private val CHIP_MAX_WIDTH = 96.dp

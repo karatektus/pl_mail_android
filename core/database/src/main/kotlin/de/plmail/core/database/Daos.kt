@@ -69,6 +69,19 @@ interface MailboxDao {
     @Query("SELECT * FROM mailboxes WHERE labelId = :labelId")
     suspend fun bindingsOfLabel(labelId: String): List<MailboxEntity>
 
+    /**
+     * Binding id to collapse key, for one account.
+     *
+     * What a thread row's labels are resolved through when it is summarised. `labelId` where the
+     * server sends one and the row's own uid otherwise, matching `MailboxEntity.labelKey()` —
+     * duplicated here as SQL because doing it in Kotlin would mean loading every mailbox row per
+     * page, and this is on the write path of every sync.
+     */
+    @Query(
+        "SELECT mailboxId, COALESCE(labelId, uid) AS labelKey FROM mailboxes WHERE accountKey = :accountKey"
+    )
+    suspend fun bindingKeyRows(accountKey: String): List<BindingKey>
+
     @Upsert suspend fun upsert(mailboxes: List<MailboxEntity>)
 
     @Query("DELETE FROM mailboxes WHERE uid IN (:uids)") suspend fun delete(uids: List<String>)
@@ -177,6 +190,9 @@ interface EmailDao {
     @Query("DELETE FROM email_bodies WHERE fetchedAt < :before")
     suspend fun evictBodiesOlderThan(before: Long)
 }
+
+/** One mailbox binding and the label it collapses onto. */
+data class BindingKey(val mailboxId: String, val labelKey: String)
 
 /** One `{name, address}` pair, projected out of a message row rather than stored anywhere. */
 data class AddressRow(val name: String?, val address: String)

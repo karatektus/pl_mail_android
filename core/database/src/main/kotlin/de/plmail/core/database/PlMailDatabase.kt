@@ -8,10 +8,17 @@ import androidx.room.RoomDatabase
 /**
  * The local cache.
  *
- * Version 1, and the migration policy is the interesting part: because every row here is
- * reconstructible from the server (see `Entities.kt`), a failed migration is recoverable by
- * deleting the file and syncing again. That is why [create] enables destructive fallback — not
- * carelessness, but the one place where the schema's central constraint pays for itself.
+ * **Version 2**, and the way it got there is the point. `ThreadEntity` grew `labelKeys`, and rather
+ * than writing a migration this bump deliberately falls through to dropping the database and
+ * syncing again — which is exactly what the schema's central constraint was for. Every row here is
+ * reconstructible from the server (see `Entities.kt`), so the cost of the drop is one page of mail
+ * per list the user opens, and the alternative is the first hand-written migration in a schema
+ * designed never to need one, plus a backfill that would have to reconstruct labels by string
+ * matching `mailboxIds` against `mailboxes` in SQL.
+ *
+ * The exported schemas are still checked in and `MigrationTest` still validates them, because that
+ * is what catches an entity and its exported description drifting apart — a drift which, on the day
+ * somebody *does* need a real migration, would be written against a schema that was never true.
  *
  * If a future column ever holds something the server does not know about, this decision becomes
  * wrong and both have to change together.
@@ -29,7 +36,7 @@ import androidx.room.RoomDatabase
             FeedCursorEntity::class,
             IdentityEntity::class,
         ],
-    version = 1,
+    version = 2,
     exportSchema = true,
 )
 abstract class PlMailDatabase : RoomDatabase() {

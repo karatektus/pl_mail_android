@@ -56,6 +56,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
+import de.plmail.core.data.rowLabels
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PlMailBanner
 import de.plmail.core.designsystem.PlMailDivider
@@ -93,6 +94,11 @@ fun MailScreen(
 
     val threads = viewModel.threads.collectAsLazyPagingItems()
     val rowsInFeed by viewModel.rowsInFeed.collectAsStateWithLifecycle()
+    // The same list the "Label as" sheet is drawn from, and the same list the
+    // sidebar orders. A row stores label *keys*, so this is what turns them into
+    // names -- which means a rename shows on every row immediately instead of
+    // waiting for each conversation to be re-synced.
+    val labels by viewModel.labels.collectAsStateWithLifecycle()
     val unreachable by viewModel.unreachable.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
 
@@ -235,6 +241,8 @@ fun MailScreen(
             ThreadList(
                 threads = threads,
                 rowsInFeed = rowsInFeed,
+                labels = labels,
+                viewing = label,
                 selection = selection,
                 onThreadSelected = onThreadSelected,
                 onToggleSelected = viewModel::toggleSelected,
@@ -251,6 +259,10 @@ private fun ThreadList(
      * How many rows the feed table holds, or null before it has been read. See [hasNothingToShow].
      */
     rowsInFeed: Int?,
+    /** Every label the user has, for resolving each row's stored keys into names. */
+    labels: List<Label>,
+    /** The label this list is showing, so its own name is not chipped onto every row in it. */
+    viewing: Label?,
     selection: Set<String>,
     onThreadSelected: (ThreadEntity) -> Unit,
     onToggleSelected: (String) -> Unit,
@@ -286,6 +298,12 @@ private fun ThreadList(
                 SwipeableThreadRow(
                     thread = thread,
                     isSelected = thread.uid in selection,
+                    // Resolved per row rather than precomputed for the page:
+                    // it is a set intersection over a list the sidebar already
+                    // holds in memory, and doing it here means a label renamed
+                    // or deleted while the list is on screen corrects itself on
+                    // the next frame.
+                    labels = thread.rowLabels(labels, viewing),
                     // While a selection is open, tapping extends it rather than
                     // opening a conversation -- otherwise the only way to add a
                     // second row is another long press.
