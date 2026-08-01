@@ -45,9 +45,15 @@ import java.time.LocalDate
  * the smallest line on the row, which is exactly backwards — it is the line people actually read to
  * decide whether to open the mail.
  *
- * Unread is a weight change and a step up the ink scale — semibold sender, semibold full-ink
- * subject, a medium-weight date — and not bold on everything. A row where three lines all go bold
- * is a row that shouts, and an inbox where half the rows shout says nothing.
+ * **Unread changes weight and colour together, on two lines out of three.** Sender and subject go
+ * bold and full ink; read rows step down to `inkSoft`, so the unread mail is the bright text on the
+ * screen and the rest recedes behind it. The preview stays muted in both states — a row where all
+ * three lines go bold is a row that shouts, and an inbox where half the rows shout says nothing.
+ *
+ * Weight alone was tried first and was not enough. Medium against SemiBold at the *same* colour is
+ * a difference you can find when told to look for it and cannot see while scanning, which is the
+ * only thing a mail list is for. The colour step is what does the work; the weight makes it
+ * unambiguous.
  *
  * **Exactly one thing on this row is accented: the unread dot.** Getting to one took removing two
  * marks and putting one of them back somewhere better, so the history is worth keeping.
@@ -126,8 +132,13 @@ fun ThreadRow(
                     text =
                         thread.participantsSummary.ifBlank { stringResource(R.string.no_sender) },
                     style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (thread.isUnread) FontWeight.SemiBold else FontWeight.Medium,
-                    color = colors.ink,
+                    // Bold *and* a full step up the ink scale. Weight alone was
+                    // the mistake: at the same colour, Medium against SemiBold
+                    // is a difference you can find when told to look for it and
+                    // not one you can see across a list. Read rows step down to
+                    // inkSoft so the unread ones are the bright text on screen.
+                    fontWeight = if (thread.isUnread) FontWeight.Bold else FontWeight.Normal,
+                    color = if (thread.isUnread) colors.ink else colors.inkSoft,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -153,7 +164,7 @@ fun ThreadRow(
                     thread.subject?.takeIf { it.isNotBlank() }
                         ?: stringResource(R.string.no_subject),
                 style = MaterialTheme.typography.bodyMedium,
-                fontWeight = if (thread.isUnread) FontWeight.SemiBold else FontWeight.Normal,
+                fontWeight = if (thread.isUnread) FontWeight.Bold else FontWeight.Normal,
                 color = if (thread.isUnread) colors.ink else colors.inkSoft,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -215,13 +226,17 @@ fun ThreadRow(
             }
 
             if (thread.isUnread) {
+                // Centred in a slot the width of a mark, so the dot sits on the
+                // same vertical axis as the star and paperclip above it. Placed
+                // bare it would be flush to the column's right edge, which puts
+                // its centre a few pixels further right than theirs -- close
+                // enough to look like a mistake rather than a variation.
                 Box(
-                    modifier =
-                        Modifier.padding(top = spacing.tiny)
-                            .size(DOT)
-                            .clip(CircleShape)
-                            .background(colors.accent)
-                )
+                    modifier = Modifier.padding(top = spacing.tiny).size(AFFORDANCE),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Box(modifier = Modifier.size(DOT).clip(CircleShape).background(colors.accent))
+                }
             }
         }
     }
