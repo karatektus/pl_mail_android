@@ -151,11 +151,25 @@ data class PlMailMotion(val fast: Int, val normal: Int, val slow: Int, val easin
 /** A restrained ease-out. Quick to start, settles without bouncing. */
 private val EmphasisEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 
-/** How tightly the app packs. Chosen by the user in settings; M10 wires the choice. */
-enum class PlMailDensity(internal val scale: Float, internal val rowHeight: Dp) {
-    COMPACT(0.85f, 64.dp),
-    COMFORTABLE(1f, 76.dp),
-    SPACIOUS(1.2f, 88.dp),
+/**
+ * How tightly the app packs.
+ *
+ * The three are plMail's own `Density` — comfortable, cosy, compact — in its order, loosest first,
+ * and that is a change from the first version rather than a coincidence. This enum used to be
+ * compact / comfortable / spacious, which put the default in the middle and offered a step the
+ * server has no name for; a "spacious" the web can never send is a setting that would silently
+ * vanish the first time `Appearance` synced. Comfortable is the loosest here for the same reason it
+ * is there.
+ */
+enum class PlMailDensity(val wire: String, internal val scale: Float, internal val rowHeight: Dp) {
+    COMFORTABLE("comfortable", 1f, 76.dp),
+    COSY("cosy", 0.85f, 68.dp),
+    COMPACT("compact", 0.72f, 60.dp);
+
+    companion object {
+        fun fromWire(value: String?): PlMailDensity =
+            entries.firstOrNull { it.wire == value } ?: COMFORTABLE
+    }
 }
 
 /**
@@ -164,17 +178,130 @@ enum class PlMailDensity(internal val scale: Float, internal val rowHeight: Dp) 
  * Flat separates with hairlines on the page itself; boxed lifts content onto [PlMailColors.raised]
  * panes with a radius. Both are supported by the same tokens, which is the point — a screen asks
  * for "the container a list row lives in" and the layout decides what that is.
+ *
+ * Flat first, matching the web's dropdown order and its default.
  */
-enum class PlMailLayout {
-    FLAT,
-    BOXED,
+enum class PlMailLayout(val wire: String) {
+    FLAT("flat"),
+    BOXED("boxed");
+
+    companion object {
+        fun fromWire(value: String?): PlMailLayout =
+            entries.firstOrNull { it.wire == value } ?: FLAT
+    }
 }
 
-/** Which colours to resolve. The other four the plan names arrive with M10's settings screen. */
-enum class PlMailThemeChoice {
-    SYSTEM,
-    LIGHT,
-    DARK,
+/**
+ * Which colours to resolve.
+ *
+ * The names and the order are plMail's own `App\Domain\Enum\Theme\Theme`, so a value that arrives
+ * over the wire once `Appearance` is exposed maps by name and nothing has to be translated. The
+ * server carries one more, `paper`; it is not here because the app's own light scheme is already
+ * the warm sheet paper exists to be, and two near-identical creams in one picker is a choice nobody
+ * can make. [fromWire] therefore has to answer for a value it does not know, and does — falling
+ * back to [SYSTEM] rather than throwing, because a theme is not worth failing a sync over.
+ */
+enum class PlMailThemeChoice(val wire: String) {
+    SYSTEM("system"),
+    LIGHT("light"),
+    DARK("dark"),
+    NORD("nord"),
+    DUSK("dusk"),
+    SOLAR("solar");
+
+    /**
+     * Whether this theme is a dark one.
+     *
+     * [systemIsDark] is only consulted by [SYSTEM]; every other value has already decided, which is
+     * the point of choosing one. Taken as a parameter rather than read here so the resolution is
+     * testable without a Compose composition.
+     */
+    fun isDark(systemIsDark: Boolean): Boolean =
+        when (this) {
+            SYSTEM -> systemIsDark
+            LIGHT,
+            SOLAR -> false
+            DARK,
+            NORD,
+            DUSK -> true
+        }
+
+    companion object {
+        fun fromWire(value: String?): PlMailThemeChoice =
+            entries.firstOrNull { it.wire == value } ?: SYSTEM
+    }
+}
+
+/**
+ * How solid a pane is, and the app's answer to the web's `--pane-alpha` / `--pane-blur` knobs.
+ *
+ * Only [alpha] is real here. Blur is deliberately absent: Compose can blur a composable's *own*
+ * content and has no backdrop blur, so a "frosted" pane would blur the text written on it rather
+ * than the list behind it — the opposite of what the knob means. Adding a token that could only be
+ * implemented wrongly would be worse than not having it, so this carries the one value that can be
+ * honoured and `docs/PLAN.md` records why the other is missing.
+ *
+ * Both collapse to opaque when the user asks for reduced transparency, which on Android has to be
+ * an app setting: `Settings.Secure` has no reduce-transparency constant to read — checked against
+ * the API 37 stubs — unlike reduced motion, which the platform does express.
+ */
+@Immutable
+@JvmInline
+value class PlMailSurfaces(val alpha: Float) {
+    companion object {
+        /** Opaque. What the product ships as, and what reduced transparency forces. */
+        val Opaque = PlMailSurfaces(1f)
+    }
+}
+
+/**
+ * The whole appearance choice, resolved.
+ *
+ * The one place the stored strings become types, and the one place a future `Appearance` from the
+ * server will land — which is why [of] takes loose nullable strings rather than enums. The plan
+ * promises that swap touches the resolver and nothing else, and this is the resolver.
+ *
+ * Every field falls back rather than failing. A theme name this build does not know, a density the
+ * web added last week, a preferences file written by a newer version: all of them resolve to the
+ * default. Appearance is the one part of an app that must never be able to stop it starting.
+ */
+@Immutable
+data class PlMailAppearance(
+    val theme: PlMailThemeChoice = PlMailThemeChoice.SYSTEM,
+    val layout: PlMailLayout = PlMailLayout.FLAT,
+    val density: PlMailDensity = PlMailDensity.COMFORTABLE,
+    val dynamicColor: Boolean = false,
+    val reduceTransparency: Boolean = false,
+    val surfaces: PlMailSurfaces = PlMailSurfaces.Opaque,
+) {
+    companion object {
+        /**
+         * The floor on pane translucency, and the reason it is not zero.
+         *
+         * Below about half, text on a pane is read against whatever is behind it rather than
+         * against the pane, and none of the contrast the palette guarantees still holds. A slider
+         * reaching zero can make the app unreadable and then hide the screen that would undo it.
+         */
+        const val MIN_PANE_ALPHA = 0.5f
+
+        fun of(
+            theme: String?,
+            layout: String?,
+            density: String?,
+            dynamicColor: Boolean,
+            reduceTransparency: Boolean,
+            paneAlpha: String?,
+        ): PlMailAppearance =
+            PlMailAppearance(
+                theme = PlMailThemeChoice.fromWire(theme),
+                layout = PlMailLayout.fromWire(layout),
+                density = PlMailDensity.fromWire(density),
+                dynamicColor = dynamicColor,
+                reduceTransparency = reduceTransparency,
+                surfaces =
+                    PlMailSurfaces(paneAlpha?.toFloatOrNull()?.coerceIn(MIN_PANE_ALPHA, 1f) ?: 1f),
+            )
+    }
 }
 
 /** Everything a screen can ask the theme for. */
@@ -186,6 +313,7 @@ data class PlMailThemeValues(
     val motion: PlMailMotion,
     val density: PlMailDensity,
     val layout: PlMailLayout,
+    val surfaces: PlMailSurfaces = PlMailSurfaces.Opaque,
 )
 
 internal fun spacingFor(density: PlMailDensity): PlMailSpacing {

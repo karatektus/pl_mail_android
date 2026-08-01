@@ -153,6 +153,52 @@ name, the way the avatars are coloured — would give the same label a different
 than on the web, which is worse than no colour at all: the whole point of colouring a label is that
 it is the same colour everywhere the user sees it.
 
+### `Appearance` has no JMAP surface, so the phone and the web disagree about the theme
+
+**What the client wants to do.** Look the way the user set it on the web. Somebody who picked Nord
+in plMail's settings and then installs the Android app is, reasonably, expecting Nord — and having
+to set it a second time is the moment the app stops feeling like the same product.
+
+**What it can do today.** Everything except read and write it. The Android appearance model landed
+on 2026-08-01 and is deliberately built to the server's shape rather than to its own: six themes
+named with plMail's own `Theme` values, `Layout` flat/boxed, `Density` comfortable/cosy/compact —
+all resolved from **wire strings**, through `PlMailAppearance.of(...)`, which is the one function
+the sync will have to call. The choice is stored locally in DataStore instead. So the cost today is
+that the two surfaces drift apart the moment either is changed, silently, with no indication that
+they were ever meant to agree.
+
+**What was checked.** 2026-08-01, reading `~/pl_mail`. `App\Entity\Embeddable\Appearance` is a
+real embeddable on `User` with `theme`, `layout`, `accent`, `paneAlpha`, `paneBlur`, `radius`,
+`density`, `backgroundKind/Preset/File/Solid`, `scrimAlpha` and four ink overrides — all validated
+and clamped in the setters. `grep -rn 'Appearance' src/Jmap/` returns **nothing**: it is reachable
+only through `App\Controller\Settings\AppearanceController`, an HTML/Turbo route, which is exactly
+the surface clients are told never to build against. The session object advertises no capability
+for it.
+
+**Smallest change that would unblock it.** A read of the same embeddable in the session object would
+be enough to start — the client can honour a theme it cannot yet change. A settable version wants
+something like `Appearance/get` and `Appearance/set` under a `urn:plmail:params:jmap:appearance`
+capability, over the accessors that already exist.
+
+**Client-side workaround.** In place: the setting is local. It is honest as far as it goes and does
+not have to be undone — the local store becomes the override rather than the source, which is what
+`StoredAppearance`'s nullable fields are for.
+
+Three details worth having decided in advance, since they are what the swap will trip over:
+
+- **The server has a seventh theme, `paper`, and the app does not.** plMail's own default is Paper,
+  and the app's Light *is* a warm sheet already — two near-identical creams in one picker is a
+  choice nobody can make. `PlMailThemeChoice.fromWire` therefore falls back to `system` rather than
+  throwing, so a synced `paper` degrades instead of failing. Whether it should map to Light instead
+  is a product decision, not a technical one.
+- **`density` disagreed and the app moved.** It was compact/comfortable/spacious here and is
+  comfortable/cosy/compact there; a "spacious" the server can never send would vanish on the first
+  sync, so the Android enum was renamed to the server's before anything shipped on top of it.
+- **`paneBlur` is accepted and not implemented on Android.** Compose can blur a composable's own
+  content and has no backdrop blur, so a "frosted" pane would blur the text written on it rather
+  than the list behind it. `paneAlpha` is honoured; blur will have to be ignored until Compose grows
+  a backdrop filter, and the client should say so rather than pretending.
+
 ### Scheduled send: `maxDelayedSend` is 0
 
 **What the client wants to do.** "Send tomorrow at 8am", which is table stakes against Gmail.

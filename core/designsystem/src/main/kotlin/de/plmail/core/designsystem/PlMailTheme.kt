@@ -8,11 +8,17 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -74,28 +80,75 @@ object PlMailTheme {
         @Composable @ReadOnlyComposable get() = LocalPlMailTheme.current.layout
 }
 
+/**
+ * The theme, from one resolved appearance.
+ *
+ * What the app itself calls. The parameter list below is for tests and screenshots, which vary one
+ * axis at a time and would otherwise have to build a whole appearance to change a scheme.
+ */
+@Composable
+fun PlMailTheme(
+    appearance: PlMailAppearance,
+    reduceMotion: Boolean? = null,
+    content: @Composable () -> Unit,
+) {
+    PlMailTheme(
+        theme = appearance.theme,
+        layout = appearance.layout,
+        density = appearance.density,
+        dynamicColor = appearance.dynamicColor,
+        reduceMotion = reduceMotion,
+        reduceTransparency = appearance.reduceTransparency,
+        surfaces = appearance.surfaces,
+        content = content,
+    )
+}
+
 @Composable
 fun PlMailTheme(
     theme: PlMailThemeChoice = PlMailThemeChoice.SYSTEM,
     layout: PlMailLayout = PlMailLayout.FLAT,
     density: PlMailDensity = PlMailDensity.COMFORTABLE,
     /**
+     * Material You, as a switch beside the theme rather than as a seventh theme.
+     *
+     * It is a different *kind* of answer: the other six say what the app looks like, and this says
+     * "take it from the wallpaper" — which still needs light or dark to be decided, and therefore
+     * still needs [theme]. A picker mixing the two would make "Nord" and "from my wallpaper"
+     * mutually exclusive for no reason a user could name.
+     *
+     * No version guard, and that is worth stating rather than leaving to be rediscovered: dynamic
+     * colour needs API 31 and this app's `minSdk` **is** 31, so every device that can install it
+     * can do this. The guard would be dead code that looks like caution.
+     */
+    dynamicColor: Boolean = false,
+    /**
      * Overrides the reduced-motion check, for tests and screenshots.
      *
      * Null means "ask the system", which is the only correct answer at runtime.
      */
     reduceMotion: Boolean? = null,
+    /** Forces panes opaque whatever [surfaces] asks for. See [PlMailSurfaces]. */
+    reduceTransparency: Boolean = false,
+    surfaces: PlMailSurfaces = PlMailSurfaces.Opaque,
     content: @Composable () -> Unit,
 ) {
-    val isDark =
-        when (theme) {
-            PlMailThemeChoice.SYSTEM -> isSystemInDarkTheme()
-            PlMailThemeChoice.LIGHT -> false
-            PlMailThemeChoice.DARK -> true
+    val context = LocalContext.current
+    val isDark = theme.isDark(systemIsDark = isSystemInDarkTheme())
+
+    val colors =
+        if (dynamicColor) {
+            // Remembered on the scheme rather than recomputed every
+            // recomposition: reading the dynamic scheme walks the system's
+            // colour resources, and this sits above every screen in the app.
+            val scheme =
+                if (isDark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+
+            remember(scheme, isDark) { scheme.asPlMailColors(isDark) }
+        } else {
+            paletteFor(theme, isDark)
         }
 
-    val colors = if (isDark) Palette.Dark else Palette.Light
-    val context = LocalContext.current
     val reduced = reduceMotion ?: context.prefersReducedMotion()
 
     val values =
@@ -106,6 +159,7 @@ fun PlMailTheme(
             motion = if (reduced) PlMailMotion.Reduced else PlMailMotion.Standard,
             density = density,
             layout = layout,
+            surfaces = if (reduceTransparency) PlMailSurfaces.Opaque else surfaces,
         )
 
     CompositionLocalProvider(LocalPlMailTheme provides values) {
@@ -117,6 +171,116 @@ fun PlMailTheme(
         )
     }
 }
+
+/**
+ * The palette a choice resolves to.
+ *
+ * `SYSTEM` is the only value that needs [isDark] told to it; the rest carry their own scheme, which
+ * is why choosing Nord on a phone in light mode gives Nord rather than a light approximation of it.
+ * Internal rather than private so `PaletteContrastTest` can sweep every theme through the same
+ * resolver the app uses, instead of listing the palettes again and quietly missing one.
+ */
+internal fun paletteFor(theme: PlMailThemeChoice, isDark: Boolean): PlMailColors =
+    when (theme) {
+        PlMailThemeChoice.NORD -> Palette.Nord
+        PlMailThemeChoice.DUSK -> Palette.Dusk
+        PlMailThemeChoice.SOLAR -> Palette.Solar
+        PlMailThemeChoice.LIGHT -> Palette.Light
+        PlMailThemeChoice.DARK -> Palette.Dark
+        PlMailThemeChoice.SYSTEM -> if (isDark) Palette.Dark else Palette.Light
+    }
+
+/** Three colours that stand for a theme: the page, its ink, its accent. */
+@Immutable data class PlMailSwatch(val page: Color, val ink: Color, val accent: Color)
+
+/**
+ * What a theme looks like, for a picker.
+ *
+ * **Sampled from the palette, never painted.** A hand-written swatch is a second copy of a theme's
+ * identity that has to be kept in agreement with the first one forever, and the way it fails is a
+ * picker offering a colour the theme does not have — which is the one thing a picker exists not to
+ * do. plMail's own `Theme::swatch()` is a hardcoded array for exactly this reason, and it is the
+ * kind of thing worth not copying.
+ *
+ * `SYSTEM` returns **two** columns, because it is the only choice that is not one appearance: a
+ * single column would show whichever scheme the phone is in and be pixel-identical to Light or
+ * Dark, giving no reason to pick it.
+ */
+fun PlMailThemeChoice.swatch(): List<PlMailSwatch> =
+    when (this) {
+        PlMailThemeChoice.SYSTEM ->
+            listOf(
+                paletteFor(this, isDark = false).swatch(),
+                paletteFor(this, isDark = true).swatch(),
+            )
+        else -> listOf(paletteFor(this, isDark(systemIsDark = false)).swatch())
+    }
+
+private fun PlMailColors.swatch(): PlMailSwatch =
+    PlMailSwatch(page = surface, ink = ink, accent = accent)
+
+/**
+ * The wallpaper's colours, expressed as this app's tokens.
+ *
+ * Mapping the whole token set rather than only the accent is the point. Material You is not "your
+ * wallpaper decides the buttons" — it is a tinted set of *neutrals*, and an app that takes the
+ * primary and keeps its own greys gets the one part of it that reads as a mismatch.
+ *
+ * Two mappings are worth explaining because the obvious version is wrong.
+ *
+ * `sunken` is not `surfaceContainerHighest` in both schemes. Sunken means *inset into the page*,
+ * which in a light scheme is darker than the surface and in a dark scheme is darker still — and
+ * Material's container ramp runs from dim to bright in light and the other way in dark. Taking one
+ * end of it unconditionally produces a search field that is inset in one scheme and raised in the
+ * other.
+ *
+ * `inkSoft` and `inkFaint` are interpolated rather than taken from tokens, because Material has
+ * exactly two on-surface tones and this product's hierarchy has four. Blending toward the surface
+ * is what a fifth tone would be; the alternative is two pairs of identical-looking steps, which
+ * collapses the hierarchy the ink scale exists to carry.
+ *
+ * **This is the one scheme `PaletteContrastTest` cannot cover**, because the values come from a
+ * wallpaper the test has never seen. Material's own tonal spacing is what guarantees the pairs
+ * here, which is a reason to map onto its pairs — `onPrimary` on `primary`, `onSurface` on
+ * `surface` — rather than to invent combinations it never checked.
+ */
+private fun ColorScheme.asPlMailColors(isDark: Boolean): PlMailColors =
+    PlMailColors(
+        isDark = isDark,
+        surface = surface,
+        raised = if (isDark) surfaceContainer else surfaceContainerLowest,
+        sunken = if (isDark) surfaceContainerLowest else surfaceContainerHigh,
+        hover = surfaceContainerHighest,
+        line = outlineVariant,
+        lineStrong = outline,
+        ink = onSurface,
+        inkSoft = lerp(onSurface, surface, 0.15f),
+        inkMuted = onSurfaceVariant,
+        inkFaint = lerp(onSurfaceVariant, surface, 0.3f),
+        accent = primary,
+        accentHover = lerp(primary, onSurface, 0.2f),
+        accentSoft = primaryContainer,
+        onAccent = onPrimary,
+        fieldSurface = if (isDark) surfaceContainer else surfaceContainerLowest,
+        fieldLine = outline,
+        fieldPlaceholder = onSurfaceVariant,
+        danger = error,
+        dangerSoft = errorContainer,
+        // Material has no warning, success or info role, so these stay the
+        // app's own. Deriving them from the wallpaper would mean inventing
+        // three hues with no tonal guarantee behind them, and "success" coming
+        // out the same colour as "danger" on a red wallpaper is a real
+        // outcome rather than a theoretical one.
+        warning = if (isDark) Palette.Dark.warning else Palette.Light.warning,
+        warningSoft = if (isDark) Palette.Dark.warningSoft else Palette.Light.warningSoft,
+        success = if (isDark) Palette.Dark.success else Palette.Light.success,
+        successSoft = if (isDark) Palette.Dark.successSoft else Palette.Light.successSoft,
+        info = if (isDark) Palette.Dark.info else Palette.Light.info,
+        infoSoft = if (isDark) Palette.Dark.infoSoft else Palette.Light.infoSoft,
+        inverseSurface = inverseSurface,
+        inverseInk = inverseOnSurface,
+        inverseAccent = inversePrimary,
+    )
 
 /**
  * Whether the system has been asked to keep animation short.

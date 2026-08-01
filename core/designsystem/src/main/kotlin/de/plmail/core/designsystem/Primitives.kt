@@ -82,7 +82,18 @@ fun PlMailPane(
     Box(
         modifier =
             modifier
-                .background(background, shape)
+                // The alpha knob applies to the pane's *fill*, never to its
+                // contents: `Modifier.alpha` would fade the text written on it
+                // too, which is a pane that is hard to read rather than a pane
+                // you can see through. It is only ever below 1 in the boxed
+                // layout, because a translucent pane on a flat page is a
+                // translucent thing over the same colour it is drawn on --
+                // invisible, and a compositing layer for nothing.
+                .background(
+                    color =
+                        if (isBoxed) background.copy(alpha = theme.surfaces.alpha) else background,
+                    shape = shape,
+                )
                 .then(
                     if (isBoxed || tone != PaneTone.RAISED) {
                         Modifier.border(theme.spacing.hair, theme.colors.line, shape)

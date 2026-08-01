@@ -141,4 +141,5 @@
       a message synced before raw storage existed reconstructs to nothing.
     -->
     <string name="source_empty">The server has no source stored for this message.</string>
+    <string name="appearance">Appearance</string>
 </resources>

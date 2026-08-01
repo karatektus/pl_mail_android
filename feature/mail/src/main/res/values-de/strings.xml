@@ -110,4 +110,5 @@
     <string name="source_share">Teilen</string>
     <string name="source_failed">Der Quelltext konnte nicht geladen werden.</string>
     <string name="source_empty">Für diese Nachricht ist auf dem Server kein Quelltext hinterlegt.</string>
+    <string name="appearance">Darstellung</string>
 </resources>

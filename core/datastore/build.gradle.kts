@@ -16,6 +16,10 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Turbine, for the one assertion that is about an emission *not* happening:
+    // `expectNoEvents` is the only honest way to state "a sync writing a
+    // timestamp must not re-theme the app".
+    testImplementation(libs.turbine)
     testRuntimeOnly(libs.junit.platform.launcher)
 
     androidTestImplementation(libs.androidx.test.ext.junit)

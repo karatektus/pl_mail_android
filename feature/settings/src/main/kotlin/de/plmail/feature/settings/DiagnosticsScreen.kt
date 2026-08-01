@@ -295,7 +295,7 @@ private fun CheckNow(report: DiagnosticsReport, onCheck: () -> Unit) {
 
 /** A heading and the facts under it. Whitespace separates sections, not a card around each. */
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
+internal fun Section(title: String, content: @Composable () -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.small)) {
         Text(
             text = title,

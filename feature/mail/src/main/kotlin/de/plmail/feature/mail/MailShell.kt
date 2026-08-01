@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 fun MailShell(
     onSearch: () -> Unit,
     onDiagnostics: () -> Unit,
+    onAppearance: () -> Unit,
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
@@ -87,6 +88,10 @@ fun MailShell(
                     // back to an open drawer over the mail the user was reading.
                     scope.launch { drawer.close() }
                     onDiagnostics()
+                },
+                onAppearance = {
+                    scope.launch { drawer.close() }
+                    onAppearance()
                 },
             )
         }

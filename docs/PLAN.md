@@ -672,8 +672,50 @@ The screen deliberately makes **no requests when it is opened**. Adding traffic 
 is already worried about is the wrong first move, so everything is recorded state except the one
 button that says it contacts the server.
 
-Still to come in M10: the Theme × Layout chooser with density, account list and order, sync-window
-display, and notification preferences.
+**The Theme × Layout chooser landed on 2026-08-01**, and the shape it landed in is the server's
+rather than its own. `Theme`, `Layout` and `Density` are plMail's own enums with plMail's own wire
+values, resolved through one function — `PlMailAppearance.of(theme, layout, density, …)` — so
+`Appearance` arriving over JMAP replaces the *source* of that call and touches nothing else. Three
+consequences of taking that seriously, each of which changed the client:
+
+- **Density was renamed before anything shipped on it.** It was compact/comfortable/spacious and is
+  now comfortable/cosy/compact, because "spacious" is a step the server has no name for — a setting
+  that would silently vanish the first time the two synced.
+- **Nord, Dusk and Solar take their surfaces and ink from the web's own stylesheet**, so the same
+  theme is the same theme on both. What could not be taken is the parts that fail WCAG AA on a
+  phone: Nord's `#BF616A` red is 3.0:1 on Polar Night, and *every* Solarized accent fails on
+  `base3` — yellow 3.0, orange 4.3, blue 3.5. Those palettes were designed for syntax highlighting
+  and terminals, where an accent is a hint over text that is legible anyway. They are lightened or
+  darkened only as far as AA requires, and `PaletteContrastTest` now sweeps every theme through the
+  same resolver the app uses rather than a list somebody has to remember to extend.
+- **The warmth rule is scoped rather than waived.** Nord is a published palette chosen by name;
+  correcting its blues toward this app's warm neutrals would hand back a theme that is not the one
+  asked for. The assertion applies to Light and Dark, which are what plMail looks like when nobody
+  has chosen.
+
+Material You sits beside the six as a switch rather than as a seventh entry: it is a different kind
+of answer, and it still needs light or dark decided, which is what the theme list is for. The whole
+token set is mapped from the dynamic scheme rather than only the accent — an app that takes the
+primary and keeps its own greys gets the one part of Material You that reads as a mismatch. It needs
+no version guard, which is worth saying rather than rediscovering: dynamic colour is API 31 and this
+app's `minSdk` **is** 31.
+
+Reduced motion was already honoured from the system. **Reduced transparency cannot be** — checked
+against the API 37 stubs, `Settings.Secure` has no constant for it — so it is an app switch, and the
+screen says so rather than leaving the asymmetry looking like an oversight. `paneBlur` is the one
+knob deliberately absent: Compose blurs a composable's own content and has no backdrop filter, so a
+"frosted" pane would blur the text on it rather than the list behind it, and a token that could only
+be implemented wrongly is worse than a missing one.
+
+The screen is its own preview — every control writes immediately and the app re-themes under the
+finger — which is also how the next defect surfaced. **Back left the app.** Search and diagnostics
+had the same bug and had had it since they were written: these screens are swapped in by boolean
+state rather than pushed onto a back stack, so nothing consumed the gesture. The flags are not
+mutually exclusive either, so the fix is one derived `Screen` value used by both the `when` that
+draws and the `BackHandler` that dismisses, rather than one handler per flag that can disagree with
+what is on screen.
+
+Still to come in M10: account list and order, sync-window display, and notification preferences.
 
 ### M10 · Appearance and settings — the rest
 The two-axis **Theme × Layout** model with density and knobs on top, in a `LocalPlMailTheme`

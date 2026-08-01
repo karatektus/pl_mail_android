@@ -30,4 +30,32 @@
     <string name="diagnostics_check">Jetzt prüfen</string>
     <string name="diagnostics_check_explains">Synchronisiert alle Konten und fragt den Server, ob Push verifiziert ist. Nur das kontaktiert von dieser Seite aus Ihren Server.</string>
     <string name="diagnostics_check_failed">Prüfung fehlgeschlagen: %1$s</string>
+    <string name="appearance">Darstellung</string>
+    <string name="appearance_title">Darstellung</string>
+    <string name="appearance_theme">Farbschema</string>
+    <string name="theme_system">Wie das System</string>
+    <string name="theme_light">Hell</string>
+    <string name="theme_dark">Dunkel</string>
+    <string name="theme_nord">Nord</string>
+    <string name="theme_dusk">Dämmerung</string>
+    <string name="theme_solar">Solar</string>
+
+    <string name="appearance_dynamic">Farben meines Hintergrundbilds</string>
+    <string name="appearance_dynamic_body">Nimmt die Farben vom Hintergrundbild statt vom Schema oben. Hell oder dunkel richtet sich weiterhin nach Ihrer Wahl.</string>
+
+    <string name="appearance_layout">Layout</string>
+    <string name="layout_flat">Flach</string>
+    <string name="layout_boxed">Flächen</string>
+    <string name="appearance_layout_body">Flach trennt mit Haarlinien auf der Seite. Flächen hebt Inhalte auf abgerundete Karten.</string>
+
+    <string name="appearance_density">Dichte</string>
+    <string name="density_comfortable">Bequem</string>
+    <string name="density_cosy">Mittel</string>
+    <string name="density_compact">Kompakt</string>
+
+    <string name="appearance_accessibility">Barrierefreiheit</string>
+    <string name="appearance_solid_panes">Flächen deckend halten</string>
+    <string name="appearance_solid_panes_body">Schaltet durchscheinende Flächen ab. Android hat dafür keine Systemeinstellung, deshalb steht sie hier; reduzierte Bewegung wird automatisch aus den Geräteeinstellungen übernommen.</string>
+    <string name="appearance_pane_alpha">Deckkraft der Flächen</string>
+    <string name="appearance_pane_sample">So sieht eine Fläche aus.</string>
 </resources>

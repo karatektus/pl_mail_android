@@ -99,6 +99,147 @@ internal object Palette {
         )
 
     /**
+     * Nord, and the one place this file's warmth rule is deliberately broken.
+     *
+     * Nord is somebody else's palette, chosen by name — a user who picks it has picked *that* blue
+     * grey, and correcting it toward the warm neutrals the rest of this file argues for would
+     * produce a theme that is no longer the thing they asked for. `PaletteContrastTest` scopes the
+     * warmth assertion to the app's own two schemes for exactly this reason.
+     *
+     * Surface and the three ink steps are the values plMail's own stylesheet uses
+     * (`[data-theme="nord"]` in `assets/styles/app.css`), so the phone and the web agree about what
+     * Nord looks like. Everything the web derives through alpha compositing — the raised and sunken
+     * surfaces, the hairline, the status colours — is resolved here to a flat colour instead,
+     * because this product separates with a surface shift rather than a translucent overlay.
+     *
+     * Two of Nord's own Aurora colours had to be lightened to clear AA against Polar Night: the red
+     * `#BF616A` lands at 3.0:1 and the frost blue `#81A1C1` at 4.6:1. Nord was designed for syntax
+     * highlighting, where a keyword's colour is a hint and the text under it is still legible on
+     * its own; an error message is not.
+     */
+    val Nord =
+        PlMailColors(
+            isDark = true,
+            surface = Color(0xFF2E3440),
+            raised = Color(0xFF3B4252),
+            sunken = Color(0xFF272B35),
+            hover = Color(0xFF3F4859),
+            line = Color(0xFF434C5E),
+            lineStrong = Color(0xFF4C566A),
+            ink = Color(0xFFECEFF4),
+            inkSoft = Color(0xFFE5E9F0),
+            inkMuted = Color(0xFFD8DEE9),
+            inkFaint = Color(0xFF8F9EB3),
+            accent = Color(0xFF88C0D0),
+            accentHover = Color(0xFFA3D3E0),
+            accentSoft = Color(0xFF2A3A42),
+            onAccent = Color(0xFF22303A),
+            fieldSurface = Color(0xFF353C4A),
+            fieldLine = Color(0xFF4C566A),
+            fieldPlaceholder = Color(0xFF9AA7BB),
+            danger = Color(0xFFDF8B93),
+            dangerSoft = Color(0xFF3A2528),
+            warning = Color(0xFFEBCB8B),
+            warningSoft = Color(0xFF3A3324),
+            success = Color(0xFFA3BE8C),
+            successSoft = Color(0xFF2C3826),
+            info = Color(0xFF9DBBD8),
+            infoSoft = Color(0xFF26313C),
+            inverseSurface = Color(0xFFECEFF4),
+            inverseInk = Color(0xFF2E3440),
+            inverseAccent = Color(0xFF3F6D86),
+        )
+
+    /**
+     * Dusk — the violet twilight, matching `[data-theme="dusk"]` on the web.
+     *
+     * Cool like Nord and for the same reason, but where Nord is a documented palette this one is
+     * plMail's own: surface and the ink steps come from the stylesheet, and the rest is derived to
+     * sit with them. The accent is the violet the web's swatch advertises, which is bright enough
+     * on this surface to be used as text without lightening.
+     */
+    val Dusk =
+        PlMailColors(
+            isDark = true,
+            surface = Color(0xFF1E1B2E),
+            raised = Color(0xFF272341),
+            sunken = Color(0xFF171422),
+            hover = Color(0xFF2E2947),
+            line = Color(0xFF3A3358),
+            lineStrong = Color(0xFF4A4270),
+            ink = Color(0xFFEDE9FE),
+            inkSoft = Color(0xFFDDD6FE),
+            inkMuted = Color(0xFFC4B5FD),
+            inkFaint = Color(0xFF9385C4),
+            accent = Color(0xFFA78BFA),
+            accentHover = Color(0xFFC4B5FD),
+            accentSoft = Color(0xFF2E2450),
+            onAccent = Color(0xFF1D1533),
+            fieldSurface = Color(0xFF272341),
+            fieldLine = Color(0xFF4A4270),
+            fieldPlaceholder = Color(0xFFA495D4),
+            danger = Color(0xFFF4899C),
+            dangerSoft = Color(0xFF3A1F2B),
+            warning = Color(0xFFF5C266),
+            warningSoft = Color(0xFF382B1B),
+            success = Color(0xFF86D9A5),
+            successSoft = Color(0xFF1E3328),
+            info = Color(0xFF9CBEF5),
+            infoSoft = Color(0xFF22293C),
+            inverseSurface = Color(0xFFEDE9FE),
+            inverseInk = Color(0xFF1E1B2E),
+            inverseAccent = Color(0xFF5B3FA8),
+        )
+
+    /**
+     * Solar — Solarized Light's cream, and the theme AA argued with hardest.
+     *
+     * The surface is Solarized's `base3` and the web uses `base01 #586E75` as its ink. That is
+     * 4.9:1 here, which passes the floor for body text and fails this file's own 7:1 rule for `ink`
+     * — the rule exists because `ink` is what a subject line is set in and a mail list is read at
+     * arm's length. So the ink steps are Solarized's slate carried two stops darker, which keeps
+     * the hue and buys the headroom.
+     *
+     * The accent went the same way and further. **Every** Solarized accent fails AA on `base3`:
+     * yellow `#B58900` is 3.0:1, orange `#CB4B16` is 4.3:1, blue `#268BD2` is 3.5:1 — the palette
+     * was built for a terminal, where the accent sits on `base02` rather than on the page. The
+     * ochre here is Solarized yellow darkened until it clears 4.5:1 against both the page and its
+     * own tint.
+     */
+    val Solar =
+        PlMailColors(
+            isDark = false,
+            surface = Color(0xFFFDF6E3),
+            raised = Color(0xFFFFFDF4),
+            sunken = Color(0xFFEEE8D5),
+            hover = Color(0xFFF2EBD6),
+            line = Color(0xFFE3DAC0),
+            lineStrong = Color(0xFFD3C7A6),
+            ink = Color(0xFF33454B),
+            inkSoft = Color(0xFF4A5F66),
+            inkMuted = Color(0xFF5A6E74),
+            inkFaint = Color(0xFF7C8C8C),
+            accent = Color(0xFF7E5F00),
+            accentHover = Color(0xFF634A00),
+            accentSoft = Color(0xFFF7EFD8),
+            onAccent = Color(0xFFFFFFFF),
+            fieldSurface = Color(0xFFFFFDF4),
+            fieldLine = Color(0xFFDCD2B4),
+            fieldPlaceholder = Color(0xFF6E7F84),
+            danger = Color(0xFFA62A22),
+            dangerSoft = Color(0xFFF7E2D8),
+            warning = Color(0xFF8A5A00),
+            warningSoft = Color(0xFFF5EAC9),
+            success = Color(0xFF2C6B3E),
+            successSoft = Color(0xFFE3EFDA),
+            info = Color(0xFF245C8F),
+            infoSoft = Color(0xFFDFEAF2),
+            inverseSurface = Color(0xFF33454B),
+            inverseInk = Color(0xFFFDF6E3),
+            inverseAccent = Color(0xFFD9B85C),
+        )
+
+    /**
      * The colours a letter avatar cycles through, indexed by a hash of the sender's **address**.
      *
      * Muted on purpose — a list of forty rows with forty saturated circles in it is a chart, not a

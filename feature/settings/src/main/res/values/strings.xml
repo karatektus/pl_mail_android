@@ -41,4 +41,43 @@
     <string name="diagnostics_check">Check now</string>
     <string name="diagnostics_check_explains">Syncs every account and asks the server whether push is verified. This is the only thing on this screen that contacts your server.</string>
     <string name="diagnostics_check_failed">Check failed: %1$s</string>
+    <string name="appearance">Appearance</string>
+    <string name="appearance_title">Appearance</string>
+    <string name="appearance_theme">Theme</string>
+    <string name="theme_system">Follow the system</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+    <string name="theme_nord">Nord</string>
+    <string name="theme_dusk">Dusk</string>
+    <string name="theme_solar">Solar</string>
+
+    <string name="appearance_dynamic">Use my wallpaper\'s colours</string>
+    <!--
+      Says what it replaces rather than naming the Android feature: "Material
+      You" means nothing to somebody who did not read the release notes, and
+      the question they are actually answering is whether the theme above still
+      applies.
+    -->
+    <string name="appearance_dynamic_body">Takes the palette from your wallpaper instead of the theme above. Light or dark still follows your choice.</string>
+
+    <string name="appearance_layout">Layout</string>
+    <string name="layout_flat">Flat</string>
+    <string name="layout_boxed">Boxed</string>
+    <string name="appearance_layout_body">Flat separates with hairlines on the page. Boxed lifts content onto rounded panes.</string>
+
+    <string name="appearance_density">Density</string>
+    <string name="density_comfortable">Comfortable</string>
+    <string name="density_cosy">Cosy</string>
+    <string name="density_compact">Compact</string>
+
+    <string name="appearance_accessibility">Accessibility</string>
+    <string name="appearance_solid_panes">Keep panes solid</string>
+    <!--
+      Names the thing Android does not offer, because the absence looks like an
+      oversight otherwise: reduced motion is a system setting the app already
+      obeys without asking, and there is no equivalent for transparency.
+    -->
+    <string name="appearance_solid_panes_body">Turns off see-through panes. Android has no system setting for this, so it lives here; reduced motion is taken from your device settings automatically.</string>
+    <string name="appearance_pane_alpha">Pane solidity</string>
+    <string name="appearance_pane_sample">This is what a pane looks like.</string>
 </resources>

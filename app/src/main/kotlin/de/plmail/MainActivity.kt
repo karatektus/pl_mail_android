@@ -3,6 +3,7 @@ package de.plmail
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
@@ -22,10 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
-import de.plmail.core.designsystem.PlMailDensity
-import de.plmail.core.designsystem.PlMailLayout
 import de.plmail.core.designsystem.PlMailTheme
-import de.plmail.core.designsystem.PlMailThemeChoice
 import de.plmail.feature.compose.ComposeHost
 import de.plmail.feature.compose.ComposeRequest
 import de.plmail.feature.compose.ComposeRequestSaver
@@ -34,6 +32,8 @@ import de.plmail.feature.mail.MailShell
 import de.plmail.feature.mail.ThreadTarget
 import de.plmail.feature.onboarding.OnboardingScreen
 import de.plmail.feature.search.SearchScreen
+import de.plmail.feature.settings.AppearanceScreen
+import de.plmail.feature.settings.AppearanceViewModel
 import de.plmail.feature.settings.DiagnosticsScreen
 import de.plmail.notifications.NotificationRequest
 import de.plmail.notifications.RequestNotificationPermission
@@ -122,6 +122,7 @@ private fun PlMailApp(
     // exactly that. :app is the one place allowed to know about all three.
     var isSearching by rememberSaveable { mutableStateOf(false) }
     var isDiagnosing by rememberSaveable { mutableStateOf(false) }
+    var isAdjustingAppearance by rememberSaveable { mutableStateOf(false) }
     var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
 
     // Over the mail list, never over the composer: the composer has closed by
@@ -197,13 +198,45 @@ private fun PlMailApp(
                 // cases disagree about whether it should exist at all -- see
                 // ComposeHost.
                 ComposeHost(request = composing, onClose = { composing = null }) {
-                    if (isDiagnosing && openThread == null) {
+                    // One value rather than a chain read twice. The system
+                    // back handler below has to dismiss *whichever* screen is on
+                    // top, and the flags are not exclusive -- opening appearance
+                    // from a search leaves both set, and a notification arriving
+                    // outranks all of them -- so deriving the answer once is
+                    // what stops back closing a screen nobody can see.
+                    val screen =
+                        when {
+                            openThread != null -> Screen.MAIL
+                            isAdjustingAppearance -> Screen.APPEARANCE
+                            isDiagnosing -> Screen.DIAGNOSTICS
+                            isSearching -> Screen.SEARCH
+                            else -> Screen.MAIL
+                        }
+
+                    // Without this, back on any of these three left the *app*.
+                    // They are swapped in by state rather than pushed onto a
+                    // back stack, so nothing else was going to consume the
+                    // gesture -- and a settings screen you can only leave by
+                    // finding the arrow is a settings screen people back out of
+                    // and lose the app from.
+                    BackHandler(enabled = screen != Screen.MAIL) {
+                        when (screen) {
+                            Screen.APPEARANCE -> isAdjustingAppearance = false
+                            Screen.DIAGNOSTICS -> isDiagnosing = false
+                            Screen.SEARCH -> isSearching = false
+                            Screen.MAIL -> Unit
+                        }
+                    }
+
+                    if (screen == Screen.APPEARANCE) {
+                        AppearanceScreen(onBack = { isAdjustingAppearance = false })
+                    } else if (screen == Screen.DIAGNOSTICS) {
                         // Above search in this chain rather than beside it,
                         // because a notification tap has to win over both: mail
                         // arriving is a reason to leave a screen the user opened
                         // to find out why mail was not arriving.
                         DiagnosticsScreen(onBack = { isDiagnosing = false })
-                    } else if (isSearching && openThread == null) {
+                    } else if (screen == Screen.SEARCH) {
                         SearchScreen(
                             // The reader is M4's and reached from the list;
                             // opening a result closes search, so Back returns to
@@ -216,6 +249,7 @@ private fun PlMailApp(
                         MailShell(
                             onSearch = { isSearching = true },
                             onDiagnostics = { isDiagnosing = true },
+                            onAppearance = { isAdjustingAppearance = true },
                             onCompose = { composing = ComposeRequest.New },
                             onReply = { accountKey, emailId, all ->
                                 composing = ComposeRequest.Reply(accountKey, emailId, all)
@@ -242,19 +276,37 @@ private fun PlMailApp(
 }
 
 /**
- * The app's theme, from local settings for now and from the server's `Appearance` when that is
+ * The app's theme, from local settings today and from the server's `Appearance` when that is
  * exposed.
  *
- * The two-axis model lives in `:core:designsystem`; this is only the place that decides which
- * theme, layout and density to hand it. When the settings screen arrives it replaces these defaults
- * and touches nothing else, which is the whole reason the resolver is a separate module.
+ * The two-axis model lives in `:core:designsystem` and the choice lives in DataStore; this is only
+ * the place that joins them. When `Appearance` arrives it replaces the source of
+ * [AppearanceViewModel]'s flow and touches nothing else, which is the whole reason the resolver is
+ * a separate module.
+ *
+ * Above the whole app rather than inside a screen, which is what makes the settings screen its own
+ * preview: choosing a theme re-themes the thing being chosen from, live.
  */
 @Composable
-private fun PlMailAppTheme(content: @Composable () -> Unit) {
-    PlMailTheme(
-        theme = PlMailThemeChoice.SYSTEM,
-        layout = PlMailLayout.FLAT,
-        density = PlMailDensity.COMFORTABLE,
-        content = content,
-    )
+private fun PlMailAppTheme(
+    viewModel: AppearanceViewModel = hiltViewModel(),
+    content: @Composable () -> Unit,
+) {
+    val appearance by viewModel.appearance.collectAsStateWithLifecycle()
+
+    PlMailTheme(appearance = appearance, content = content)
+}
+
+/**
+ * Which of the state-swapped screens is on top.
+ *
+ * These are not a back stack — they are booleans held beside each other, and more than one can be
+ * true at a time. Naming the winner once is what keeps the back gesture and the thing being drawn
+ * from disagreeing, which they did: back on the appearance screen closed the app.
+ */
+private enum class Screen {
+    MAIL,
+    SEARCH,
+    DIAGNOSTICS,
+    APPEARANCE,
 }
