@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!--
+          How a downloaded attachment reaches another app.
+
+          Since Android 7 a file:// URI handed across a process boundary is a
+          FileUriExposedException rather than a permission error, so there is no
+          version of "just open the file" that works. FileProvider mints a
+          content:// URI and the intent carries a one-shot read grant with it,
+          which is also the only way to hand a file to an app the user has not
+          given storage access to.
+
+          It lives here rather than in :app because :core:data owns BlobStore
+          and therefore owns the directory being shared. The authority is
+          derived from the application id so the debug and release builds can
+          be installed side by side; two providers claiming one authority is an
+          INSTALL_FAILED_CONFLICTING_PROVIDER at install time, which is at
+          least loud.
+        -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.blobs"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/plmail_blob_paths" />
+        </provider>
+    </application>
+
+</manifest>

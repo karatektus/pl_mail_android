@@ -27,6 +27,37 @@ interface StreamingTransport : JmapTransport {
     fun lines(request: HttpRequest): kotlinx.coroutines.flow.Flow<String>
 }
 
+/**
+ * A transport that can hand a response body over without buffering it first.
+ *
+ * Also separate from [JmapTransport], and for a harder reason than [StreamingTransport]'s. `send`
+ * returns a `ByteArray`, and the session advertises a fifty-megabyte ceiling on what a message may
+ * carry — so downloading an attachment through `send` allocates the whole file on the heap of a
+ * phone that is also holding a WebView. It works for every attachment anybody tests with and fails
+ * on the one somebody actually needed.
+ */
+interface DownloadingTransport : JmapTransport {
+    /**
+     * Runs [receive] with the body still open, and closes it afterwards however [receive] ends.
+     *
+     * The body is deliberately not returned: an `InputStream` that outlives the call is a
+     * connection nobody closes, and OkHttp's pool would be exhausted by four abandoned downloads.
+     */
+    suspend fun <T> download(request: HttpRequest, receive: suspend (ResponseBody) -> T): T
+}
+
+/** One response, still being read. Valid only inside [DownloadingTransport.download]. */
+class ResponseBody(
+    val status: Int,
+    val contentType: String?,
+    /** What the server said, or null when it used chunked encoding and did not say. */
+    val length: Long?,
+    val bytes: java.io.InputStream,
+) {
+    val isSuccess: Boolean
+        get() = status in 200..299
+}
+
 data class HttpRequest(
     val url: String,
     val method: String = "GET",

@@ -22,7 +22,81 @@ import okhttp3.Response
  * The only file in this module that knows OkHttp exists, which is what lets the whole protocol
  * layer be tested on the JVM against a fake.
  */
-class OkHttpTransport(private val client: OkHttpClient) : StreamingTransport {
+class OkHttpTransport(private val client: OkHttpClient) : StreamingTransport, DownloadingTransport {
+
+    /**
+     * The same client, allowed to retry, used for GETs only.
+     *
+     * `retryOnConnectionFailure` is off on the client this is built from, and that is right for a
+     * JMAP method call: OkHttp's `recover()` will re-send a request whose body it can replay *even
+     * after the send has started*, so a `POST /jmap/api` carrying an `Email/set` could be applied
+     * twice. It is wrong for everything else, because it is also what handles a **pooled connection
+     * the server closed while nobody was looking** — and this product's user reads a message for
+     * two minutes and then taps an attachment, which is precisely that window.
+     *
+     * Observed on 2026-08-01: `SocketException: Software caused connection abort`, suppressing
+     * `unexpected end of stream`, on the session GET before a blob download, after the app had been
+     * idle. The user is shown "could not reach your server" for a server that is running fine.
+     *
+     * `newBuilder()` shares the pool, dispatcher and thread pools, so this costs an object.
+     */
+    private val retrying: OkHttpClient by lazy {
+        client.newBuilder().retryOnConnectionFailure(true).build()
+    }
+
+    /**
+     * Which client a request may use.
+     *
+     * By method, not by URL: what makes a retry safe is that repeating the request cannot change
+     * anything on the server, and GET is the only method this client sends for which that is true.
+     * Session discovery and blob downloads are both GETs; every JMAP method call is a POST.
+     */
+    private fun clientFor(request: HttpRequest): OkHttpClient =
+        if (request.method.equals("GET", ignoreCase = true)) retrying else client
+
+    /**
+     * Hands the body over without reading it, and closes the response afterwards.
+     *
+     * `execute()` on the IO dispatcher rather than `enqueue`, because the point is to keep the body
+     * open across the caller's work: an enqueued call resumes a coroutine and then has nowhere to
+     * hold the response while [receive] copies it. The `use` block is what guarantees the
+     * connection goes back to the pool even when [receive] throws or the coroutine is cancelled
+     * mid-copy — a download the user backed out of must not cost a connection.
+     */
+    override suspend fun <T> download(
+        request: HttpRequest,
+        receive: suspend (ResponseBody) -> T,
+    ): T =
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val okRequest =
+                Request.Builder()
+                    .url(request.url)
+                    .apply { request.headers.forEach { (name, value) -> header(name, value) } }
+                    .build()
+
+            val call = clientFor(request).newCall(okRequest)
+
+            try {
+                call.execute().use { response ->
+                    receive(
+                        ResponseBody(
+                            status = response.code,
+                            contentType = response.body.contentType()?.toString(),
+                            // -1 is OkHttp's "the server used chunked encoding",
+                            // which this product's server does for a message
+                            // blob. Reported as null rather than as a length of
+                            // minus one, so a progress bar cannot be built on it
+                            // by accident.
+                            length = response.body.contentLength().takeIf { it >= 0 },
+                            bytes = response.body.byteStream(),
+                        )
+                    )
+                }
+            } catch (failure: IOException) {
+                throw ServerTrust.trustFailure(failure)
+                    ?: JmapError.Unreachable(hostOf(request.url), failure)
+            }
+        }
 
     /**
      * Reads the body line by line as it arrives.
@@ -40,7 +114,7 @@ class OkHttpTransport(private val client: OkHttpClient) : StreamingTransport {
                         .apply { request.headers.forEach { (n, v) -> header(n, v) } }
                         .build()
 
-                val call = client.newCall(okRequest)
+                val call = clientFor(request).newCall(okRequest)
 
                 call.execute().use { response ->
                     if (!response.isSuccessful) {
@@ -67,7 +141,7 @@ class OkHttpTransport(private val client: OkHttpClient) : StreamingTransport {
                 .apply { request.headers.forEach { (name, value) -> header(name, value) } }
                 .build()
 
-        return client.newCall(okRequest).await(hostOf(request.url))
+        return clientFor(request).newCall(okRequest).await(hostOf(request.url))
     }
 
     companion object {
@@ -78,9 +152,8 @@ class OkHttpTransport(private val client: OkHttpClient) : StreamingTransport {
          * normal here, not a fault — and an aggressive timeout turns that into a retry storm
          * against the machine that is already struggling.
          *
-         * Retries on connection failure are left ON, but note this only retries connection
-         * establishment, never a request the server has already begun answering, so it cannot
-         * duplicate a send.
+         * Retries on connection failure are off; see the field above, which turns them back on for
+         * the requests where repeating one cannot change anything.
          */
         fun defaultClient(trust: ServerTrust? = null): OkHttpClient =
             OkHttpClient.Builder()
@@ -90,7 +163,16 @@ class OkHttpTransport(private val client: OkHttpClient) : StreamingTransport {
                 // Connection pooling matters more than usual: TLS handshakes to
                 // a small box are expensive, and the client deliberately keeps
                 // few connections open.
-                .retryOnConnectionFailure(true)
+                //
+                // Retries are OFF here, and the class above turns them back on
+                // for GETs alone. The comment this replaces said a retry "only
+                // retries connection establishment, never a request the server
+                // has already begun answering, so it cannot duplicate a send" --
+                // which is not what OkHttp does. `RetryAndFollowUpInterceptor`
+                // declines to retry only when the body is *one-shot*; a byte
+                // array is replayable, so a POST whose send had already started
+                // would go a second time. That is a duplicated `Email/set`.
+                .retryOnConnectionFailure(false)
                 // Without this the pinning in ServerTrust is dead code: the
                 // platform's own evaluation runs, a self-signed NAS is refused,
                 // and the fingerprint the user already accepted is never

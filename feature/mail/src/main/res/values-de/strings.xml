@@ -96,4 +96,17 @@
         <item quantity="one">Label von 1 Unterhaltung entfernt</item>
         <item quantity="other">Label von %1$d Unterhaltungen entfernt</item>
     </plurals>
+
+    <string name="message_more">Mehr zu dieser Nachricht</string>
+    <string name="attachment_unnamed">Anhang</string>
+    <string name="attachment_save_named">%1$s speichern</string>
+    <string name="attachment_open_with">Öffnen mit</string>
+    <string name="attachment_download_failed">Der Anhang konnte nicht geladen werden.</string>
+    <string name="attachment_save_failed">Der Anhang konnte nicht gespeichert werden.</string>
+
+    <string name="source_show">Quelltext anzeigen</string>
+    <string name="source_close">Schließen</string>
+    <string name="source_share">Teilen</string>
+    <string name="source_failed">Der Quelltext konnte nicht geladen werden.</string>
+    <string name="source_empty">Für diese Nachricht ist auf dem Server kein Quelltext hinterlegt.</string>
 </resources>

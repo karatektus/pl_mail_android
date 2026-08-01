@@ -2,6 +2,7 @@ package de.plmail.core.data
 
 import androidx.room.withTransaction
 import de.plmail.core.database.AccountEntity
+import de.plmail.core.database.AttachmentEntity
 import de.plmail.core.database.EmailBodyEntity
 import de.plmail.core.database.EmailEntity
 import de.plmail.core.database.MailboxEntity
@@ -189,6 +190,17 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
         database.threads().byUid(StoreKey.objectKey(accountKey, threadId))
 
     suspend fun body(emailUid: String): EmailBodyEntity? = database.emails().body(emailUid)
+
+    /**
+     * The parts one message carries, as the reader lists them.
+     *
+     * Inline parts are dropped: a `cid:` image is *in* the message the user is reading, and listing
+     * it underneath as a file to download would put a row named `image001.png` under every mail
+     * anybody sent from Outlook. The signature logo is not an attachment, whatever the MIME
+     * structure says.
+     */
+    suspend fun attachments(emailUid: String): List<AttachmentEntity> =
+        database.emails().attachments(emailUid).filterNot { it.isInline }
 
     /**
      * Marks a message read locally.

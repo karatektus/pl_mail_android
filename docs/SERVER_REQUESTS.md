@@ -193,6 +193,33 @@ Two behaviours worth knowing rather than debugging:
 - Matching is **stemmed** and **English-configured**, so `running` highlights `run`, and German text
   is stemmed as if it were English.
 
+### The `m-` blob is a reconstruction, and for some messages it is almost empty
+
+The reader's "View source" downloads the message's own blob — `m-<id>`, `message/rfc822` — and what
+comes back is not always the bytes that arrived. `BlobResolver::message()` returns the stored raw
+file when `RawMessageResolver` can find one, and otherwise falls back to
+`MessageSourceBuilder::build()`, which reassembles a source from the parsed header map and the
+decoded body. Its own docblock is explicit that this is byte-faithful to neither the transfer
+encoding nor the MIME structure and will not verify a DKIM signature.
+
+Two consequences the client has to live with, both verified against the 8002 stack on 2026-08-01:
+
+- A message with **no stored headers reconstructs to `"\n\n" + body`** — two blank lines and the
+  text. Everything created over JMAP is in this state, and so is everything `app:test:seed-mail`
+  writes, because neither populates `message.headers`. Downloading `m-9` returned exactly
+  `\n\nSeeded body for "E2E Read Me".`; the same message with a realistic header map written into
+  the column returned a full, correct source. So a bare source view is a message plMail never had
+  the headers for, not a failed download.
+- The reconstruction is **not multipart**, so the attachment parts are not in it whatever the
+  `Content-Type` header says. Anyone reading the source to find out how a message was assembled is
+  reading the client's summary of it.
+
+Not filed as an ask: storing raw source is already what the server does when it has it, and a
+message composed through JMAP has no original bytes to store. Written down because "View source
+shows nothing" looks exactly like a broken download, and the client cannot tell the difference —
+which is why the empty case says "the server has no source stored for this message" rather than
+reporting an error.
+
 ### `Email/set` `destroy` leaves a draft in Drafts
 
 `destroy` adds the Trash label and removes **Inbox**. A draft never had Inbox, so a destroyed draft

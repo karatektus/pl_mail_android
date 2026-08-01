@@ -198,6 +198,69 @@ class JmapClient(
     }
 
     /**
+     * Downloads one blob into [sink] and returns how many bytes arrived.
+     *
+     * The URL is built from the session's own `downloadUrl` template, never assembled here: the
+     * blob endpoint sits behind whatever reverse proxy the user has put in front of their server,
+     * and that is theirs to reconfigure. [name] and [type] are template variables rather than
+     * decoration — the server uses them for the `Content-Disposition` filename and the
+     * `Content-Type` it answers with, so a download asked for with the wrong type comes back
+     * labelled wrongly and opens in the wrong app.
+     *
+     * Streamed rather than buffered. A message may carry fifty megabytes by this server's own
+     * advertised limit, and `send` would put all of it on the heap of a phone that is also holding
+     * a WebView.
+     *
+     * Throws [JmapError.RequestRejected] on a non-2xx, because a blob that is gone — swept upload,
+     * message deleted on another device — is a normal outcome the caller has to be able to name.
+     */
+    suspend fun download(
+        accountId: AccountId,
+        blobId: String,
+        name: String,
+        type: String,
+        sink: java.io.OutputStream,
+    ): Long {
+        val transport =
+            transport as? DownloadingTransport
+                ?: throw IllegalStateException(
+                    "This transport cannot stream a download; blobs must not be buffered."
+                )
+
+        val session = session()
+
+        val url =
+            session.downloadUrl.expandTemplate(
+                mapOf(
+                    "accountId" to accountId.value,
+                    "blobId" to blobId,
+                    "name" to name,
+                    "type" to type,
+                )
+            )
+
+        return withPermit {
+            transport.download(
+                HttpRequest(
+                    url = url,
+                    method = "GET",
+                    headers = mapOf("Authorization" to credential.authorizationHeader),
+                )
+            ) { body ->
+                if (!body.isSuccess) {
+                    throw JmapError.RequestRejected(
+                        type = "blobNotFound",
+                        status = body.status,
+                        detail = "The server would not hand over blob $blobId.",
+                    )
+                }
+
+                body.bytes.copyTo(sink)
+            }
+        }
+    }
+
+    /**
      * Runs [body] holding one concurrency permit.
      *
      * Before the first session arrives there is no advertised limit to respect, and the only

@@ -406,6 +406,37 @@ resume after process death); Roborazzi screenshots of the row states.
 - Attachments list; original RFC822 source via the `m-<id>` blob. Only `image/*` is served inline by
   the server — never assume inline rendering of an arbitrary type in a WebView.
 
+**Both landed 2026-08-01**, together with the blob plumbing they needed. `JmapClient.download`
+streams into a caller's `OutputStream` through a new `DownloadingTransport` seam rather than going
+through `send`, which returns a `ByteArray` — the session advertises a fifty-megabyte ceiling on a
+message, and buffering that on a phone that is also holding a WebView works for every attachment
+anybody tests with and fails on the one somebody needed. `BlobStore` in `:core:data` caches the
+bytes under `cacheDir/blobs/<hash>/<name>`: hashed because a `blobId` is opaque and this app is
+forbidden from parsing one, named because the filename is what the user sees when the file opens
+somewhere else. Written to a `.part` and renamed, so an interrupted download cannot leave a half
+file that the next tap treats as complete.
+
+The list sits under the body and above the reply row; the whole row opens, the trailing button
+saves through `ACTION_CREATE_DOCUMENT`. A `FileProvider` declared in `:core:data` mints the
+`content://` URI, because a `file://` one across a process boundary is a `FileUriExposedException`
+rather than a permission failure and there is no version of it that mostly works.
+
+"View source" is **per message**, in the message's own overflow, for the same reason reply is: a
+thread has several messages and "the source of a conversation" is not a thing. It does not wrap —
+folding a `Received:` chain at the device width destroys the one thing anybody opens it for — so it
+scrolls both ways instead.
+
+Two things found while verifying this, both recorded where they belong. The `m-` blob is a
+*reconstruction* for any message plMail has no raw bytes for, and for a JMAP-created message that
+means a source with no headers at all (`docs/SERVER_REQUESTS.md`). And a blob download failed once
+with `SocketException: Software caused connection abort` on the session GET after the app had been
+idle — a pooled connection the server had closed. `retryOnConnectionFailure` was off globally, so
+that surfaced as "could not reach your server" for a server that was running fine; it is now on for
+GETs alone, since a replayed `POST /jmap/api` is a duplicated `Email/set` and a replayed GET is
+nothing. The comment that had been justifying the old setting claimed OkHttp "only retries
+connection establishment, never a request the server has already begun answering" — it does not;
+`RetryAndFollowUpInterceptor` declines only for a *one-shot* body, and a byte array is replayable.
+
 ### M5 · Actions, undo, bulk
 Archive (= remove the Inbox mailbox id; *not* add Archive), trash (= `destroy`, which is a move to
 Trash — there is no hard delete anywhere in the product and the UI must say Trash), star, read/unread,

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Exactly the one directory BlobStore writes into, and nothing above it.
+
+  A <cache-path path="" /> would share the whole cache directory, which on this
+  app also holds WebView data and anything else a library decides to put there.
+  Naming the subdirectory is what keeps a granted read on one attachment from
+  being a granted read on the cache.
+-->
+<paths>
+    <cache-path name="blobs" path="blobs/" />
+</paths>

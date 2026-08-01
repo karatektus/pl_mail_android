@@ -116,4 +116,28 @@
         <item quantity="one">Label removed from 1 conversation</item>
         <item quantity="other">Label removed from %1$d conversations</item>
     </plurals>
+
+    <string name="message_more">More for this message</string>
+    <!-- Parts with no filename are common; "attachment" is what the picker suggests too. -->
+    <string name="attachment_unnamed">Attachment</string>
+    <!-- Names the file, because a screen reader reaches four identical "Save" buttons otherwise. -->
+    <string name="attachment_save_named">Save %1$s</string>
+    <string name="attachment_open_with">Open with</string>
+    <!--
+      Followed by the server's own words where it gave any. This audience runs
+      the server; "Connection refused" is the diagnosis, not noise.
+    -->
+    <string name="attachment_download_failed">Could not download that attachment.</string>
+    <string name="attachment_save_failed">Could not save that attachment.</string>
+
+    <!-- "Source" rather than "original": the reader already has a "show original" for rendering. -->
+    <string name="source_show">View source</string>
+    <string name="source_close">Close</string>
+    <string name="source_share">Share</string>
+    <string name="source_failed">Could not download the message source.</string>
+    <!--
+      plMail stores parsed headers and decoded bodies rather than raw bytes, so
+      a message synced before raw storage existed reconstructs to nothing.
+    -->
+    <string name="source_empty">The server has no source stored for this message.</string>
 </resources>

@@ -1,8 +1,13 @@
 package de.plmail.feature.mail.reader
 
+import android.content.Context
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +28,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -35,12 +42,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.plmail.core.data.MailAction
+import de.plmail.core.database.AttachmentEntity
 import de.plmail.core.designsystem.PlMailAvatar
 import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailTheme
@@ -85,8 +95,71 @@ fun ReaderScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val isDark = isSystemInDarkTheme()
+    val context = LocalContext.current
+    val snackbars = remember { SnackbarHostState() }
 
     LaunchedEffect(accountKey, threadId) { viewModel.open(accountKey, threadId, subject) }
+
+    // The attachment the save picker is currently being opened for. Held here
+    // rather than passed through the launcher because `CreateDocument` hands
+    // back a Uri and nothing else -- there is no room in the contract for
+    // "which of the four attachments this was".
+    var saving by remember { mutableStateOf<AttachmentEntity?>(null) }
+
+    val savePicker =
+        rememberLauncherForActivityResult(
+            // The mime type is supplied per launch below; this one is the
+            // contract's fallback and is never what the picker actually uses.
+            ActivityResultContracts.CreateDocument("application/octet-stream")
+        ) { destination ->
+            val attachment = saving
+            saving = null
+
+            // Null means the user backed out of the picker, which is not a
+            // failure and must not be announced as one.
+            if (destination != null && attachment != null) {
+                viewModel.saveAttachment(attachment, destination)
+            }
+        }
+
+    // Collected as events rather than read off the state: opening a file is a
+    // one-off, and a rotation must not relaunch the document viewer.
+    LaunchedEffect(viewModel) {
+        viewModel.open.collect { openable -> context.openExternally(openable) }
+    }
+
+    state.failure?.let { failure ->
+        val message =
+            stringResource(
+                when (failure.what) {
+                    FailedAt.DOWNLOAD -> R.string.attachment_download_failed
+                    FailedAt.SAVE -> R.string.attachment_save_failed
+                    FailedAt.SOURCE -> R.string.source_failed
+                }
+            )
+
+        // Keyed on the id, so two identical failures are two snackbars rather
+        // than one -- `showSnackbar` suspends until dismissed, and a key on the
+        // message alone would swallow the second.
+        LaunchedEffect(failure.id) {
+            // The server's own words after ours. This audience runs the server,
+            // and "Connection refused" is the diagnosis; a translated sentence
+            // on its own tells them only that something they already saw fail
+            // has failed.
+            snackbars.showSnackbar(
+                failure.detail?.takeIf { it.isNotBlank() }?.let { "$message $it" } ?: message
+            )
+            viewModel.failureShown(failure.id)
+        }
+    }
+
+    state.source?.let { source ->
+        MessageSourceSheet(
+            source = source,
+            onClose = viewModel::closeSource,
+            onShare = { source.text?.let { context.shareText(source.title, it) } },
+        )
+    }
 
     // A Scaffold rather than a bare LazyColumn: the reader is a top-level pane
     // and nothing above it applies window insets, so without this the subject
@@ -104,16 +177,24 @@ fun ReaderScreen(
                 onLabel = onLabel,
             )
         },
+        snackbarHost = { SnackbarHost(snackbars) },
     ) { insets ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(insets)) {
             items(items = state.messages, key = { it.email.uid }) { message ->
                 Message(
                     message = message,
                     isDark = isDark,
+                    busyAttachments = state.busyAttachments,
                     onToggle = { viewModel.toggleExpanded(message.email.uid) },
                     onShowImages = { viewModel.allowRemoteImages(message.email.uid) },
                     onToggleOriginal = { viewModel.toggleOriginal(message.email.uid) },
                     onDisplayed = { viewModel.markRead(accountKey, message.email.uid) },
+                    onOpenAttachment = viewModel::openAttachment,
+                    onSaveAttachment = { attachment ->
+                        saving = attachment
+                        savePicker.launch(attachment.name ?: DEFAULT_SAVE_NAME)
+                    },
+                    onShowSource = { viewModel.showSource(message) },
                 )
 
                 // Under the message they answer, rather than in the app bar.
@@ -309,10 +390,14 @@ private fun ReplyActions(
 private fun Message(
     message: ReaderMessage,
     isDark: Boolean,
+    busyAttachments: Set<String>,
     onToggle: () -> Unit,
     onShowImages: () -> Unit,
     onToggleOriginal: () -> Unit,
     onDisplayed: () -> Unit,
+    onOpenAttachment: (AttachmentEntity) -> Unit,
+    onSaveAttachment: (AttachmentEntity) -> Unit,
+    onShowSource: () -> Unit,
 ) {
     val body = message.body
 
@@ -369,6 +454,14 @@ private fun Message(
                 style = MaterialTheme.typography.labelSmall,
                 color = colors.inkMuted,
             )
+
+            // Per message, not per conversation, for the same reason reply is:
+            // a thread has several messages and "the source" of a conversation
+            // is not a thing that exists. Only offered once a message is open,
+            // because that is the one the user is looking at.
+            if (message.isExpanded && message.email.blobId != null) {
+                MessageMenu(onShowSource = onShowSource)
+            }
         }
 
         if (!message.isExpanded) return@Column
@@ -413,5 +506,100 @@ private fun Message(
             remoteImages = message.remoteImages,
             modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.small),
         )
+
+        // Under the body and above the reply buttons, which is where the eye
+        // arrives after reading: an attachment list above the message competes
+        // with the message for the first look, and the message is what was
+        // opened.
+        Attachments(
+            attachments = message.attachments,
+            busy = busyAttachments,
+            onOpen = onOpenAttachment,
+            onSave = onSaveAttachment,
+        )
     }
 }
+
+/** The per-message overflow. One item today; a menu because the next ones belong beside it. */
+@Composable
+private fun MessageMenu(onShowSource: () -> Unit) {
+    var isOpen by remember { mutableStateOf(false) }
+
+    Box {
+        IconButton(onClick = { isOpen = true }) {
+            Icon(
+                imageVector = Icons.Default.MoreVert,
+                contentDescription = stringResource(R.string.message_more),
+            )
+        }
+
+        DropdownMenu(expanded = isOpen, onDismissRequest = { isOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.source_show)) },
+                onClick = {
+                    isOpen = false
+                    onShowSource()
+                },
+            )
+        }
+    }
+}
+
+/**
+ * Hands a downloaded file to whatever the user has installed for it.
+ *
+ * A `content://` URI from the app's own FileProvider, never a `file://` one: since Android 7 the
+ * latter is a `FileUriExposedException` rather than a permission failure, so there is no version of
+ * this that "mostly works". The grant travels on the intent and expires with it.
+ *
+ * A chooser rather than the default handler, deliberately. Attachments are frequently the one thing
+ * in this product that leaves the user's own server, and silently launching whichever app claimed
+ * `application/pdf` first is the moment to give them the choice.
+ */
+private fun Context.openExternally(openable: OpenableFile) {
+    val uri = FileProvider.getUriForFile(this, "$packageName.blobs", openable.file)
+
+    val view =
+        Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, openable.type)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+    val chooser =
+        Intent.createChooser(view, getString(R.string.attachment_open_with)).apply {
+            // The chooser is started from a non-Activity context here, and
+            // without this it is a "Calling startActivity() from outside of an
+            // Activity context" crash rather than a chooser.
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+    // A device with nothing installed for the type is a real outcome -- a
+    // `.eml` or a `.ics` on a stripped-down phone -- and it must not take the
+    // app down. The chooser itself reports "no apps can perform this action".
+    runCatching { startActivity(chooser) }
+}
+
+/**
+ * Shares the message source as text.
+ *
+ * `EXTRA_TEXT` rather than a file, because the only sensible destinations are a note, a chat or a
+ * bug report, and every one of those wants text it can quote. A `.eml` attachment would arrive as
+ * something the recipient has to open in a mail client to read.
+ */
+private fun Context.shareText(title: String, text: String) {
+    val send =
+        Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, title)
+            putExtra(Intent.EXTRA_TEXT, text)
+        }
+
+    runCatching {
+        startActivity(
+            Intent.createChooser(send, title).apply { addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
+        )
+    }
+}
+
+/** What the save picker suggests for a part that arrived with no filename. */
+private const val DEFAULT_SAVE_NAME = "attachment"
