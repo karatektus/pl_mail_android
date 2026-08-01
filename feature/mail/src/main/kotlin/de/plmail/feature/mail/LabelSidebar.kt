@@ -105,7 +105,7 @@ fun LabelSidebar(
                 icon = { Icon(imageVector = label.icon(), contentDescription = null) },
                 label = {
                     Text(
-                        text = label.path,
+                        text = label.displayName(),
                         maxLines = 1,
                         // Both ends kept. A nested label needs its leaf to say
                         // what it is and its parent to say which one -- an

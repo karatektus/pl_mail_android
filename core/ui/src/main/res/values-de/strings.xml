@@ -2,4 +2,18 @@
 <resources>
     <string name="no_subject">(kein Betreff)</string>
     <string name="no_sender">(unbekannter Absender)</string>
+
+    <string name="a11y_unread">Ungelesen</string>
+    <string name="a11y_has_attachment">mit Anhang</string>
+    <string name="a11y_starred">markiert</string>
+    <plurals name="a11y_message_count">
+        <item quantity="one">%1$d Nachricht</item>
+        <item quantity="other">%1$d Nachrichten</item>
+    </plurals>
+    <string name="a11y_labelled">Label %1$s</string>
+    <plurals name="a11y_more_labels">
+        <item quantity="one">und %1$d weiteres</item>
+        <item quantity="other">und %1$d weitere</item>
+    </plurals>
+    <string name="a11y_separator">, </string>
 </resources>

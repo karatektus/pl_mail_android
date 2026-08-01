@@ -2,6 +2,7 @@ package de.plmail.feature.mail
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -63,6 +64,7 @@ import de.plmail.core.designsystem.PlMailBanner
 import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailEmptyState
 import de.plmail.core.designsystem.PlMailTheme
+import de.plmail.core.ui.rowLabelSlots
 import java.time.Instant
 
 /**
@@ -152,8 +154,10 @@ fun MailScreen(
                     // The label's own name, and its leaf rather than its path:
                     // the path belongs in the sidebar, where it disambiguates
                     // between two labels shown at once. Here there is only one,
-                    // and "Work/Invoices" as a screen title is noise.
-                    title = { Text(label?.name ?: stringResource(R.string.inbox_title)) },
+                    // and "Work/Invoices" as a screen title is noise. A system
+                    // role takes the app's word for it rather than the server's,
+                    // which is English whatever the device is set to.
+                    title = { Text(label?.displayTitle() ?: stringResource(R.string.inbox_title)) },
                     colors =
                         TopAppBarDefaults.topAppBarColors(
                             // The bar is part of the page rather than a
@@ -286,92 +290,102 @@ private fun ThreadList(
         return
     }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        // Room under the last row for the compose button to sit in.
-        //
-        // `Scaffold` positions the FAB *over* its content and reports nothing
-        // about it in the padding it hands back, so without this the button
-        // covers whatever the list happens to end on -- a row's chips and date on
-        // a long list, and on a short one the "That's everything on this device"
-        // line, which is precisely the thing that tells someone the list is
-        // finished rather than broken.
-        //
-        // `contentPadding` rather than a padded modifier or a spacer item,
-        // because it has to scroll: padding the list would leave a permanent
-        // dead band at the bottom of the viewport, and a trailing item would sit
-        // below the end-of-list footer and be counted by anything that walks the
-        // list's children.
-        contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
-    ) {
-        items(
-            count = threads.itemCount,
-            // Keyed on the row's own identity, so an inserted message does not
-            // recycle every row below it and lose their scroll position.
-            key = { index -> threads.peek(index)?.uid ?: index },
-        ) { index ->
-            val thread = threads[index]
+    // Measured once for the whole list rather than once per row. What it
+    // decides -- how many chips a row may draw -- is a composition question and
+    // cannot be answered during measurement, and the pane's width is not the
+    // window's: a tablet's list pane is a fraction of an 840dp window and can
+    // easily be narrower than a phone. One subcomposition per list is nothing;
+    // one per row, fifty times a scroll, is not.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val labelSlots = rowLabelSlots(maxWidth)
 
-            if (thread != null) {
-                SwipeableThreadRow(
-                    thread = thread,
-                    isSelected = thread.uid in selection,
-                    // Resolved per row rather than precomputed for the page:
-                    // it is a set intersection over a list the sidebar already
-                    // holds in memory, and doing it here means a label renamed
-                    // or deleted while the list is on screen corrects itself on
-                    // the next frame.
-                    labels = thread.rowLabels(labels, viewing),
-                    // While a selection is open, tapping extends it rather than
-                    // opening a conversation -- otherwise the only way to add a
-                    // second row is another long press.
-                    onClick = {
-                        if (selection.isEmpty()) onThreadSelected(thread)
-                        else onToggleSelected(thread.uid)
-                    },
-                    onLongClick = { onToggleSelected(thread.uid) },
-                    onAction = { action -> onAction(thread, action) },
-                )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            // Room under the last row for the compose button to sit in.
+            //
+            // `Scaffold` positions the FAB *over* its content and reports nothing
+            // about it in the padding it hands back, so without this the button
+            // covers whatever the list happens to end on -- a row's chips and date on
+            // a long list, and on a short one the "That's everything on this device"
+            // line, which is precisely the thing that tells someone the list is
+            // finished rather than broken.
+            //
+            // `contentPadding` rather than a padded modifier or a spacer item,
+            // because it has to scroll: padding the list would leave a permanent
+            // dead band at the bottom of the viewport, and a trailing item would sit
+            // below the end-of-list footer and be counted by anything that walks the
+            // list's children.
+            contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
+        ) {
+            items(
+                count = threads.itemCount,
+                // Keyed on the row's own identity, so an inserted message does not
+                // recycle every row below it and lose their scroll position.
+                key = { index -> threads.peek(index)?.uid ?: index },
+            ) { index ->
+                val thread = threads[index]
 
-                // Between rows, never after the last one. Indented past the
-                // avatar, so the line separates the text columns rather than
-                // cutting the row in half -- a full-bleed rule under every row
-                // turns a list into a table.
-                //
-                // The trailing case is the one worth spelling out: a hairline
-                // under the final row, with nothing beneath it, is what made an
-                // inbox of four messages look truncated rather than short. The
-                // line implies another row is coming and then none does.
-                if (index < threads.itemCount - 1) {
-                    PlMailDivider(startIndent = ROW_TEXT_INSET)
+                if (thread != null) {
+                    SwipeableThreadRow(
+                        thread = thread,
+                        isSelected = thread.uid in selection,
+                        // Resolved per row rather than precomputed for the page:
+                        // it is a set intersection over a list the sidebar already
+                        // holds in memory, and doing it here means a label renamed
+                        // or deleted while the list is on screen corrects itself on
+                        // the next frame.
+                        labels = thread.rowLabels(labels, viewing, limit = labelSlots),
+                        // While a selection is open, tapping extends it rather than
+                        // opening a conversation -- otherwise the only way to add a
+                        // second row is another long press.
+                        onClick = {
+                            if (selection.isEmpty()) onThreadSelected(thread)
+                            else onToggleSelected(thread.uid)
+                        },
+                        onLongClick = { onToggleSelected(thread.uid) },
+                        onAction = { action -> onAction(thread, action) },
+                    )
+
+                    // Between rows, never after the last one. Indented past the
+                    // avatar, so the line separates the text columns rather than
+                    // cutting the row in half -- a full-bleed rule under every row
+                    // turns a list into a table.
+                    //
+                    // The trailing case is the one worth spelling out: a hairline
+                    // under the final row, with nothing beneath it, is what made an
+                    // inbox of four messages look truncated rather than short. The
+                    // line implies another row is coming and then none does.
+                    if (index < threads.itemCount - 1) {
+                        PlMailDivider(startIndent = ROW_TEXT_INSET)
+                    }
                 }
             }
-        }
 
-        // What the end of the list actually is, said once, rather than a list
-        // that simply stops halfway up an empty page. A new account with three
-        // messages is the common case for this product, not an edge one, and
-        // the untreated gap under those three rows reads as a screen that
-        // failed to finish loading.
-        //
-        // Deliberately not "you're up to date": that is a claim about the
-        // server, and the app cannot make it between syncs. This is a claim
-        // about the list, which it can.
-        if (threads.loadState.append.endOfPaginationReached) {
-            item(key = END_OF_LIST) { EndOfList() }
-        }
+            // What the end of the list actually is, said once, rather than a list
+            // that simply stops halfway up an empty page. A new account with three
+            // messages is the common case for this product, not an edge one, and
+            // the untreated gap under those three rows reads as a screen that
+            // failed to finish loading.
+            //
+            // Deliberately not "you're up to date": that is a claim about the
+            // server, and the app cannot make it between syncs. This is a claim
+            // about the list, which it can.
+            if (threads.loadState.append.endOfPaginationReached) {
+                item(key = END_OF_LIST) { EndOfList() }
+            }
 
-        if (threads.loadState.append is LoadState.Loading) {
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(PlMailTheme.spacing.large),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    CircularProgressIndicator(
-                        color = PlMailTheme.colors.accent,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(20.dp),
-                    )
+            if (threads.loadState.append is LoadState.Loading) {
+                item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(PlMailTheme.spacing.large),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        CircularProgressIndicator(
+                            color = PlMailTheme.colors.accent,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
                 }
             }
         }

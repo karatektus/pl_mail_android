@@ -112,4 +112,13 @@
     <string name="source_failed">Der Quelltext konnte nicht geladen werden.</string>
     <string name="source_empty">Für diese Nachricht ist auf dem Server kein Quelltext hinterlegt.</string>
     <string name="appearance">Darstellung</string>
+
+    <string name="role_inbox">Posteingang</string>
+    <string name="role_drafts">Entwürfe</string>
+    <string name="role_sent">Gesendet</string>
+    <string name="role_trash">Papierkorb</string>
+    <string name="role_junk">Spam</string>
+    <string name="role_archive">Archiv</string>
+    <string name="role_snoozed">Zurückgestellt</string>
+    <string name="role_flagged">Markiert</string>
 </resources>

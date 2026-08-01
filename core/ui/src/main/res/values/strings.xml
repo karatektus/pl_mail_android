@@ -7,4 +7,34 @@
     -->
     <string name="no_subject">(no subject)</string>
     <string name="no_sender">(unknown sender)</string>
+
+    <!--
+      What TalkBack reads for one conversation.
+
+      The row's own semantics are cleared and replaced wholesale, so anything not
+      named here does not exist for a screen reader — which is why the labels are
+      in it: the chips were added to answer "what does this carry", and a chip
+      nobody can hear answers it for sighted users only.
+
+      These were English string literals in Kotlin until M11's sweep, so a German
+      device read a German inbox out in English.
+    -->
+    <string name="a11y_unread">Unread</string>
+    <string name="a11y_has_attachment">has attachment</string>
+    <string name="a11y_starred">starred</string>
+    <plurals name="a11y_message_count">
+        <item quantity="one">%1$d message</item>
+        <item quantity="other">%1$d messages</item>
+    </plurals>
+    <string name="a11y_labelled">labelled %1$s</string>
+    <plurals name="a11y_more_labels">
+        <item quantity="one">and %1$d more</item>
+        <item quantity="other">and %1$d more</item>
+    </plurals>
+    <!--
+      The separator between the fragments. A resource rather than a literal
+      because it is punctuation, and punctuation is not the same in every
+      language a screen reader pauses on.
+    -->
+    <string name="a11y_separator">, </string>
 </resources>

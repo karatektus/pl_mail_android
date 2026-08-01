@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
@@ -23,11 +22,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.LocalPlMailTheme
@@ -117,6 +119,7 @@ fun ThreadRow(
     val theme = LocalPlMailTheme.current
     val colors = theme.colors
     val spacing = theme.spacing
+    val spoken = thread.spoken(labels, hiddenLabels)
 
     Row(
         modifier =
@@ -129,9 +132,10 @@ fun ThreadRow(
                 // walking.
                 .heightIn(min = spacing.touchTarget)
                 .padding(horizontal = spacing.gutter, vertical = spacing.medium)
-                .clearAndSetSemantics {
-                    contentDescription = thread.spoken(labels, hiddenLabels)
-                },
+                // Read out of composition rather than built inside the semantics
+                // block, which is not a composable scope and cannot reach a
+                // resource from within itself.
+                .clearAndSetSemantics { contentDescription = spoken },
         horizontalArrangement = Arrangement.spacedBy(spacing.medium),
         verticalAlignment = Alignment.Top,
     ) {
@@ -250,7 +254,34 @@ fun ThreadRow(
                         // being bounded is a piece of text at a fixed size, so a
                         // proportional budget would leave a short chip stranded
                         // in a wide empty box on a tablet.
-                        modifier = Modifier.widthIn(max = CHIP_CLUSTER),
+                        //
+                        // The floor underneath it is what a fixed cap alone
+                        // cannot express, and it was missing. On a 320dp phone
+                        // the text column is about 188dp, so 160dp of chips left
+                        // the preview roughly three characters -- "On Aug 1,…"
+                        // -- which is the very defect the chips were moved
+                        // *behind* the snippet to avoid, arriving again from a
+                        // narrower screen. Seen on the device at 320dp in German,
+                        // not in a baseline: every screenshot until then was
+                        // taken at 411dp, where the cap never bites.
+                        //
+                        // `Modifier.layout` rather than `BoxWithConstraints`,
+                        // and that is deliberate: this is fifty rows scrolling,
+                        // and a subcomposition per row to learn a width the
+                        // measure pass is already being handed is a cost paid on
+                        // every frame. The cluster is the unweighted child here,
+                        // so the constraint it receives is the whole line.
+                        modifier =
+                            Modifier.layout { measurable, constraints ->
+                                val budget = chipBudget(constraints.maxWidth.toDp()).roundToPx()
+
+                                val placed =
+                                    measurable.measure(
+                                        constraints.copy(minWidth = 0, maxWidth = budget)
+                                    )
+
+                                layout(placed.width, placed.height) { placed.place(0, 0) }
+                            },
                         horizontalArrangement = Arrangement.spacedBy(spacing.tiny),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -379,6 +410,54 @@ private val AFFORDANCE = 15.dp
 private val CHIP_CLUSTER = 160.dp
 
 /**
+ * How much of the line the preview keeps, whatever the labels want.
+ *
+ * The cap above answers "how much may chips take"; this answers "how little may the preview be left
+ * with", and only one of those two questions had been asked. They agree on a 411dp phone, where the
+ * text column is 243dp and 160dp of chips still leaves 83dp — and they disagree completely at
+ * 320dp, where the same 160dp left about three characters of preview. A cap alone cannot know that,
+ * because the number it is capping is not the one that matters.
+ *
+ * 104dp is roughly fifteen characters of `bodySmall`, which is where a preview stops being a
+ * sentence and becomes a hint that one exists. Below the floor the chips give way, not the preview:
+ * the preview is the line people read to decide whether to open the mail, and a label they can also
+ * see in the sidebar is not worth it.
+ */
+private val SNIPPET_FLOOR = 104.dp
+
+/**
+ * How wide the chip cluster may be on a line this wide.
+ *
+ * Extracted rather than inlined into the measure block because the measure block is the one place
+ * this cannot be tested: the row clears its own semantics and replaces them with a single spoken
+ * sentence, so nothing inside it can carry a test tag and no test can ask how wide the preview came
+ * out. The arithmetic is the whole defect, and this is the shape of it that a test can hold.
+ */
+internal fun chipBudget(lineWidth: Dp): Dp =
+    (lineWidth - SNIPPET_FLOOR).coerceIn(0.dp, CHIP_CLUSTER)
+
+/**
+ * How many chips a row can carry in a pane this wide.
+ *
+ * A composition-time decision, unlike the width budget above, because "one name or a counter" is a
+ * question about *what to draw* and cannot be answered during measurement. It belongs to the list
+ * rather than to the row: the list knows its own pane width — which on a tablet is not the window's
+ * — and asking once per list costs one subcomposition instead of one per row.
+ *
+ * Below the threshold a row falls to a single slot, and the counter takes it as soon as there is
+ * more than one label, so a narrow row says "+2" rather than picking one of two names arbitrarily.
+ * That is `ROW_LABEL_LIMIT`'s own rule applied at a smaller number, not a second rule.
+ *
+ * 400dp rather than the compact/medium breakpoint, because the breakpoint is 600dp and every phone
+ * in portrait is below it — including the 411dp one where two chips are perfectly comfortable. The
+ * number that matters here is where a *second* chip stops being readable, and that is a property of
+ * the row's own geometry.
+ */
+fun rowLabelSlots(paneWidth: Dp): Int = if (paneWidth >= TWO_CHIP_WIDTH) 2 else 1
+
+private val TWO_CHIP_WIDTH = 400.dp
+
+/**
  * Smaller than the marks above it, because it is not one of them.
  *
  * Large enough to read as deliberate at arm's length, small enough that a screen of unread rows is
@@ -394,14 +473,22 @@ private val DOT = 8.dp
  * is not named here is a chip that does not exist for anyone using TalkBack, and "which labels does
  * this carry" is exactly the question the chips were added to answer.
  */
-private fun ThreadEntity.spoken(labels: List<String>, hiddenLabels: Int): String = buildList {
-    if (isUnread) add("Unread")
-    add(participantsSummary.ifBlank { "Unknown sender" })
-    add(subject?.takeIf { it.isNotBlank() } ?: "No subject")
-    if (messageCount > 1) add("$messageCount messages")
-    if (hasAttachment) add("has attachment")
-    if (isFlagged) add("starred")
-    if (labels.isNotEmpty()) add("labelled " + labels.joinToString(", "))
-    if (hiddenLabels > 0) add("and $hiddenLabels more")
+@Composable
+private fun ThreadEntity.spoken(labels: List<String>, hiddenLabels: Int): String {
+    val separator = stringResource(R.string.a11y_separator)
+
+    return buildList {
+            if (isUnread) add(stringResource(R.string.a11y_unread))
+            add(participantsSummary.ifBlank { stringResource(R.string.no_sender) })
+            add(subject?.takeIf { it.isNotBlank() } ?: stringResource(R.string.no_subject))
+            if (messageCount > 1)
+                add(pluralStringResource(R.plurals.a11y_message_count, messageCount, messageCount))
+            if (hasAttachment) add(stringResource(R.string.a11y_has_attachment))
+            if (isFlagged) add(stringResource(R.string.a11y_starred))
+            if (labels.isNotEmpty())
+                add(stringResource(R.string.a11y_labelled, labels.joinToString(separator)))
+            if (hiddenLabels > 0)
+                add(pluralStringResource(R.plurals.a11y_more_labels, hiddenLabels, hiddenLabels))
+        }
+        .joinToString(separator)
 }
-    .joinToString(", ")

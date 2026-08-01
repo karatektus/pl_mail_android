@@ -143,4 +143,21 @@
     -->
     <string name="source_empty">The server has no source stored for this message.</string>
     <string name="appearance">Appearance</string>
+
+    <!--
+      System label names, ours rather than the wire's.
+
+      The server sends these in English out of LabelRole; plMail's web client
+      renders sidebar.nav.* and translates them. Drawing the wire name showed a
+      German user an English sidebar against a German web UI, which is the two
+      surfaces disagreeing about the product. Chosen by role, never by name.
+    -->
+    <string name="role_inbox">Inbox</string>
+    <string name="role_drafts">Drafts</string>
+    <string name="role_sent">Sent</string>
+    <string name="role_trash">Trash</string>
+    <string name="role_junk">Spam</string>
+    <string name="role_archive">Archive</string>
+    <string name="role_snoozed">Snoozed</string>
+    <string name="role_flagged">Starred</string>
 </resources>

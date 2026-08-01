@@ -123,7 +123,7 @@ fun LabelSheet(
                         TriStateCheckbox(state = state, onClick = null)
 
                         Text(
-                            text = label.path,
+                            text = label.displayName(),
                             color = theme.colors.ink,
                             maxLines = 1,
                             overflow = TextOverflow.MiddleEllipsis,
