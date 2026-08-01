@@ -196,7 +196,15 @@ fun SearchScreen(
                                 onClick = { onOpenThread(thread.accountKey, thread.threadId) },
                             )
 
-                            PlMailDivider(startIndent = 72.dp)
+                            // Between rows, never after the last one. A
+                            // hairline with nothing under it implies another
+                            // result is coming, so a search that found three
+                            // things looked like one that had stopped loading.
+                            // The mail list settled this already; search was
+                            // written before it did.
+                            if (index < results.itemCount - 1) {
+                                PlMailDivider(startIndent = 72.dp)
+                            }
                         }
                     }
             }
