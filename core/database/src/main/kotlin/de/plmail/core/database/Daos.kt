@@ -132,6 +132,22 @@ interface ThreadDao {
     suspend fun setSnoozedUntil(uid: String, until: Long?)
 
     @Query("DELETE FROM threads WHERE uid IN (:uids)") suspend fun delete(uids: List<String>)
+
+    /**
+     * Whether this server classifies mail into inbox categories at all.
+     *
+     * What decides whether the sidebar draws the category group. There is no capability to ask for
+     * — the categories are a plMail extension on Thread rather than a `using` URN — so the honest
+     * signal is whether any conversation this device has actually seen carries one. A plMail that
+     * predates the extension leaves every row null and the group never appears, which is the
+     * degradation that matters: this client has to stay usable against an older server rather than
+     * offering five destinations that are permanently empty.
+     *
+     * `LIMIT 1` inside an `EXISTS` rather than a count: the answer is a boolean and the table has a
+     * row per cached conversation.
+     */
+    @Query("SELECT EXISTS(SELECT 1 FROM threads WHERE category IS NOT NULL LIMIT 1)")
+    fun observeHasCategories(): Flow<Boolean>
 }
 
 @Dao

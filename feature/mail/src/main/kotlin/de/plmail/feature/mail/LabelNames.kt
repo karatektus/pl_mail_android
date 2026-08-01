@@ -3,6 +3,8 @@ package de.plmail.feature.mail
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import de.plmail.core.data.Label
+import de.plmail.core.data.MailCategory
+import de.plmail.core.data.MailView
 
 /**
  * What a label is called on screen.
@@ -41,6 +43,37 @@ internal fun Label.displayName(): String =
  * the inbox said "Inbox" in a German build for exactly as long as the sidebar did.
  */
 @Composable internal fun Label.displayTitle(): String = roleName() ?: name
+
+/**
+ * What an inbox category is called on screen.
+ *
+ * Translated here rather than taken from the wire, for exactly the reason the system roles are: the
+ * server's `MessageCategory` values are wire tokens, not display names, and the web renders them
+ * through its own catalogue. A German device saying "promotions" beside "Posteingang" would be the
+ * two surfaces disagreeing again.
+ *
+ * The German words are Gmail's own — Allgemein, Soziale Netzwerke, Werbung, Benachrichtigungen,
+ * Foren — because these tabs *are* Gmail's, and somebody arriving from Gmail should not have to
+ * work out that "Aktionen" and "Werbung" are the same tab.
+ */
+@Composable
+internal fun MailCategory.displayName(): String =
+    when (this) {
+        MailCategory.PRIMARY -> stringResource(R.string.category_primary)
+        MailCategory.SOCIAL -> stringResource(R.string.category_social)
+        MailCategory.PROMOTIONS -> stringResource(R.string.category_promotions)
+        MailCategory.UPDATES -> stringResource(R.string.category_updates)
+        MailCategory.FORUMS -> stringResource(R.string.category_forums)
+    }
+
+/** The title over whichever list is showing. */
+@Composable
+internal fun MailView.displayTitle(): String =
+    when (this) {
+        MailView.Inbox -> stringResource(R.string.inbox_title)
+        is MailView.Category -> category.displayName()
+        is MailView.Labelled -> label.displayTitle()
+    }
 
 /** The app's own word for a system role, or null for a label the user made. */
 @Composable

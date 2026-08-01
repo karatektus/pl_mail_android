@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import com.github.takahirom.roborazzi.captureRoboImage
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PlMailDivider
+import de.plmail.core.designsystem.PlMailLabelColor
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.designsystem.PlMailThemeChoice
 import java.time.ZonedDateTime
@@ -201,13 +202,17 @@ class ThreadListScreenshotTest {
      */
     private val labelled =
         mapOf(
-            0 to (listOf("Arbeit") to 0),
-            4 to (listOf("Wohnung") to 0),
-            7 to (listOf("Arbeit", "Lesen") to 0),
+            0 to (listOf(RowChip("Arbeit", PlMailLabelColor.BLUE)) to 0),
+            4 to (listOf(RowChip("Wohnung")) to 0),
+            7 to
+                (listOf(
+                    RowChip("Arbeit", PlMailLabelColor.BLUE),
+                    RowChip("Lesen", PlMailLabelColor.AMBER),
+                ) to 0),
             // One name and a counter, because that is what `rowLabels` hands the
             // row once a conversation carries more labels than fit: the counter
             // takes one of the two chip slots rather than sitting after them.
-            10 to (listOf("Steuer") to 3),
+            10 to (listOf(RowChip("Steuer", PlMailLabelColor.PINK)) to 3),
         )
 
     private fun capture(name: String, threads: List<ThreadEntity>) {

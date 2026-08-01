@@ -28,7 +28,7 @@ class RowLabelsTest {
     fun `a conversation shows the labels it carries`() {
         val row = thread("10,12").rowLabels(all, viewing = null)
 
-        assertEquals(listOf("Work", "Holiday"), row.names)
+        assertEquals(listOf("Work", "Holiday"), row.labels.map { it.name })
         assertEquals(0, row.hidden)
     }
 
@@ -43,7 +43,7 @@ class RowLabelsTest {
     fun `the label being looked at is not chipped onto its own rows`() {
         val row = thread("10,12").rowLabels(all, viewing = work)
 
-        assertEquals(listOf("Holiday"), row.names)
+        assertEquals(listOf("Holiday"), row.labels.map { it.name })
     }
 
     /**
@@ -60,7 +60,7 @@ class RowLabelsTest {
 
         val row = thread("1,6,77").rowLabels(labels, viewing = null)
 
-        assertEquals(listOf("Archive"), row.names)
+        assertEquals(listOf("Archive"), row.labels.map { it.name })
         assertEquals("77", labels.single { it.name == "Archive" && !it.isSystem }.key)
     }
 
@@ -78,7 +78,7 @@ class RowLabelsTest {
     fun `beyond the cap the remainder is counted, including the name the counter displaced`() {
         val row = thread("10,11,12,13").rowLabels(all, viewing = null, limit = 2)
 
-        assertEquals(listOf("Work"), row.names)
+        assertEquals(listOf("Work"), row.labels.map { it.name })
         assertEquals(3, row.hidden)
     }
 
@@ -94,7 +94,7 @@ class RowLabelsTest {
     fun `at the cap every label is named and nothing is counted`() {
         val row = thread("10,12").rowLabels(all, viewing = null, limit = 2)
 
-        assertEquals(listOf("Work", "Holiday"), row.names)
+        assertEquals(listOf("Work", "Holiday"), row.labels.map { it.name })
         assertEquals(0, row.hidden)
     }
 
@@ -110,7 +110,7 @@ class RowLabelsTest {
     fun `chips are ordered like the sidebar rather than like the stored keys`() {
         val row = thread("13,10").rowLabels(all, viewing = null)
 
-        assertEquals(listOf("Work", "Deutschland"), row.names)
+        assertEquals(listOf("Work", "Deutschland"), row.labels.map { it.name })
     }
 
     /**
@@ -121,8 +121,23 @@ class RowLabelsTest {
     fun `a key the sidebar does not know is not drawn`() {
         val row = thread("10,99").rowLabels(all, viewing = null)
 
-        assertEquals(listOf("Work"), row.names)
+        assertEquals(listOf("Work"), row.labels.map { it.name })
         assertEquals(0, row.hidden)
+    }
+
+    /**
+     * A chip carries its label's colour, as the raw token.
+     *
+     * Raw because this module cannot resolve one — the vocabulary lives in the design system, which
+     * nothing here depends on — and unresolved is also what keeps a token from a newer server
+     * reaching the row at all rather than being erased on the way through.
+     */
+    @Test
+    fun `a chip carries the colour its label was given`() {
+        val coloured = label(key = "20", name = "Rechnungen", color = "amber")
+        val row = thread("10,20").rowLabels(all + coloured, viewing = null)
+
+        assertEquals(listOf(null, "amber"), row.labels.map { it.color })
     }
 
     @Test
@@ -139,12 +154,19 @@ class RowLabelsTest {
             labelKeys = labelKeys,
         )
 
-    private fun label(key: String, name: String, path: String = name, role: String? = null) =
+    private fun label(
+        key: String,
+        name: String,
+        path: String = name,
+        role: String? = null,
+        color: String? = null,
+    ) =
         Label(
             key = key,
             name = name,
             path = path,
             role = role,
+            color = color,
             unreadThreads = 0,
             totalThreads = 0,
             mayRename = role == null,

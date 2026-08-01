@@ -63,11 +63,21 @@ data class NewMailbox(
     val name: String,
     val parentId: MailboxId? = null,
     val isSubscribed: Boolean = true,
+    /**
+     * A colour token from the server's closed vocabulary, or null for none.
+     *
+     * Omitted from the request when null rather than sent as JSON null, because the two mean the
+     * same thing on a create and an omitted key cannot be mistaken for a client that tried to clear
+     * something. The server refuses a token it does not know with `invalidProperties` and creates
+     * nothing — which is why the picker offers only what it accepts.
+     */
+    val color: String? = null,
 ) {
     fun toJson(): JsonObject = buildJsonObject {
         put("name", name)
         put("parentId", parentId?.let { JsonPrimitive(it.value) } ?: JsonNull)
         put("isSubscribed", isSubscribed)
+        color?.let { put("color", it) }
     }
 }
 
@@ -91,6 +101,21 @@ class MailboxPatch private constructor(private val fields: Map<String, JsonEleme
          * for a client to set rather than an obscure corner.
          */
         fun subscribed(value: Boolean) = apply { fields["isSubscribed"] = JsonPrimitive(value) }
+
+        /**
+         * The label's colour, or null to take it off.
+         *
+         * JSON null rather than an omitted key, unlike [NewMailbox]: on a patch the two are
+         * genuinely different, and "no colour" is a choice somebody makes rather than a field they
+         * left alone. Without the explicit null a user could set a colour from this client and
+         * never remove it.
+         *
+         * This is the one property the server accepts on a **system** label — Inbox may be
+         * recoloured though it may not be renamed — so it is not guarded by `mayRename`.
+         */
+        fun color(token: String?) = apply {
+            fields["color"] = token?.let { JsonPrimitive(it) } ?: JsonNull
+        }
 
         fun build() = MailboxPatch(fields.toMap())
     }

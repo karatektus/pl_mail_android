@@ -73,6 +73,15 @@ data class MailboxEntity(
     val name: String,
     val parentId: String? = null,
     val role: String? = null,
+    /**
+     * The label's colour as the **wire token** the server sent — `blue`, `amber` — or null.
+     *
+     * Stored uninterpreted, for the same reason `role` is: the token is resolved to an actual
+     * colour by the design system, per theme, and a value this build does not recognise has to
+     * survive the cache so that an app update can start drawing it without a resync. Storing a
+     * resolved hex here would freeze one theme's answer into a table that outlives the theme.
+     */
+    val color: String? = null,
     val sortOrder: Int = 0,
     val totalEmails: Int = 0,
     val unreadEmails: Int = 0,
@@ -113,6 +122,27 @@ data class ThreadEntity(
      * is always still pending — nothing has to re-check the clock to know that.
      */
     val snoozedUntil: Long? = null,
+    /**
+     * Which Gmail-style inbox tab this conversation belongs to, as the server's own token, or null
+     * when it has never been classified.
+     *
+     * The **resolved** value off `Thread/get`, not any one message's — a tab holds conversations,
+     * and the server folds a thread's messages most-recent-wins. It arrives free: every page and
+     * every delta sync already back-references a `Thread/get` off the message get, for snooze.
+     *
+     * Denormalised here even though the tabs are a *server-side* query and the feed table already
+     * holds the answer, because the two are different questions. The feed says which conversations
+     * are in a tab; this says which tab a conversation is in — which is what lets the sidebar know
+     * whether this server classifies mail at all, and therefore whether to draw the category
+     * entries. A server without the extension leaves this null everywhere and the group never
+     * appears, which is the degradation that matters: this app has to keep working against a plMail
+     * that predates the feature.
+     *
+     * **Null is not primary.** The server's own inbox query puts an unclassified conversation in no
+     * tab, and treating null as primary here would put mail on the phone's Primary tab that the web
+     * does not have.
+     */
+    val category: String? = null,
     /**
      * Which labels this conversation carries, as collapse *keys*, comma-separated.
      *

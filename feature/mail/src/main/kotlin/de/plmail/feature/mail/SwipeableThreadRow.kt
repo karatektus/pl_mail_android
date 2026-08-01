@@ -22,6 +22,8 @@ import androidx.compose.ui.unit.dp
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.RowLabels
 import de.plmail.core.database.ThreadEntity
+import de.plmail.core.designsystem.PlMailLabelColor
+import de.plmail.core.ui.RowChip
 import de.plmail.core.ui.ThreadRow
 
 /**
@@ -74,7 +76,14 @@ fun SwipeableThreadRow(
                     onClick = onClick,
                     onLongClick = onLongClick,
                     isSelected = isSelected,
-                    labels = labels.names,
+                    // The one place the server's colour token becomes a colour
+                    // this app can draw. `:core:data` carries the raw string
+                    // because it cannot see the design system, and `:core:ui`
+                    // cannot see `:core:data`; this feature sees both.
+                    labels =
+                        labels.labels.map {
+                            RowChip(name = it.name, color = PlMailLabelColor.fromWire(it.color))
+                        },
                     hiddenLabels = labels.hidden,
                 )
             },

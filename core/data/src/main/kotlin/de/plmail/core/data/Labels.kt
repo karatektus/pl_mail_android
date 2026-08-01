@@ -38,6 +38,19 @@ data class Label(
     val path: String,
     /** The JMAP role, lower case, or null for a label the user made. */
     val role: String?,
+    /**
+     * The colour token the server sent — `blue`, `amber` — or null for "no colour chosen".
+     *
+     * Decided by the *primary* binding, exactly as [name] is, and for the same reason: colour lives
+     * on the label rather than on the binding, so the accounts agree in practice, and choosing
+     * deterministically is what stops the sidebar re-tinting itself when two accounts sync in a
+     * different order.
+     *
+     * Carried as the raw token rather than a resolved colour, because this module cannot see one.
+     * `:core:designsystem` owns the vocabulary and the per-theme resolution; a colour resolved here
+     * would be one theme's answer frozen into a data class the theme switcher cannot reach.
+     */
+    val color: String?,
     val unreadThreads: Int,
     val totalThreads: Int,
     val mayRename: Boolean,
@@ -99,6 +112,7 @@ fun List<MailboxEntity>.asLabels(): List<Label> {
                 name = primary.name,
                 path = primary.pathIn(byUid),
                 role = primary.role,
+                color = primary.color,
                 // Summed, because the row is one row: two accounts each holding
                 // four unread in the same label is eight unread to the person
                 // reading it.
@@ -168,15 +182,24 @@ private const val MAX_DEPTH = 8
 private const val SEPARATOR = "/"
 
 /**
+ * One chip on a row: what it says and what colour it is.
+ *
+ * The colour is the server's raw token rather than a resolved colour, because this module cannot
+ * resolve one — the vocabulary and the per-theme answer both live in `:core:designsystem`, which
+ * nothing here depends on. The row maps the token across at the point of drawing.
+ */
+data class RowLabel(val name: String, val color: String? = null)
+
+/**
  * The labels a list row shows, and how many it could not fit.
  *
- * [names] is what gets drawn; [hidden] is everything past the cap, counted rather than dropped —
+ * [labels] is what gets drawn; [hidden] is everything past the cap, counted rather than dropped —
  * "+2" is a small thing to draw and the difference between a row that is short of space and a row
  * that is wrong.
  */
-data class RowLabels(val names: List<String>, val hidden: Int) {
+data class RowLabels(val labels: List<RowLabel>, val hidden: Int) {
     val isEmpty: Boolean
-        get() = names.isEmpty() && hidden == 0
+        get() = labels.isEmpty() && hidden == 0
 
     companion object {
         val NONE = RowLabels(emptyList(), 0)
@@ -215,15 +238,15 @@ fun ThreadEntity.rowLabels(
     val shown =
         labels
             .filter { it.key in carried && !it.isSystem && it.key != viewing?.key }
-            .map { it.name }
+            .map { RowLabel(name = it.name, color = it.color) }
 
     // The counter is one of the [limit] chips rather than an extra one after
     // them, which is why this is not `take(limit)`. See [ROW_LABEL_LIMIT].
-    if (shown.size <= limit) return RowLabels(names = shown, hidden = 0)
+    if (shown.size <= limit) return RowLabels(labels = shown, hidden = 0)
 
     val named = shown.take(limit - 1)
 
-    return RowLabels(names = named, hidden = shown.size - named.size)
+    return RowLabels(labels = named, hidden = shown.size - named.size)
 }
 
 /**

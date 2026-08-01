@@ -35,6 +35,7 @@ import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.LocalPlMailTheme
 import de.plmail.core.designsystem.PlMailAvatar
 import de.plmail.core.designsystem.PlMailLabelChip
+import de.plmail.core.designsystem.PlMailLabelColor
 import java.time.LocalDate
 
 /**
@@ -97,13 +98,13 @@ fun ThreadRow(
     /**
      * The labels to draw, already resolved and already filtered.
      *
-     * Names rather than ids, and chosen by the caller rather than derived here, because *which*
-     * labels belong on a row is a question about the screen: the list you are looking at must not
-     * chip every row with its own name, and a system role is where the mail is rather than
+     * Names and colours rather than ids, and chosen by the caller rather than derived here, because
+     * *which* labels belong on a row is a question about the screen: the list you are looking at
+     * must not chip every row with its own name, and a system role is where the mail is rather than
      * something the user put on it. `ThreadEntity.rowLabels` in `:core:data` owns those rules and
      * this module cannot see them — which is the module boundary working, not a gap.
      */
-    labels: List<String> = emptyList(),
+    labels: List<RowChip> = emptyList(),
     /** How many more the row could not fit, drawn as a counter rather than silently dropped. */
     hiddenLabels: Int = 0,
     /**
@@ -300,9 +301,10 @@ fun ThreadRow(
                         // which is worse than either name being short. An equal
                         // share can starve a chip down to about six characters
                         // and never below it.
-                        labels.forEach { name ->
+                        labels.forEach { chip ->
                             PlMailLabelChip(
-                                text = name,
+                                text = chip.name,
+                                color = chip.color,
                                 modifier = Modifier.weight(1f, fill = false),
                             )
                         }
@@ -311,6 +313,9 @@ fun ThreadRow(
                         // gives way and always at its full width: "+4"
                         // abbreviated to "+" would be a mark that says there is
                         // more without saying how much more.
+                        // Uncoloured, always. It stands for several labels of
+                        // possibly several colours, and borrowing one of them
+                        // would say the hidden labels are all that colour.
                         if (hiddenLabels > 0) {
                             PlMailLabelChip(text = "+$hiddenLabels")
                         }
@@ -381,6 +386,19 @@ fun ThreadRow(
         }
     }
 }
+
+/**
+ * One chip on a row: its name, and the colour its label carries.
+ *
+ * A type of its own rather than `:core:data`'s `RowLabel`, and the reason is the module graph
+ * rather than taste. `RowLabel` holds the server's raw token because `:core:data` cannot see a
+ * colour; `PlMailLabelColor` is the resolved vocabulary and lives in `:core:designsystem`, which
+ * this module depends on and that one does not. A single shared type would mean one of those two
+ * modules depending on something it has no business knowing about — `:core:ui` on repositories and
+ * Hilt, or `:core:data` on Compose. The map across is one line, in the feature that already sees
+ * both.
+ */
+data class RowChip(val name: String, val color: PlMailLabelColor? = null)
 
 private val AFFORDANCE = 15.dp
 
@@ -474,7 +492,7 @@ private val DOT = 8.dp
  * this carry" is exactly the question the chips were added to answer.
  */
 @Composable
-private fun ThreadEntity.spoken(labels: List<String>, hiddenLabels: Int): String {
+private fun ThreadEntity.spoken(labels: List<RowChip>, hiddenLabels: Int): String {
     val separator = stringResource(R.string.a11y_separator)
 
     return buildList {
@@ -485,8 +503,17 @@ private fun ThreadEntity.spoken(labels: List<String>, hiddenLabels: Int): String
                 add(pluralStringResource(R.plurals.a11y_message_count, messageCount, messageCount))
             if (hasAttachment) add(stringResource(R.string.a11y_has_attachment))
             if (isFlagged) add(stringResource(R.string.a11y_starred))
+            // The names only. A colour is not something a screen reader can
+            // usefully say — "Work, blue" describes the chip rather than the
+            // conversation — and the same label is the same label whatever it
+            // is tinted.
             if (labels.isNotEmpty())
-                add(stringResource(R.string.a11y_labelled, labels.joinToString(separator)))
+                add(
+                    stringResource(
+                        R.string.a11y_labelled,
+                        labels.joinToString(separator) { it.name },
+                    )
+                )
             if (hiddenLabels > 0)
                 add(pluralStringResource(R.plurals.a11y_more_labels, hiddenLabels, hiddenLabels))
         }

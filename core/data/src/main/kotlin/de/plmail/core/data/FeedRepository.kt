@@ -119,6 +119,35 @@ constructor(
         }
 
     /**
+     * One inbox category, merged across accounts — a Gmail tab.
+     *
+     * **The category is a condition on the query, not a sieve over its results**, and that is the
+     * whole reason `EmailFilter.ThreadCategory` was asked of the server rather than worked around
+     * here. A page is twenty-five messages; if the filtering happened on this side, a page
+     * containing two Promotions would put two rows on screen and report the page as full, and the
+     * list would look almost empty while more existed further down. Nothing on the device can tell
+     * that from a genuinely quiet tab.
+     *
+     * The Inbox binding is part of the filter because categories are an *inbox* idea: the server
+     * classifies mail as it arrives and never stops, so a conversation moved to Trash keeps its
+     * category, and a tab without the mailbox condition would show the bin's promotions alongside
+     * the inbox's. When the binding is not known yet the category stands alone — the same fallback
+     * [unifiedInbox] takes, and just as narrow a window: `feed` syncs mailboxes before it builds a
+     * single pager, so this is the first-run corner rather than the ordinary path.
+     */
+    fun category(
+        category: MailCategory,
+        pageSize: Int = PAGE_SIZE,
+    ): Flow<PagingData<ThreadEntity>> =
+        feed(category.feedId, pageSize) { accountKey, _ ->
+            val inCategory = EmailFilter.ThreadCategory(category.wire)
+
+            database.mailboxes().byRole(accountKey, INBOX_ROLE)?.let {
+                EmailFilter.And(listOf(EmailFilter.InMailbox(MailboxId(it.mailboxId)), inCategory))
+            } ?: inCategory
+        }
+
+    /**
      * One label's mail, merged across every account that binds it.
      *
      * Accounts with no binding for the label are **dropped from the merge entirely**, not queried
@@ -133,6 +162,14 @@ constructor(
             byAccount[accountKey]?.let { EmailFilter.InMailbox(MailboxId(it)) }
         }
     }
+
+    /** Whichever list the sidebar has selected. One entry point, so the caller has no `when`. */
+    fun forView(view: MailView, pageSize: Int = PAGE_SIZE): Flow<PagingData<ThreadEntity>> =
+        when (view) {
+            MailView.Inbox -> unifiedInbox(pageSize)
+            is MailView.Category -> category(view.category, pageSize)
+            is MailView.Labelled -> labelled(view.label, pageSize)
+        }
 
     @OptIn(ExperimentalPagingApi::class)
     private fun feed(

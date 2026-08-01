@@ -121,7 +121,7 @@ class ThreadRowNarrowTest {
                             ThreadRow(
                                 thread = thread(),
                                 onClick = {},
-                                labels = listOf("Wohnung/Nebenkosten"),
+                                labels = listOf(RowChip("Wohnung/Nebenkosten")),
                                 hiddenLabels = 2,
                                 today = TODAY,
                             )

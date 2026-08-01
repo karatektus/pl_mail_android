@@ -35,6 +35,22 @@ class SidebarViewModel @Inject constructor(labels: LabelRepository, accounts: Ma
                 initialValue = emptyList(),
             )
 
+    /**
+     * Whether this server classifies mail, so the drawer knows whether to offer the category rows.
+     *
+     * False to start with rather than true: the rows appear once there is evidence for them, and a
+     * group that flashes in and out at every launch — before the first conversation has been read
+     * back off disk — is worse than one that arrives a frame late.
+     */
+    val hasCategories: StateFlow<Boolean> =
+        labels
+            .observeHasCategories()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = false,
+            )
+
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
     }
@@ -61,9 +77,19 @@ class LabelEditorViewModel @Inject constructor(private val labels: LabelReposito
     private val _state = MutableStateFlow(LabelEditorState())
     val state: StateFlow<LabelEditorState> = _state.asStateFlow()
 
-    fun create(name: String) = work { labels.create(name.trim()) }
+    fun create(name: String, color: String?) = work { labels.create(name.trim(), color) }
 
-    fun rename(label: Label, name: String) = work { labels.rename(label, name.trim()) }
+    /**
+     * Rename and recolour in one patch.
+     *
+     * The name is withheld for a label the server will not rename. Colour is the *one* property
+     * `Mailbox/set` accepts on a system label — Inbox may be recoloured, never renamed — and
+     * sending an unchanged `name` alongside it would be refused with `forbidden` for the whole
+     * patch, silently taking the colour with it.
+     */
+    fun save(label: Label, name: String, color: String?) = work {
+        labels.update(label, name.trim().takeIf { label.mayRename }, color)
+    }
 
     fun delete(label: Label, all: List<Label>) = work(deleted = label) { labels.delete(label, all) }
 

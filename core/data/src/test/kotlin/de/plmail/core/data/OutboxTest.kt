@@ -161,6 +161,7 @@ class OutboxTest {
                 name = "Steuer",
                 path = "Steuer",
                 role = null,
+                color = null,
                 unreadThreads = 0,
                 totalThreads = 0,
                 mayRename = true,

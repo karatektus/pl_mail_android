@@ -77,6 +77,54 @@ data class PlMailColors(
      */
     val onAvatar: Color
         get() = if (isDark) Palette.DarkAvatarInk else Palette.LightAvatarInk
+
+    /**
+     * What a label's colour token resolves to in this scheme.
+     *
+     * The reason the server's vocabulary is tokens rather than hex, made concrete: `blue` is a deep
+     * navy on a cream page and a pale sky on a warm near-black, and `#3b82f6` would have been one
+     * fixed light-mode blue in both. One ramp per scheme family rather than per theme — Nord, Dusk
+     * and Dark share the bright ramp; Light and Solar share the deep one — because what the ramp
+     * has to clear is the *page*, and the five schemes differ in hue far more than in how light
+     * they are.
+     *
+     * Every value clears 4.5:1 against both `surface` and `sunken` in every theme, which is one
+     * rule covering both of its uses: the chip draws it as text, the sidebar as a 24dp glyph.
+     * Pinned by `PaletteContrastTest`, which sweeps nine tokens through six schemes — the sweep
+     * `docs/REMAINING.md` said adopting colour would need.
+     */
+    fun labelColor(color: PlMailLabelColor): Color =
+        (if (isDark) Palette.DarkLabels else Palette.LightLabels).getValue(color)
+}
+
+/**
+ * The colours a label may carry, and plMail's own closed vocabulary.
+ *
+ * The same nine tokens as `App\Domain\Enum\Mail\LabelColor` on the server, in the same order, with
+ * the same wire strings — and this is the only copy of them in the app. `:core:jmap` deliberately
+ * carries the raw string uninterpreted, because it is Android-free and cannot turn a token into a
+ * colour; the cache stores the raw string for the same reason. So the vocabulary exists once, here,
+ * where the resolution happens.
+ *
+ * [fromWire] returns null for anything it does not know rather than throwing or substituting grey.
+ * A newer server may grow a tenth token, and a chip that draws neutral is a chip that still says
+ * the label's name — where a substituted grey would claim the user had chosen grey, and a throw
+ * would take the sidebar down over a colour.
+ */
+enum class PlMailLabelColor(val wire: String) {
+    GRAY("gray"),
+    RED("red"),
+    ORANGE("orange"),
+    AMBER("amber"),
+    GREEN("green"),
+    TEAL("teal"),
+    BLUE("blue"),
+    VIOLET("violet"),
+    PINK("pink");
+
+    companion object {
+        fun fromWire(value: String?): PlMailLabelColor? = entries.firstOrNull { it.wire == value }
+    }
 }
 
 /**

@@ -34,6 +34,18 @@ data class Email(
     val size: Long = 0,
     val hasAttachment: Boolean = false,
     /**
+     * This message's own inbox category, or null when it has not been classified.
+     *
+     * plMail's extension, and the **raw** signal rather than the value a tab is drawn from — see
+     * [MailThread.category], which is this folded over the conversation most-recent-wins. The two
+     * disagree whenever a conversation mixes kinds, which a newsletter somebody answered does; that
+     * is the classifier working, not misfiring.
+     *
+     * Read-only, and deliberately not offered as an [EmailFilter] condition. Filtering it would put
+     * one conversation in two tabs, and the server refuses it for that reason.
+     */
+    val category: String? = null,
+    /**
      * A JMAP map, `{"42": true}` — and `{}` rather than `[]` when empty.
      *
      * These are mailbox **binding** ids, already translated out of the user-scoped label space, so

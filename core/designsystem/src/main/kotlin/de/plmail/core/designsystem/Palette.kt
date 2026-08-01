@@ -276,4 +276,58 @@ internal object Palette {
             Color(0xFFC0B563),
             Color(0xFF8DB9C7),
         )
+
+    /**
+     * The nine label colours, deep enough to be read on a light page.
+     *
+     * Chosen against the *worst* light background the app has, which is `sunken` — the chip's own
+     * fill, and the darkest of the three light surfaces, so a colour that clears 4.5:1 there clears
+     * it on the page and on a raised card too. Solar's `sunken` is the real bound: `#EEE8D5` is
+     * darker than Light's `#F1EFEA`, so every value here is tuned for a cream page rather than a
+     * white one.
+     *
+     * Deep rather than saturated on purpose. These are drawn as chip text and as a sidebar glyph,
+     * never as a fill — see [PlMailLabelChip] for why a filled coloured pill was rejected — so what
+     * matters is legibility at 13sp, and a bright Tailwind-500 is neither legible here nor quiet
+     * enough to sit on a row whose only accent is the unread dot.
+     *
+     * Orange and amber are close together and that is honest rather than sloppy: at the depth AA
+     * requires on a cream page there is not much room between them, and the web renders the same
+     * two tokens with the same problem. A user who wants two obviously different labels has seven
+     * other choices.
+     */
+    val LightLabels =
+        mapOf(
+            PlMailLabelColor.GRAY to Color(0xFF5F5A53),
+            PlMailLabelColor.RED to Color(0xFFA32B24),
+            PlMailLabelColor.ORANGE to Color(0xFFA34A15),
+            PlMailLabelColor.AMBER to Color(0xFF7D5A05),
+            PlMailLabelColor.GREEN to Color(0xFF2C6B3E),
+            PlMailLabelColor.TEAL to Color(0xFF11615F),
+            PlMailLabelColor.BLUE to Color(0xFF245C8F),
+            PlMailLabelColor.VIOLET to Color(0xFF66399B),
+            PlMailLabelColor.PINK to Color(0xFF9B2D5F),
+        )
+
+    /**
+     * The same nine, bright enough to be read on a dark page.
+     *
+     * Tuned against **Nord's** surface rather than Dark's, because Nord's Polar Night `#2E3440` is
+     * the lightest of the three dark pages by a wide margin — a ramp that clears AA on `#171614`
+     * fails on Nord, and Nord is a theme somebody picks rather than an edge case. Everything here
+     * therefore has more headroom than it strictly needs in Dark and Dusk, which is the right way
+     * round: too bright is legible, too dim is not.
+     */
+    val DarkLabels =
+        mapOf(
+            PlMailLabelColor.GRAY to Color(0xFFB4AEA6),
+            PlMailLabelColor.RED to Color(0xFFF0918A),
+            PlMailLabelColor.ORANGE to Color(0xFFEFA771),
+            PlMailLabelColor.AMBER to Color(0xFFDFC06B),
+            PlMailLabelColor.GREEN to Color(0xFF8FD3A3),
+            PlMailLabelColor.TEAL to Color(0xFF7ECCC7),
+            PlMailLabelColor.BLUE to Color(0xFF97BEEE),
+            PlMailLabelColor.VIOLET to Color(0xFFBFA6F4),
+            PlMailLabelColor.PINK to Color(0xFFEE9CC2),
+        )
 }

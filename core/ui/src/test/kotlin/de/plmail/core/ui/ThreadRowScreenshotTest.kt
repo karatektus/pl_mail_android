@@ -124,7 +124,7 @@ class ThreadRowScreenshotTest {
     /** One label, which is what most labelled conversations actually carry. */
     @Test
     fun withOneLabel() {
-        capture("labels-one", thread(), labels = listOf("Steuer"))
+        capture("labels-one", thread(), labels = listOf(RowChip("Steuer")))
     }
 
     /**
@@ -137,7 +137,7 @@ class ThreadRowScreenshotTest {
      */
     @Test
     fun withLabels() {
-        capture("labels", thread(), labels = listOf("Work", "Steuer"))
+        capture("labels", thread(), labels = listOf(RowChip("Work"), RowChip("Steuer")))
     }
 
     /**
@@ -150,7 +150,11 @@ class ThreadRowScreenshotTest {
      */
     @Test
     fun withTwoLongLabels() {
-        capture("labels-long", thread(), labels = listOf("Wohnung/Nebenkosten", "Steuer 2025"))
+        capture(
+            "labels-long",
+            thread(),
+            labels = listOf(RowChip("Wohnung/Nebenkosten"), RowChip("Steuer 2025")),
+        )
     }
 
     /**
@@ -163,13 +167,13 @@ class ThreadRowScreenshotTest {
      */
     @Test
     fun withMoreLabelsThanFit() {
-        capture("labels-overflow", thread(), labels = listOf("Work"), hiddenLabels = 4)
+        capture("labels-overflow", thread(), labels = listOf(RowChip("Work")), hiddenLabels = 4)
     }
 
     private fun capture(
         name: String,
         thread: ThreadEntity,
-        labels: List<String> = emptyList(),
+        labels: List<RowChip> = emptyList(),
         hiddenLabels: Int = 0,
     ) {
         // The scheme is state inside one composition rather than two calls to
@@ -195,7 +199,7 @@ class ThreadRowScreenshotTest {
     private fun Row(
         thread: ThreadEntity,
         scheme: PlMailThemeChoice,
-        labels: List<String>,
+        labels: List<RowChip>,
         hiddenLabels: Int,
     ) {
         // reduceMotion, because the alternative is asking a Robolectric

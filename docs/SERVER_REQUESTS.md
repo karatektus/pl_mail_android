@@ -2,10 +2,16 @@
 
 Things the Android client wants that `pl_mail` does not currently offer.
 
-**Nothing here has been implemented, and nothing here may be implemented from this repo.** The
-server is committed to concurrently by other sessions; this file is a queue for a human to triage,
-not a to-do list anyone is working from. Read `~/pl_mail` freely — that is how these entries get
-written accurately — but never write to it.
+**The standing rule is that nothing here may be implemented from this repo.** The server is
+committed to concurrently by other sessions; this file is a queue for a human to triage, not a to-do
+list anyone is working from. Read `~/pl_mail` freely — that is how these entries get written
+accurately — but never write to it.
+
+**Two exceptions have now been made, both explicitly authorised and both worked in a git worktree of
+their own** rather than in `~/pl_mail`: `Mailbox.color`, which is merged, and the inbox categories,
+which are not. Both are described under "Landed" below. The rule is unchanged for everything else,
+and the worktree is what makes an exception safe — the primary checkout's branch never moves and no
+parallel session's `git add` can sweep the work up.
 
 ## The rule this file exists to serve
 
@@ -120,39 +126,6 @@ single query method would do. It does not need to be RFC 8621 Contacts.
 a suggestion list that is shorter than it could be — which is why this was built rather than
 blocked. It should be replaced rather than extended.
 
-### Label colour has no JMAP surface, and `create` accepts one without storing it
-
-**What the client wants to do.** Let someone colour a label, and draw that colour on the sidebar row
-and on the label chips shown against a conversation. Colour is how a label list stops being a wall
-of identical grey text once it is longer than about six entries, and plMail already models it —
-`Label::$color` is a real column with a real setter.
-
-**What it can do today.** Nothing. The Android label editor offers a name and a parent and no
-colour, because there is nothing to send it to and nothing to read it back from. Every label in the
-sidebar is drawn in the same ink.
-
-**What was checked.** Against the running 8002 stack on 2026-08-01.
-
-- `Mailbox/get` never returns a `color` key. The full property set is
-  `id, labelId, name, parentId, role, sortOrder, totalEmails, unreadEmails, totalThreads,
-  unreadThreads, myRights, isSubscribed` — `App\Jmap\Mapper\MailboxMapper::toJmap()` builds that
-  list literally and `color` is not in it.
-- `Mailbox/set` **update** with `{"color":"#ff8800"}` is correctly refused:
-  `notUpdated: {"2": {"type":"invalidPatch","description":"Property \"color\" cannot be updated."}}`.
-- `Mailbox/set` **create** with the same key **succeeds and drops it**: `created: {"c1": {"id":"5"}}`,
-  no `notCreated`, and the following `Mailbox/get` shows no colour anywhere. That asymmetry is worth
-  fixing on its own — update tells the client the truth and create does not.
-
-**Smallest change that would unblock it.** Add `color` to `MailboxMapper::toJmap()` and to the
-patch arm in `MailboxSetMethod`, over the column that already exists. If colour is deliberately
-web-only, then reject it on `create` the way `update` already does, so a client cannot believe it
-worked.
-
-**Client-side workaround.** None worth having. The obvious one — colouring by a hash of the label
-name, the way the avatars are coloured — would give the same label a different colour on the phone
-than on the web, which is worse than no colour at all: the whole point of colouring a label is that
-it is the same colour everywhere the user sees it.
-
 ### `Appearance` has no JMAP surface, so the phone and the web disagree about the theme
 
 **What the client wants to do.** Look the way the user set it on the web. Somebody who picked Nord
@@ -250,6 +223,56 @@ until then, advertising a non-zero `maxDelayedSend`. The messenger bus already h
 **Client-side workaround.** A local alarm that submits later — rejected. It would send only if the
 phone were awake, unblocked by Doze and still holding a valid credential, so a scheduled mail would
 sometimes simply not go, with no way for the user to tell in advance.
+
+---
+
+## Landed
+
+Kept rather than deleted, because what was asked for and what arrived are not always the same shape,
+and the difference is what a client author needs.
+
+### `Mailbox.color` — **merged into plMail `main`** (`b06b909`), adopted 2026-08-01
+
+Asked for as "add `color` to `MailboxMapper::toJmap()` and to the patch arm". What landed is that
+plus a closed vocabulary: nine Tailwind tokens (`gray`, `red`, `orange`, `amber`, `green`, `teal`,
+`blue`, `violet`, `pink`) or null, moved out of `LabelType` into a `LabelColor` enum the web form
+reads too, refused with `invalidProperties` naming the accepted values rather than dropped, and
+accepted on `create` as well as `update`. Colour is the one property a **system** label accepts an
+update to — Inbox may be recoloured and may not be renamed.
+
+Tokens rather than hex is the part that matters to this client, and it is why the adoption was one
+day's work rather than a week's: `blue` resolves through `PlMailColors.labelColor` per theme, so the
+same label is the right blue in all six of them. A hex value would have been one fixed light-mode
+colour drawn on Nord's Polar Night.
+
+Main has since gained commits mapping Gmail and Outlook colours onto the same vocabulary by hue, so
+a real account arrives already coloured.
+
+### The inbox categories — **on the branch `feat/jmap-categories`, not merged**
+
+Not previously in this file, because the ask and the implementation happened in one session. plMail
+has classified inbox mail into Gmail's five categories for a long time and the web has had a tab bar
+over it; `grep -rn category src/Jmap/` returned nothing, so no client but the browser could see it.
+
+The branch adds three things and the split between them is the point:
+
+- `Thread.category` — the **resolved** conversation value, most-recent-wins, and the only one a tab
+  may be drawn from. Null means never classified, which is a real state and is not Primary.
+- `Email.category` — the raw per-message signal, read-only, published so a client can explain why a
+  conversation is where it is.
+- `Email/query`'s **`threadCategory`** filter condition, which matches on the *thread's* value.
+
+Both halves of that were forced by the same two facts. A tab holds conversations, so filtering the
+per-message column would put a newsletter somebody answered into two tabs where the web shows it in
+one. And `Email/query` windows by position and limit, so a client that fetched a page and sieved it
+locally would draw a nearly-empty Promotions tab under a list that had already reported its end —
+which is indistinguishable, from the device, from a genuinely quiet category.
+
+A thread with a null category matches no tab, exactly as `MessageThreadRepository::findForUnifiedInbox`
+has it. `app:backfill category` is what fills those in.
+
+**Needs a human to merge.** Branch `feat/jmap-categories` off `main`, one commit, worktree at
+`~/pl_mail_categories`. Suite 678 → 690 tests with the same 4 errors and 43 failures; PHPStan clean.
 
 ---
 

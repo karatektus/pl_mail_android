@@ -119,6 +119,33 @@ sealed interface EmailFilter {
         override fun toJson() = buildJsonObject { put("listId", query) }
     }
 
+    /**
+     * The conversation's Gmail-style inbox category — what a tab contains.
+     *
+     * plMail's extension, and **thread-scoped**: it matches on the conversation's resolved category
+     * rather than on each message's own, so a newsletter somebody replied to appears in one tab
+     * rather than two. That is also why there is no per-message equivalent here and the server
+     * refuses one.
+     *
+     * It has to be sent rather than applied on the device, and that is the whole reason this
+     * condition exists. `Email/query` windows by position and limit: a client that asked for
+     * twenty-five and kept the two that were Promotions would draw a nearly empty tab under a list
+     * that had already reported its end, with no way to tell that from a genuinely quiet tab.
+     *
+     * Composes with [InMailbox] under [And], because categories are an inbox idea and the mailbox
+     * is a separate question. A thread the server never classified matches nothing — deliberately,
+     * and identically to plMail's own web inbox.
+     */
+    data class ThreadCategory(val category: String) : EmailFilter {
+        init {
+            require(category.isNotBlank()) {
+                "threadCategory needs a category token; the server rejects anything it cannot name."
+            }
+        }
+
+        override fun toJson() = buildJsonObject { put("threadCategory", category) }
+    }
+
     // --- Operators ---
 
     data class And(val conditions: List<EmailFilter>) : EmailFilter {

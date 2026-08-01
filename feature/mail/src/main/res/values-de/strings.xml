@@ -122,6 +122,19 @@
     <string name="role_snoozed">Zurückgestellt</string>
     <string name="role_flagged">Markiert</string>
 
+    <!--
+      Gmail's own German words for the same five tabs. Somebody arriving from
+      Gmail should not have to work out that two names mean one tab.
+    -->
+    <string name="category_primary">Allgemein</string>
+    <string name="category_social">Soziale Netzwerke</string>
+    <string name="category_promotions">Werbung</string>
+    <string name="category_updates">Benachrichtigungen</string>
+    <string name="category_forums">Foren</string>
+
+    <string name="label_color">Farbe</string>
+    <string name="label_color_none">Keine Farbe</string>
+
     <string name="offline">Sie sind offline. Das ist die Post, die bereits auf dem Gerät liegt.</string>
     <plurals name="offline_with_pending">
         <item quantity="one">Sie sind offline. %1$d Änderung wartet auf Ihren Server.</item>

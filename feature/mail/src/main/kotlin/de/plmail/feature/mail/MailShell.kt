@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.window.core.layout.WindowSizeClass
+import de.plmail.core.data.MailView
 import de.plmail.core.designsystem.PlMailTheme
 import kotlinx.coroutines.launch
 
@@ -53,15 +54,17 @@ fun MailShell(
     viewModel: SidebarViewModel = hiltViewModel(),
 ) {
     val labels by viewModel.labels.collectAsStateWithLifecycle()
+    val hasCategories by viewModel.hasCategories.collectAsStateWithLifecycle()
 
-    // The key rather than the Label, because a Label carries its bindings and
-    // its counts -- both of which change under it on every sync. Saving the key
-    // and resolving it back is what keeps the selection through a process death
-    // pointing at the same label rather than at a stale copy of it.
+    // The key rather than the MailView, because a Labelled view carries a Label,
+    // and a Label carries its bindings and its counts -- both of which change
+    // under it on every sync. Saving the key and resolving it back is what keeps
+    // the selection through a process death pointing at the same destination
+    // rather than at a stale copy of it.
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
     var editing by rememberSaveable(stateSaver = LabelEditorSaver) { mutableStateOf(null) }
 
-    val selected = labels.firstOrNull { it.key == selectedKey } ?: labels.firstOrNull()
+    val selected = MailView.restore(selectedKey, labels)
 
     val isWide =
         currentWindowAdaptiveInfo()
@@ -75,9 +78,10 @@ fun MailShell(
         @Composable {
             LabelSidebar(
                 labels = labels,
+                showCategories = hasCategories,
                 selected = selected,
-                onSelect = { label ->
-                    selectedKey = label.key
+                onSelect = { view ->
+                    selectedKey = view.toKey()
                     scope.launch { drawer.close() }
                 },
                 onCreate = {
@@ -104,7 +108,7 @@ fun MailShell(
     val content =
         @Composable {
             MailPane(
-                label = selected,
+                view = selected,
                 // Null where the sidebar is already on screen: a hamburger that
                 // opens something already open is a control that does nothing.
                 onOpenSidebar = if (isWide) null else ({ scope.launch { drawer.open() } }),
@@ -161,7 +165,7 @@ fun MailShell(
                 // Back to the inbox rather than to a label that no longer
                 // exists -- otherwise the list keeps paging a mailbox the server
                 // has forgotten and reports it as an unreachable account.
-                if (deleted.key == selectedKey) selectedKey = null
+                if (selected == MailView.Labelled(deleted)) selectedKey = null
                 editing = null
             },
         )

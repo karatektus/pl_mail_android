@@ -26,6 +26,25 @@ data class MailThread(
      * re-check the clock to know that.
      */
     val snoozedUntil: String? = null,
+    /**
+     * The conversation's inbox category — `primary`, `social`, `promotions`, `updates`, `forums` —
+     * or null when it has never been classified.
+     *
+     * plMail's second Thread extension, and the **resolved** value: the server stores a raw
+     * category per message and folds them onto the conversation most-recent-wins. This is the one a
+     * tab is drawn from, because a tab holds conversations. [Email.category] is the raw signal it
+     * came from and disagrees with this whenever somebody replied to a newsletter.
+     *
+     * **Null is not Primary.** It means unclassified, and the server's own inbox query puts such a
+     * conversation in no tab at all. Folding it into Primary here would put mail on the phone's
+     * Primary tab that the web's does not have, which is the failure mode this client is most
+     * careful about.
+     *
+     * A wire string rather than an enum for the same reason [Mailbox.color] is: an unknown value
+     * from a newer server must survive the round trip to the cache rather than being erased by an
+     * enum written today.
+     */
+    val category: String? = null,
 ) {
     val isSnoozed: Boolean
         get() = snoozedUntil != null

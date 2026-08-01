@@ -58,6 +58,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
+import de.plmail.core.data.MailView
 import de.plmail.core.data.rowLabels
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PaneTone
@@ -85,16 +86,24 @@ fun MailScreen(
     // exist to prevent. :app owns the swap.
     onSearch: () -> Unit,
     onCompose: () -> Unit,
-    label: Label? = null,
+    view: MailView = MailView.Inbox,
     /** Null where the sidebar is already on screen and there is nothing to open. */
     onOpenSidebar: (() -> Unit)? = null,
     onEditLabel: (Label) -> Unit = {},
     onCreateLabel: () -> Unit = {},
     viewModel: MailViewModel = hiltViewModel(),
 ) {
-    // Keyed on the label rather than done once: switching label has to switch
+    // The label this list is browsing, if it is browsing one. A category list is
+    // not: the conversations in Promotions carry whatever labels the user put on
+    // them, and none of those is the name of the list.
+    val label = view.browsedLabel
+
+    // Keyed on the destination rather than done once: switching has to switch
     // the list, and the ViewModel is the thing that owns which pager is running.
-    LaunchedEffect(label?.key) { viewModel.show(label) }
+    // On the feed id rather than the whole view, because a Label re-arrives with
+    // new counts on every sync and restarting the pager for that would re-query
+    // somebody's NAS whenever a message was read.
+    LaunchedEffect(view.feedId) { viewModel.show(view) }
 
     val threads = viewModel.threads.collectAsLazyPagingItems()
     val rowsInFeed by viewModel.rowsInFeed.collectAsStateWithLifecycle()
@@ -159,7 +168,7 @@ fun MailScreen(
                     // and "Work/Invoices" as a screen title is noise. A system
                     // role takes the app's word for it rather than the server's,
                     // which is English whatever the device is set to.
-                    title = { Text(label?.displayTitle() ?: stringResource(R.string.inbox_title)) },
+                    title = { Text(view.displayTitle()) },
                     colors =
                         TopAppBarDefaults.topAppBarColors(
                             // The bar is part of the page rather than a
@@ -190,10 +199,14 @@ fun MailScreen(
                             )
                         }
 
-                        // Only where there is something to edit. A system label
-                        // reports mayRename false and the server enforces it, so
-                        // offering the control would be a button that always
-                        // fails.
+                        // Only where there is something to edit. A category has
+                        // no server object behind it at all -- there is nothing
+                        // to rename, recolour or delete -- and a system label
+                        // would be a rename the server refuses. Colour is the
+                        // exception the editor is reached for on a system label,
+                        // and that is reached from the sidebar rather than from
+                        // here: this bar is over one list, and Inbox's colour is
+                        // a property of the sidebar row.
                         if (label?.mayRename == true || label?.mayDelete == true) {
                             IconButton(onClick = { onEditLabel(label) }) {
                                 Icon(

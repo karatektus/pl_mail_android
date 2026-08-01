@@ -38,6 +38,18 @@ constructor(
     fun observeLabels(): Flow<List<Label>> = database.mailboxes().observeAll().map { it.asLabels() }
 
     /**
+     * Whether this server classifies mail into inbox categories, so far as this device can tell.
+     *
+     * There is no capability to ask for: the category is a plMail extension on `Thread` rather than
+     * a `using` URN, so the only honest signal is whether any synced conversation carries one. That
+     * makes the sidebar's category group appear on a server that has the feature and stay away on
+     * one that does not, which is the behaviour that matters — five permanently empty destinations
+     * would be worse than none, and this app has to keep working against a plMail older than the
+     * extension.
+     */
+    fun observeHasCategories(): Flow<Boolean> = database.threads().observeHasCategories()
+
+    /**
      * The same list, once, keyed for lookup.
      *
      * What the outbox resolves a stored label key against when it drains — see [KnownLabels] for
@@ -95,7 +107,7 @@ constructor(
      * because for almost everyone there is only one and the question would be noise. With several,
      * this is the limitation to revisit.
      */
-    suspend fun create(name: String, parent: Label? = null): MailboxId {
+    suspend fun create(name: String, color: String? = null, parent: Label? = null): MailboxId {
         // The user's order, not the session's. `sortIndex` is the server's
         // answer and the arrows on the accounts screen do not touch it — the
         // whole point of that screen is that "my main mailbox" is a decision
@@ -103,10 +115,15 @@ constructor(
         // most visible way of ignoring it.
         val accountKey = accounts.primary()?.uid ?: error(NO_ACCOUNT)
 
-        return createIn(accountKey, name, parent)
+        return createIn(accountKey, name, color, parent)
     }
 
-    suspend fun createIn(accountKey: String, name: String, parent: Label? = null): MailboxId {
+    suspend fun createIn(
+        accountKey: String,
+        name: String,
+        color: String? = null,
+        parent: Label? = null,
+    ): MailboxId {
         val account = database.accounts().byUid(accountKey) ?: error(NO_ACCOUNT)
         val client = clients.forAccount(accountKey) ?: error(NO_ACCOUNT)
 
@@ -121,6 +138,12 @@ constructor(
                                 NewMailbox(
                                     name = name,
                                     parentId = parent?.bindings?.bindingIn(accountKey),
+                                    // Refused with `invalidProperties` if the
+                                    // server does not know the token, and the
+                                    // label is then not created at all -- which
+                                    // is why the picker offers the server's own
+                                    // vocabulary rather than a colour wheel.
+                                    color = color,
                                 )
                         ),
                 )
@@ -138,27 +161,38 @@ constructor(
     }
 
     /**
-     * Renames a label everywhere it is bound.
+     * Renames and recolours a label everywhere it is bound.
      *
      * Every binding, not just the first: the name lives on the label rather than on the binding, so
      * one call is enough on plMail — but a server that models it per binding would otherwise leave
      * the label renamed in one account and not the others, which is precisely the state that makes
      * collapsing on name fail.
+     *
+     * One patch for both, because the editor is one dialog with one save button: sending them as
+     * two requests would mean a rename that lands while a colour is refused, and a dialog that
+     * cannot say which half happened.
+     *
+     * [name] is null for a label the server will not let anyone rename — a system role — which is
+     * the case colour exists for on such a label. Inbox may be recoloured and may not be renamed,
+     * and sending `name` unchanged would be refused with `forbidden` for the whole patch, taking
+     * the colour with it.
      */
-    suspend fun rename(label: Label, name: String) {
+    suspend fun update(label: Label, name: String?, color: String?) {
         label.bindings.forEach { binding ->
             val account = database.accounts().byUid(binding.accountKey) ?: return@forEach
             val client = clients.forAccount(binding.accountKey) ?: return@forEach
+
+            val patch = MailboxPatch.build {
+                name?.let { rename(it) }
+                color(color)
+            }
 
             val request = RequestBuilder()
             val handle =
                 request.add(
                     MailboxSet(
                         accountId = AccountId(account.accountId),
-                        update =
-                            mapOf(
-                                MailboxId(binding.mailboxId) to MailboxPatch.build { rename(name) }
-                            ),
+                        update = mapOf(MailboxId(binding.mailboxId) to patch),
                     )
                 )
 

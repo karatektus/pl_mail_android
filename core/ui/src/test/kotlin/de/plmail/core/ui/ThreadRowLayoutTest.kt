@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import de.plmail.core.database.ThreadEntity
+import de.plmail.core.designsystem.PlMailLabelColor
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.designsystem.PlMailThemeChoice
 import java.time.LocalDate
@@ -100,7 +101,7 @@ class ThreadRowLayoutTest {
      * The four cases the chip cluster has to survive, which are the four a mailbox actually
      * contains: unlabelled mail, one label, the cap, and past the cap.
      */
-    private data class Case(val tag: String, val labels: List<String>, val hidden: Int)
+    private data class Case(val tag: String, val labels: List<RowChip>, val hidden: Int)
 
     private fun thread(): ThreadEntity =
         ThreadEntity(
@@ -121,11 +122,15 @@ class ThreadRowLayoutTest {
         val CASES =
             listOf(
                 Case("none", emptyList(), 0),
-                Case("one", listOf("Arbeit"), 0),
-                Case("two", listOf("Arbeit", "Wohnung"), 0),
+                Case("one", listOf(RowChip("Arbeit")), 0),
+                Case("two", listOf(RowChip("Arbeit"), RowChip("Wohnung")), 0),
                 // A name at the per-chip cap beside a counter, which is the
                 // widest the cluster is allowed to get.
-                Case("overflow", listOf("Wohnung/Nebenkosten"), 3),
+                Case("overflow", listOf(RowChip("Wohnung/Nebenkosten")), 3),
+                // A coloured chip, because colour must cost no height: the
+                // colour goes into the border and the ink and never into
+                // padding, and this is the assertion that keeps it there.
+                Case("coloured", listOf(RowChip("Arbeit", PlMailLabelColor.BLUE)), 0),
             )
     }
 }

@@ -252,25 +252,39 @@ fun PlMailBanner(
  *
  * Small, quiet and **never accented**. The row it sits on has exactly one accent — the unread dot —
  * and that is the whole reason the dot works: a screen of unread mail carries one small repeated
- * mark in a column of its own. A coloured chip beside it would put a second repeated mark on every
- * labelled row and the dot would stop meaning anything.
+ * mark in a column of its own. A second repeated mark on every labelled row and the dot would stop
+ * meaning anything.
  *
- * So a chip is a surface shift and a hairline, like every other separated thing in this product,
- * with `inkMuted` text — metadata, which is what a label is next to a subject.
+ * **What that means now that colour exists**, because `Mailbox.color` landed and the obvious
+ * implementation of it is the one this row cannot afford:
  *
- * **Colour is coming and is not here yet.** `Label::$color` is a real column in plMail and JMAP
- * does not expose it: `Mailbox/get` never returns it, `update` refuses it, and `create` accepts it
- * and silently drops it. That is queued in `docs/SERVER_REQUESTS.md`, and the reason a colour is
- * not invented locally in the meantime is that a hash of the name would give the same label a
- * different colour on the phone than on the web, which is worse than no colour at all — the entire
- * point of colouring a label is that it is the same everywhere. When the server does expose it,
- * this composable takes a colour parameter and the two lines below resolve from it instead; nothing
- * about the shape, size or placement changes.
+ * - **The fill never changes.** A tinted pill is a filled area of colour, and the palette's own
+ *   rule is that nothing gets one — the compose button is tonal for exactly this reason. A
+ *   screenful of filled chips would also be a second population of coloured marks competing with
+ *   the dot, which is the thing that had to be avoided. So the fill stays `sunken` and the border
+ *   stays a hairline; only *what colour* the hairline and the text are changes.
+ * - **The colour is in the ink and the hairline**, which is the smallest quantity that still
+ *   identifies a label. It is also what keeps the chip legible: `inkMuted` on `sunken` is barely
+ *   over the AA floor already, and washing the fill with a tint would have taken it under.
+ * - **They cannot be confused with the dot** even where a label is green. The dot is a solid 8dp
+ *   circle of the accent in the right-hand column; a chip is outlined text inside the text column.
+ *   Different shape, different place, different weight.
+ * - **The geometry is untouched.** Same padding, same radius, same size — `ThreadRowLayoutTest`
+ *   measures labelled rows against unlabelled ones, and a coloured chip that was a dp taller would
+ *   reintroduce the ragged-list defect that test exists for.
+ *
+ * [color] null means no colour chosen, which is a real state and not the same as grey: the chip
+ * falls back to exactly what it drew before, `line` and `inkMuted`.
  */
 @Composable
-fun PlMailLabelChip(text: String, modifier: Modifier = Modifier) {
+fun PlMailLabelChip(
+    text: String,
+    modifier: Modifier = Modifier,
+    color: PlMailLabelColor? = null,
+) {
     val theme = LocalPlMailTheme.current
     val shape = RoundedCornerShape(theme.radii.control)
+    val accent = color?.let { theme.colors.labelColor(it) }
 
     Box(
         modifier =
@@ -280,7 +294,11 @@ fun PlMailLabelChip(text: String, modifier: Modifier = Modifier) {
                 // into a lozenge.
                 .clip(shape)
                 .background(theme.colors.sunken)
-                .border(width = theme.spacing.hair, color = theme.colors.line, shape = shape)
+                .border(
+                    width = theme.spacing.hair,
+                    color = accent ?: theme.colors.line,
+                    shape = shape,
+                )
                 // Horizontal padding only, and that is a layout constraint
                 // rather than taste. A chip shares the snippet's line on a list
                 // row, so anything that makes it taller than one line of that

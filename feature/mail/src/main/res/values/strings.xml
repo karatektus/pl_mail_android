@@ -162,6 +162,20 @@
     <string name="role_flagged">Starred</string>
 
     <!--
+      The inbox categories, which are Gmail's tabs. Translated here for the same
+      reason the roles above are: the server sends wire tokens, not display
+      names, and plMail's web client renders them through its own catalogue.
+    -->
+    <string name="category_primary">Primary</string>
+    <string name="category_social">Social</string>
+    <string name="category_promotions">Promotions</string>
+    <string name="category_updates">Updates</string>
+    <string name="category_forums">Forums</string>
+
+    <string name="label_color">Colour</string>
+    <string name="label_color_none">No colour</string>
+
+    <!--
       Offline, said as two different sentences because they have two different
       fixes. No network at all is something the reader can change from the quick
       settings; a server that is not answering is not, and sending somebody to

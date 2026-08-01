@@ -8,7 +8,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.AccountsRepository
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.Connectivity
-import de.plmail.core.data.Feed
 import de.plmail.core.data.FeedRepository
 import de.plmail.core.data.Label
 import de.plmail.core.data.LabelRepository
@@ -16,6 +15,7 @@ import de.plmail.core.data.LabelSelection
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
+import de.plmail.core.data.MailView
 import de.plmail.core.data.Outbox
 import de.plmail.core.data.UndoableAction
 import de.plmail.core.database.ThreadEntity
@@ -157,28 +157,34 @@ constructor(
         _labelSheet.update { null }
     }
 
-    private val shown = MutableStateFlow<Label?>(null)
+    private val shown = MutableStateFlow<MailView>(MailView.Inbox)
 
-    /**
-     * Which label the list is showing. Null until the sidebar has been read, which means the inbox.
-     */
-    fun show(label: Label?) {
-        shown.value = label
+    /** Which list the screen is showing. */
+    fun show(view: MailView) {
+        shown.value = view
     }
 
     /**
      * Which list is on screen, as the feed layer understands it.
      *
      * The Inbox label and the unified inbox are the same mail seen two ways, so both collapse to
-     * null here and neither restarts the other. That is not tidiness: the sidebar arrives a moment
-     * after the first frame, so the list is created with no label and then told about Inbox — and
-     * without this the second one cancels the page already in flight and starts again for the same
-     * rows.
+     * [MailView.Inbox] here and neither restarts the other. That is not tidiness: the sidebar
+     * arrives a moment after the first frame, so the list is created showing the inbox and then
+     * told about the Inbox label — and without this the second one cancels the page already in
+     * flight and starts again for the same rows.
+     *
+     * A **category** does not collapse into it, and must not. Primary is a narrower list than the
+     * inbox, not the same one under another name: the server leaves an unclassified conversation
+     * out of every category, so folding them would silently drop mail from whichever of the two ran
+     * second.
      */
-    private val shownFeed: Flow<Label?> =
+    private val shownFeed: Flow<MailView> =
         shown
-            .map { label -> label?.takeIf { it.role != INBOX_ROLE } }
-            .distinctUntilChanged { old, new -> old?.feedId == new?.feedId }
+            .map { view ->
+                if (view is MailView.Labelled && view.label.role == INBOX_ROLE) MailView.Inbox
+                else view
+            }
+            .distinctUntilChanged { old, new -> old.feedId == new.feedId }
 
     /**
      * `cachedIn` so the pages survive a rotation.
@@ -192,11 +198,7 @@ constructor(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val threads: Flow<PagingData<ThreadEntity>> =
-        shownFeed
-            .flatMapLatest { label ->
-                if (label == null) feed.unifiedInbox() else feed.labelled(label)
-            }
-            .cachedIn(viewModelScope)
+        shownFeed.flatMapLatest { view -> feed.forView(view) }.cachedIn(viewModelScope)
 
     /**
      * How many conversations the list on screen actually holds, or null before that is known.
@@ -213,7 +215,7 @@ constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val rowsInFeed: StateFlow<Int?> =
         shownFeed
-            .flatMapLatest { label -> feed.rowsHeld(label?.feedId ?: Feed.UNIFIED_INBOX.id) }
+            .flatMapLatest { view -> feed.rowsHeld(view.feedId) }
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),

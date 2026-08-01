@@ -33,6 +33,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
+import de.plmail.core.data.MailView
 import de.plmail.feature.mail.reader.ReaderScreen
 import kotlinx.coroutines.launch
 
@@ -51,7 +52,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun MailPane(
-    label: Label?,
+    view: MailView,
     onOpenSidebar: (() -> Unit)?,
     onEditLabel: (Label) -> Unit,
     onCreateLabel: () -> Unit,
@@ -122,7 +123,7 @@ fun MailPane(
             listPane = {
                 AnimatedPane {
                     MailScreen(
-                        label = label,
+                        view = view,
                         onOpenSidebar = onOpenSidebar,
                         onEditLabel = onEditLabel,
                         onCreateLabel = onCreateLabel,

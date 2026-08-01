@@ -22,7 +22,8 @@ Read this first, then `PLAN.md` for why anything is the way it is.
 | M6 Staying current (sync, SSE, push, notifications) | **done** | |
 | M7 Search | **done** | |
 | M8 Compose | **done** | scheduled send blocked on server |
-| M9 Organising (labels, snooze) | **done except colour** | colour blocked on server |
+| M9 Organising (labels, snooze) | **done** | colour adopted 2026-08-01, see below |
+| Inbox categories (Gmail tabs) | **done, server branch unmerged** | see below |
 | Design system | **done** | six themes, two layouts, three densities |
 | **M10 Appearance and settings** | **done** | see below |
 | **M11 Polish and ship-readiness** | **partial — roughly a third** | see below |
@@ -144,6 +145,18 @@ Written down because previous sessions' honesty about exactly this has led direc
 - **The accounts screen asks the server one `Email/query` per account.** With many accounts that is
   many round trips on one button. Fine at two; worth batching into one request with several method
   calls if anybody has ten.
+- **A Roborazzi baseline was left stale by `cc290db` and nobody noticed.** That commit added the
+  snippet floor to `ThreadRow` and did not re-record, so `thread-row-labels-long-*` had been
+  disagreeing with the code since. It surfaced this session only because a re-record was needed
+  anyway. `verifyRoborazziDebug` is not part of `./gradlew build` — that is why a stale baseline can
+  sit there — and it is worth deciding whether it should be.
+- **The app bar said "Inbox" for one frame after saving a label edit**, with the label's own rows
+  still on screen. Seen once, on the device, and **not reproduced**: the emulator was being shared
+  and the second attempt was interrupted by another session installing an APK. The mechanism would
+  have to be `MailView.restore` failing to find the key and falling back to `Inbox`, but
+  `replaceMailboxes` is transactional and never leaves the table empty, so that does not obviously
+  explain it. Written down rather than guessed at. The pre-existing code had the same fallback
+  shape (`?: labels.firstOrNull()`), so if it is real it is not new.
 - **`Outbox.drain` swallows the reason a change was refused.** It drops the mutation, which is
   right, but nothing is recorded anywhere the user can see. A change made offline that the server
   later refuses disappears silently. The diagnostics screen would be the honest home for it.
@@ -160,32 +173,54 @@ terms of what each unblocks on the client:
 | `Email/set` update honours `attachments` | Removes the "recreate the draft and bin the old one" workaround, and the stray Trash entry per attachment change |
 | `EmailSubmission/set` honours `identityId` | The From picker can offer aliases instead of one entry per account |
 | A JMAP surface for contact autocomplete | Suggestions for people whose mail is not on this device |
-| `Mailbox.color` over JMAP | Label colour — see below |
 | `Appearance` over JMAP | The phone honours the theme set on the web; `PlMailAppearance.of` is already the one function the sync will call |
 | Scheduled send (`maxDelayedSend` > 0) | "Send tomorrow at 8am"; the current undo window is seconds and does not survive the process |
-| Sync window in the session object (**new this session**) | The accounts screen could say what the *server* retains rather than inferring it from the oldest message |
+| Sync window in the session object | The accounts screen could say what the *server* retains rather than inferring it from the oldest message |
 
-### Label colour, specifically
+Two have closed. **`Mailbox.color` is merged** into plMail `main` and adopted here. **The inbox
+categories are implemented on `feat/jmap-categories`** and await a human merge — that branch is the
+only thing between this client's category navigation and a real account.
 
-Implemented on plMail's branch `fix/jmap-label-colour` and **not merged**. It adds `Mailbox.color`
-with a closed vocabulary of Tailwind tokens (gray, red, orange, amber, green, teal, blue, violet,
-pink) or null, refused with `invalidProperties` if unknown, settable on create and on update.
+### Label colour — **adopted 2026-08-01**
 
-Chips are neutral and must stay neutral until it lands. When it does, adopting it is:
+`Mailbox.color` is merged into plMail `main` (`b06b909`) and the client now uses it. All six steps
+this file previously listed are done: the schema column, the wire field, `Label.color` from the
+primary binding, the chip's colour parameter, the per-theme resolution, and the picker.
 
-1. `MailboxEntity` gains a `color` column, and the schema goes to version 3 through the destructive
-   upgrade — no hand-written migration, because it is cache like everything else there.
-2. `Mailbox` in `:core:jmap` gains the field; `MailboxMapper` already sends what it is given.
-3. `Label` carries it through `Labels.kt` (the *primary* binding decides, same as the name).
-4. `PlMailLabelChip` takes a colour parameter. Its doc comment already says this and says nothing
-   about the shape, size or placement changing.
-5. **The colours have to be resolved through the theme, not used raw.** A Tailwind token on Nord's
-   Polar Night is the same contrast problem the plan already recorded for Nord's own `#BF616A`, and
-   `PaletteContrastTest` must be extended to sweep the nine tokens through all six themes before
-   any of them is drawn.
-6. The label editor gains a picker. Nine swatches plus "none".
+Two things about how it landed are worth keeping, because both were decisions rather than
+transcription:
 
-Do not pre-empt any of this while the branch is unmerged.
+- **The chip's fill never changes.** Colour goes into the hairline and the text; `sunken` stays the
+  background. A tinted pill is a filled area of colour on every labelled row, which is a second
+  population of coloured marks competing with the unread dot — the one accent the row is allowed.
+  It also would have broken contrast: `inkMuted` on `sunken` is barely over the AA floor already,
+  and washing the fill would have taken it under. The geometry is untouched, so
+  `ThreadRowLayoutTest` still measures labelled rows equal to unlabelled ones.
+- **The vocabulary lives once, in `:core:designsystem`.** `:core:jmap` carries the raw token
+  uninterpreted because it is Android-free, and the cache stores the raw token so a tenth colour
+  added server-side survives to an app update rather than being erased by an enum written today.
+  `PaletteContrastTest` now sweeps nine tokens × six schemes against both `surface` and `sunken` at
+  4.5:1 — the sweep this file asked for.
+
+### The inbox categories — **client done, server branch unmerged**
+
+plMail has classified inbox mail into Gmail's five categories for a long time and the web has had a
+tab bar over it. There was no JMAP surface at all. The server side is on **`feat/jmap-categories`**
+in a worktree at `~/pl_mail_categories`, one commit, and **needs a human to merge**; the client is
+built against it and degrades correctly without it (every `Thread.category` is null, so the drawer's
+category group never appears).
+
+- Navigation is Gmail's drawer, not a tab strip: the five categories are rows indented under Inbox,
+  above the other system labels. A tab strip over the list would be a second navigation control
+  disagreeing with the drawer about where the user is.
+- **Inbox stays the whole inbox** rather than becoming Primary, which is where this departs from
+  Gmail on purpose. The server puts an unclassified conversation in no category at all, so an Inbox
+  that meant Primary would hide mail on any plMail whose category backfill has not run.
+- The tab is a **server-side filter** (`EmailFilter.ThreadCategory`), not a sieve over a page. See
+  the commit message for the paging argument.
+- **No unread badge on the category rows**, deliberately. The only number this device could show is
+  how many unread of that category it has *paged*, and JMAP publishes no per-category total — a
+  badge disagreeing with the web's is worse than none.
 
 ---
 
@@ -196,6 +231,17 @@ Gradle invocation at a time, `sg kvm`, the Windows emulator relay and its firewa
 
 New from this session:
 
+- **Running a patched server without touching `~/pl_mail`.** `compose.test.yaml` bind-mounts `./`
+  over `/app`, so a git worktree of the server has no `vendor/` and the image's copy is hidden. The
+  answer is a compose *overlay written outside the repo* and passed as a second `-f`: relative paths
+  resolve against the first file's directory, so `context: .` still means the worktree, and the
+  overlay adds `- /home/karatektus/pl_mail/vendor:/app/vendor:ro`. With `-p pl_mail_cat` and
+  `TEST_HTTP_PORT=8003` it is a third stack with its own volumes, and the 8002 one is untouched.
+- **The emulator is genuinely shared and it will move under you.** Two sessions drove it at once
+  this time; taps landed in the launcher, YouTube opened, and an APK install from the other session
+  covered the screen mid-capture. Put a whole navigation into **one** `adb shell "...; sleep n; ..."`
+  rather than a sequence of `adb shell input tap` calls, and screenshot immediately after — the
+  window between two `adb` invocations is where the other session gets in.
 - **`adb` is not on a non-interactive shell's PATH.** `/etc/profile.d/jdk20.sh` and the `.bashrc`
   early return mean a `bash -c` gets neither `ANDROID_HOME` nor platform-tools. Export both
   explicitly in any script.

@@ -125,6 +125,71 @@ class PaletteContrastTest {
     }
 
     @Test
+    fun `every label colour is legible in every theme`() {
+        // The sweep `docs/REMAINING.md` said adopting Mailbox.color would need,
+        // and the reason the server's vocabulary is tokens rather than hex: nine
+        // values times six schemes is fifty-four pairs, and a hex colour picked
+        // on the web would have been one fixed answer for all of them.
+        //
+        // 4.5:1 rather than the 3.0 a non-text mark could get away with, because
+        // one of the two uses *is* text: the chip draws the colour as its label
+        // at 13sp. The sidebar's 24dp glyph is the easier case and takes the
+        // same number rather than a second rule.
+        //
+        // Both `surface` and `sunken`, because which of the two is the harder
+        // background flips with the scheme. A light theme's sunken is darker
+        // than its page, so a deep colour has less contrast there; a dark
+        // theme's sunken is darker still, so a bright colour has more. Asserting
+        // both means neither ramp has to know which way round its scheme is.
+        schemes.forEach { (name, colors) ->
+            PlMailLabelColor.entries.forEach { token ->
+                val color = colors.labelColor(token)
+
+                assertAtLeast(
+                    contrast(color, colors.surface),
+                    4.5,
+                    "$name ${token.wire} on surface",
+                )
+                assertAtLeast(contrast(color, colors.sunken), 4.5, "$name ${token.wire} on sunken")
+            }
+        }
+    }
+
+    @Test
+    fun `label colours are distinguishable from one another`() {
+        // Nine chips the user is meant to tell apart. Two that resolve to the
+        // same colour would be a picker offering a choice that is not one --
+        // and it is an easy mistake to make while tuning a ramp for contrast,
+        // because the constraint pushes every value toward the same lightness.
+        //
+        // Deliberately weak: it asserts no two are *identical*, not that any
+        // pair is comfortably apart. Orange and amber are close at the depth AA
+        // needs on a cream page and the web has the same two tokens with the
+        // same problem; a threshold here would either fail honestly-chosen
+        // colours or be low enough to prove nothing.
+        schemes.forEach { (name, colors) ->
+            val resolved = PlMailLabelColor.entries.map { colors.labelColor(it) }
+
+            assertEquals(
+                PlMailLabelColor.entries.size,
+                resolved.toSet().size,
+                "$name has two label tokens resolving to one colour",
+            )
+        }
+    }
+
+    @Test
+    fun `an unknown colour token draws neutral rather than failing`() {
+        // A newer server may grow a tenth token. Null means "no colour chosen",
+        // which the chip already knows how to draw -- substituting grey would
+        // claim the user had chosen grey, and throwing would take the sidebar
+        // down over a colour.
+        assertEquals(null, PlMailLabelColor.fromWire("chartreuse"))
+        assertEquals(null, PlMailLabelColor.fromWire(null))
+        assertEquals(PlMailLabelColor.VIOLET, PlMailLabelColor.fromWire("violet"))
+    }
+
+    @Test
     fun `the hairline is a hairline rather than a rule`() {
         // Visible but quiet: too strong and forty rows read as a table. The
         // upper bound is as much the point as the lower one.

@@ -30,6 +30,21 @@ data class Mailbox(
     /** A parent *binding* id, or null when the parent has no binding here. */
     val parentId: MailboxId? = null,
     val role: String? = null,
+    /**
+     * The label's colour, as a **wire token** — `blue`, `amber`, `pink` — or null for "no colour
+     * chosen", which is distinct from grey.
+     *
+     * plMail's extension to RFC 8621, which gives Mailbox no colour. A token rather than hex on
+     * purpose: `blue` resolves per theme, where `#3b82f6` stays one fixed light-mode blue on a dark
+     * background and the phone would disagree with the web in five of the six themes.
+     *
+     * Left uninterpreted here, and that is the module boundary rather than laziness. `:core:jmap`
+     * cannot see a colour — it is Android-free — and the vocabulary lives once, in
+     * `:core:designsystem`, which is the only place a token can become a `Color`. Carrying the raw
+     * string also means a token added to the server tomorrow reaches the cache instead of being
+     * dropped by an enum that predates it; an unknown one simply draws neutral.
+     */
+    val color: String? = null,
     val sortOrder: Int = 0,
     val totalEmails: Int = 0,
     val unreadEmails: Int = 0,

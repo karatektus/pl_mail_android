@@ -89,6 +89,7 @@ fun Mailbox.toEntity(accountKey: String): MailboxEntity =
         name = name,
         parentId = parentId?.value,
         role = role,
+        color = color,
         // Not sortOrder: the server reports 0 for custom labels and for Inbox
         // alike, so sorting on it alone does not reproduce the documented
         // sidebar order. The role's own order is the authority, and unroled
@@ -267,6 +268,13 @@ fun MailThread.toEntity(
         isFlagged = messages.any { it.isFlagged },
         hasAttachment = messages.any { it.hasAttachment },
         snoozedUntil = snoozedUntil.toEpochMillis(),
+        // Straight off the wire, unresolved and unsubstituted. The server has
+        // already folded the conversation's messages most-recent-wins, so
+        // recomputing it here from `messages` would be a second implementation
+        // of a rule the tabs are queried by -- and the two would disagree the
+        // moment a thread arrived across two pages with its newest message in
+        // the second.
+        category = category,
         // The union across the conversation's messages, not the newest one's.
         // A label applied to a single reply is a label the conversation
         // carries -- that is what the sidebar's count says and what browsing the
