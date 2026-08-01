@@ -51,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -58,6 +59,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mohamedrejeb.richeditor.model.rememberRichTextState
 import com.mohamedrejeb.richeditor.ui.material3.RichTextEditor
+import com.mohamedrejeb.richeditor.ui.material3.RichTextEditorDefaults
 import de.plmail.core.data.StagedAttachment
 import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailDivider
@@ -218,7 +220,20 @@ fun ComposeScreen(
             RichTextEditor(
                 state = body,
                 placeholder = { Text(stringResource(R.string.compose_body_hint)) },
-                modifier = Modifier.fillMaxWidth().heightIn(min = 200.dp),
+                // Its own defaults draw the Material filled-field container --
+                // a grey block behind the message, which turns "write" into
+                // "fill in". The editor is the page here, so it takes the page.
+                colors =
+                    RichTextEditorDefaults.richTextEditorColors(
+                        containerColor = PlMailTheme.colors.surface,
+                        focusedIndicatorColor = Color.Transparent,
+                        unfocusedIndicatorColor = Color.Transparent,
+                        disabledIndicatorColor = Color.Transparent,
+                        cursorColor = PlMailTheme.colors.accent,
+                        placeholderColor = PlMailTheme.colors.fieldPlaceholder,
+                        textColor = PlMailTheme.colors.ink,
+                    ),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp),
             )
 
             if (state.quotedHtml.isNotBlank()) {
@@ -492,9 +507,9 @@ private fun flatFieldColors() =
     TextFieldDefaults.colors(
         focusedContainerColor = PlMailTheme.colors.surface,
         unfocusedContainerColor = PlMailTheme.colors.surface,
-        focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-        unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-        disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+        focusedIndicatorColor = Color.Transparent,
+        unfocusedIndicatorColor = Color.Transparent,
+        disabledIndicatorColor = Color.Transparent,
         cursorColor = PlMailTheme.colors.accent,
         focusedPlaceholderColor = PlMailTheme.colors.fieldPlaceholder,
         unfocusedPlaceholderColor = PlMailTheme.colors.fieldPlaceholder,
