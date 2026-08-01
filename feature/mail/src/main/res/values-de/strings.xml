@@ -121,4 +121,19 @@
     <string name="role_archive">Archiv</string>
     <string name="role_snoozed">Zurückgestellt</string>
     <string name="role_flagged">Markiert</string>
+
+    <string name="offline">Sie sind offline. Das ist die Post, die bereits auf dem Gerät liegt.</string>
+    <plurals name="offline_with_pending">
+        <item quantity="one">Sie sind offline. %1$d Änderung wartet auf Ihren Server.</item>
+        <item quantity="other">Sie sind offline. %1$d Änderungen warten auf Ihren Server.</item>
+    </plurals>
+    <plurals name="pending_changes">
+        <item quantity="one">%1$d Änderung wartet auf Ihren Server.</item>
+        <item quantity="other">%1$d Änderungen warten auf Ihren Server.</item>
+    </plurals>
+    <string name="server_unreachable">plMail konnte %1$s nicht erreichen. Das ist die Post, die bereits auf dem Gerät liegt.</string>
+    <string name="account_unreachable_host">%1$s ist unter %2$s nicht erreichbar. Die anderen Konten sind aktuell.</string>
+
+    <string name="action_queued">%1$s — hier. Ihr Server erfährt es, sobald er antwortet.</string>
+    <string name="action_queued_host">%1$s — hier. %2$s erfährt es, sobald der Server antwortet.</string>
 </resources>

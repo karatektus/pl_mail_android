@@ -11,6 +11,7 @@ import de.plmail.jmap.protocol.RequestBuilder
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
@@ -31,10 +32,19 @@ constructor(
     private val clients: AccountClients,
     private val mail: MailRepository,
     private val accounts: AccountsRepository,
-) {
+) : KnownLabels {
 
     /** Every label the user has, collapsed across accounts and in sidebar order. */
     fun observeLabels(): Flow<List<Label>> = database.mailboxes().observeAll().map { it.asLabels() }
+
+    /**
+     * The same list, once, keyed for lookup.
+     *
+     * What the outbox resolves a stored label key against when it drains — see [KnownLabels] for
+     * why the queue holds this one method rather than the whole repository.
+     */
+    override suspend fun byKey(): Map<String, Label> =
+        observeLabels().first().associateBy { it.key }
 
     /**
      * Which of [labels] are on every one of [targets], and which are on some of them.

@@ -154,5 +154,14 @@ private fun describe(outcome: ActionOutcome): String {
         // Said out loud: the row already moved, so a rejection nobody mentions
         // leaves the user believing something happened that did not.
         is ActionOutcome.Rejected -> stringResource(R.string.action_rejected, done)
+        // A different sentence from both, because it is a different promise.
+        // The change is real on this phone and the server has not been told —
+        // saying "archived" would claim it reached a machine that is switched
+        // off, and saying it failed would be wrong about what the user is
+        // looking at. The hostname is included where the transport knew it,
+        // because "can't reach nas.local" is something somebody can act on.
+        is ActionOutcome.Queued ->
+            outcome.host?.let { stringResource(R.string.action_queued_host, done, it) }
+                ?: stringResource(R.string.action_queued, done)
     }
 }

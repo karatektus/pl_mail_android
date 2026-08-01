@@ -1,6 +1,11 @@
 plugins {
     alias(libs.plugins.plmail.android.library)
     alias(libs.plugins.plmail.android.hilt)
+    // The outbox serialises queued mutations into DataStore. Before this, the
+    // module used kotlinx-serialization only to read JSON by hand, so the
+    // runtime was on the classpath and the compiler plugin was not — which
+    // fails at *run* time with "serializer not found", not at compile time.
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android { namespace = "de.plmail.core.data" }
@@ -33,6 +38,11 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotlin.test.junit5)
     testImplementation(libs.kotlinx.coroutines.test)
+    // The outbox is stored through a DataStore<Preferences>, and its tests need
+    // one that is not a file on a device. `datastore-preferences-core` comes in
+    // with this artifact and is pure Kotlin, so the fake runs on the JVM with
+    // the rest of the suite.
+    testImplementation(libs.androidx.datastore.preferences)
     testImplementation(testFixtures(projects.core.jmap))
     testRuntimeOnly(libs.junit.platform.launcher)
 }

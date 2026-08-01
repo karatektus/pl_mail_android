@@ -176,4 +176,19 @@ sealed interface ActionOutcome {
     data class Applied(override val undoable: UndoableAction) : ActionOutcome
 
     data class Rejected(override val undoable: UndoableAction, val reason: String) : ActionOutcome
+
+    /**
+     * Nothing answered, so the change is being held until something does.
+     *
+     * A third case rather than a flavour of the other two, because it is a different promise and
+     * the user has to be able to tell them apart. [Applied] says the server knows; [Rejected] says
+     * it refused and the phone is now showing something that will not become true; this says the
+     * phone is right and the server has not caught up. Collapsing it into [Applied] would be a
+     * client claiming an archive reached a machine that is switched off.
+     *
+     * [host] is the server's name where the transport knew it, because "can't reach nas.local" is a
+     * sentence somebody can act on and "network error" is not. Null for a plain socket failure,
+     * which does not carry one.
+     */
+    data class Queued(override val undoable: UndoableAction, val host: String?) : ActionOutcome
 }

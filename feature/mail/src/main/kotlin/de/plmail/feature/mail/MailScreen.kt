@@ -60,6 +60,7 @@ import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.rowLabels
 import de.plmail.core.database.ThreadEntity
+import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailBanner
 import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailEmptyState
@@ -103,6 +104,7 @@ fun MailScreen(
     // waiting for each conversation to be re-synced.
     val labels by viewModel.labels.collectAsStateWithLifecycle()
     val unreachable by viewModel.unreachable.collectAsStateWithLifecycle()
+    val offline by viewModel.offline.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
 
     // Back clears a selection before it leaves the screen: a selection is a
@@ -225,23 +227,96 @@ fun MailScreen(
         },
     ) { insets ->
         Column(modifier = Modifier.fillMaxSize().padding(insets)) {
-            // Above the list, not instead of it. One unreachable account must
-            // never take the other accounts' mail off the screen.
-            unreachable.forEach { account ->
+            // First, above the per-account banners, because it explains them:
+            // with no network every account is unreachable, and three rows
+            // saying so is three copies of one fact. The mail below stays on
+            // screen throughout -- offline is a state this app is expected to
+            // be usable in, not an error screen.
+            if (!offline.isQuiet) {
                 PlMailBanner(
-                    text = stringResource(R.string.account_unreachable, account.displayName),
+                    text =
+                        when {
+                            // Two different sentences, and the difference is what
+                            // the reader can do about it. No network is fixable
+                            // from the quick settings; a server that is not
+                            // answering is not, and telling somebody to check
+                            // their wifi while their NAS is off wastes the ten
+                            // minutes they had.
+                            offline.isOffline && offline.pendingChanges > 0 ->
+                                pluralStringResource(
+                                    R.plurals.offline_with_pending,
+                                    offline.pendingChanges,
+                                    offline.pendingChanges,
+                                )
+                            offline.isOffline -> stringResource(R.string.offline)
+                            else ->
+                                pluralStringResource(
+                                    R.plurals.pending_changes,
+                                    offline.pendingChanges,
+                                    offline.pendingChanges,
+                                )
+                        },
+                    tone = if (offline.isOffline) PaneTone.WARNING else PaneTone.INFO,
                     modifier =
                         Modifier.padding(
                             horizontal = PlMailTheme.spacing.medium,
                             vertical = PlMailTheme.spacing.small,
                         ),
-                    action = {
-                        TextButton(onClick = { threads.retry() }) {
-                            Text(stringResource(R.string.retry))
-                        }
-                    },
                 )
             }
+
+            // Above the list, not instead of it. One unreachable account must
+            // never take the other accounts' mail off the screen.
+            //
+            // Suppressed entirely while the device has no network, because the
+            // banner above has already said it and every account is failing for
+            // the same reason. Three rows of "could not reach X" under "you are
+            // offline" is three copies of one fact, and the per-account wording
+            // ("the other accounts are still up to date") is a lie in exactly
+            // that state.
+            unreachable
+                .filterNot { offline.isOffline }
+                .forEach { account ->
+                    PlMailBanner(
+                        text =
+                            when {
+                                // Nothing was reached, so there are no "other
+                                // accounts" to be reassuring about and no account
+                                // name to use — the call that would have listed them
+                                // is the one that failed.
+                                account.isWholeServer ->
+                                    stringResource(
+                                        R.string.server_unreachable,
+                                        offline.host ?: account.displayName,
+                                    )
+                                // The hostname beside the account name, because the
+                                // two answer different halves of "why". The account
+                                // name is what the user calls this mailbox; the host
+                                // is the machine they have to go and look at.
+                                offline.host != null ->
+                                    stringResource(
+                                        R.string.account_unreachable_host,
+                                        account.displayName,
+                                        offline.host!!,
+                                    )
+                                else ->
+                                    stringResource(
+                                        R.string.account_unreachable,
+                                        account.displayName,
+                                    )
+                            },
+                        modifier =
+                            Modifier.padding(
+                                horizontal = PlMailTheme.spacing.medium,
+                                vertical = PlMailTheme.spacing.small,
+                            ),
+                        action = {
+                            TextButton(onClick = { threads.retry() }) {
+                                Text(stringResource(R.string.retry))
+                            }
+                        },
+                    )
+                }
 
             ThreadList(
                 threads = threads,

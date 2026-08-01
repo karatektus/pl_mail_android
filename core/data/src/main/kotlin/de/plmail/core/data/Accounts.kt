@@ -3,6 +3,7 @@ package de.plmail.core.data
 import de.plmail.core.database.AccountEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.datastore.AccountPrefsStore
+import de.plmail.core.datastore.CredentialStore
 import de.plmail.jmap.mail.Comparator
 import de.plmail.jmap.methods.EmailGet
 import de.plmail.jmap.methods.EmailQuery
@@ -64,7 +65,18 @@ constructor(
     private val database: PlMailDatabase,
     private val prefs: AccountPrefsStore,
     private val clients: AccountClients,
+    credentials: CredentialStore,
 ) {
+
+    /**
+     * The host the app would be talking to, or null before pairing.
+     *
+     * The bare host rather than the origin, because it is going into a sentence: "Could not reach
+     * nas.local" reads and "Could not reach https://nas.local:8443" does not. Exposed from here
+     * rather than read out of the credential store by the UI, so no feature module has to depend on
+     * the thing that holds the token to find out the name of a machine.
+     */
+    val serverHost: Flow<String?> = credentials.connection.map { it?.address?.host }
 
     /** The account rows, ordered, with nothing else joined onto them. */
     val ordered: Flow<List<AccountEntity>> =

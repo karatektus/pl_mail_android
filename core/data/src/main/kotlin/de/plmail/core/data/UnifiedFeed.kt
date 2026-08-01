@@ -35,7 +35,26 @@ interface FeedSource {
 }
 
 /** An account that could not be paged, so the UI can say which one rather than showing nothing. */
-data class SourceFailure(val accountKey: String, val error: Throwable)
+data class SourceFailure(
+    val accountKey: String,
+    val error: Throwable,
+    /**
+     * Whether this is the *server* failing rather than one account on it.
+     *
+     * The two produce opposite sentences and were producing the same one. A per-account failure is
+     * survivable — the banner says "could not reach Work, the others are still up to date" and
+     * every other account keeps refreshing. A session failure means nothing was reached at all, so
+     * "the others are still up to date" is false about every account on the screen, and there is no
+     * account *name* to put in the message either: the failure happens before the session that
+     * would have listed them, so the only identifier available is the address. Drawn with the
+     * per-account wording it read
+     *
+     *     Could not reach http://10.0.2.2:8002 at 10.0.2.2. The other accounts are still up to date.
+     *
+     * which names the server twice and then makes a claim about accounts nobody enumerated.
+     */
+    val isWholeServer: Boolean = false,
+)
 
 /**
  * What one pull produced.

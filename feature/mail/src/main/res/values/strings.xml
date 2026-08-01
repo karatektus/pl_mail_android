@@ -160,4 +160,30 @@
     <string name="role_archive">Archive</string>
     <string name="role_snoozed">Snoozed</string>
     <string name="role_flagged">Starred</string>
+
+    <!--
+      Offline, said as two different sentences because they have two different
+      fixes. No network at all is something the reader can change from the quick
+      settings; a server that is not answering is not, and sending somebody to
+      check their wifi while their NAS is off wastes the ten minutes they had.
+    -->
+    <string name="offline">You are offline. This is the mail already on your phone.</string>
+    <plurals name="offline_with_pending">
+        <item quantity="one">You are offline. %1$d change is waiting to reach your server.</item>
+        <item quantity="other">You are offline. %1$d changes are waiting to reach your server.</item>
+    </plurals>
+    <plurals name="pending_changes">
+        <item quantity="one">%1$d change is waiting to reach your server.</item>
+        <item quantity="other">%1$d changes are waiting to reach your server.</item>
+    </plurals>
+    <!-- The hostname, because "we could not reach your server" without it is unactionable. -->
+    <!--
+      The server itself, rather than one account on it. No reassurance about
+      other accounts, because none of them was reached either.
+    -->
+    <string name="server_unreachable">plMail could not reach %1$s. This is the mail already on your phone.</string>
+    <string name="account_unreachable_host">Could not reach %1$s at %2$s. The other accounts are still up to date.</string>
+
+    <string name="action_queued">%1$s here. Your server will be told when it answers.</string>
+    <string name="action_queued_host">%1$s here. %2$s will be told when it answers.</string>
 </resources>

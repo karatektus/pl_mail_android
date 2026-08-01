@@ -1,6 +1,8 @@
 package de.plmail.core.data
 
+import android.content.Context
 import androidx.room.withTransaction
+import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.database.EmailEntity
 import de.plmail.core.database.FeedEntryEntity
 import de.plmail.core.database.PlMailDatabase
@@ -11,10 +13,12 @@ import de.plmail.jmap.methods.ThreadPatch
 import de.plmail.jmap.methods.ThreadSet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.EmailId
+import de.plmail.jmap.protocol.JmapError
 import de.plmail.jmap.protocol.MailboxId
 import de.plmail.jmap.protocol.RequestBuilder
 import de.plmail.jmap.protocol.StateToken
 import de.plmail.jmap.protocol.ThreadId
+import java.io.IOException
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
@@ -39,6 +43,8 @@ constructor(
     private val database: PlMailDatabase,
     private val clients: AccountClients,
     private val mail: MailRepository,
+    private val outbox: Outbox,
+    @param:ApplicationContext private val context: Context,
 ) {
 
     /**
@@ -62,9 +68,62 @@ constructor(
         return try {
             send(action, targets)
             ActionOutcome.Applied(undoable)
+        } catch (offline: IOException) {
+            queued(action, targets, undoable, offline)
+        } catch (unreachable: JmapError.Unreachable) {
+            queued(action, targets, undoable, unreachable)
         } catch (rejected: Exception) {
             ActionOutcome.Rejected(undoable, rejected.message ?: "The server rejected the change.")
         }
+    }
+
+    /**
+     * The change did not reach the server, so it is kept until it can.
+     *
+     * Split from the rejection arm above rather than folded into it, because the two are opposite
+     * facts wearing the same clothes. A rejection is an *answer* — the server considered the change
+     * and refused — and replaying it produces a loop that terminates never and explains nothing.
+     * Nothing answering is not an answer, and the change is still true on the user's phone: they
+     * archived a conversation and it left the list, so a client that forgot about it the moment the
+     * request failed would be showing them a state that will never become real.
+     *
+     * Reported as [ActionOutcome.Queued] rather than as success, because the two are different
+     * promises. "Archived" and "archived here, and on your server when it answers" are not the same
+     * sentence, and the second is the honest one for a product whose server is somebody's NAS.
+     */
+    private suspend fun queued(
+        action: MailAction,
+        targets: List<ActionTarget>,
+        undoable: UndoableAction,
+        cause: Throwable,
+    ): ActionOutcome =
+        if (outbox.enqueue(action, targets, at = System.currentTimeMillis())) {
+            // Asked for the moment something is queued rather than left to the
+            // fifteen-minute sync. WorkManager holds the request against a
+            // network constraint, so it costs nothing while the phone is in a
+            // lift and runs the instant it is not — and it survives the app
+            // being swiped away, which an in-process connectivity listener does
+            // not.
+            SyncWorker.requestFlush(context)
+
+            ActionOutcome.Queued(undoable, host = (cause as? JmapError.Unreachable)?.host)
+        } else {
+            // Nothing today produces this, and it is here rather than as an
+            // `error()` because the alternative is a crash on the offline path,
+            // which is the path least likely to have been exercised.
+            ActionOutcome.Rejected(undoable, cause.message ?: "The change could not be saved.")
+        }
+
+    /**
+     * Sends everything the outbox is holding.
+     *
+     * Here rather than on [Outbox] because the outbox must not hold this class — it is what calls
+     * `enqueue`, and the cycle would surface as a wall of generated Hilt type names naming neither.
+     * Deliberately *not* re-applying anything locally: the cache already carries every one of these
+     * changes, which is why they are in the queue at all.
+     */
+    suspend fun flush(): Outbox.DrainResult = outbox.drain { action, targets ->
+        send(action, targets)
     }
 
     /**

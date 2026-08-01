@@ -5,7 +5,9 @@ import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
@@ -41,6 +43,8 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
         fun deltaSync(): DeltaSync
 
         fun database(): de.plmail.core.database.PlMailDatabase
+
+        fun mailActions(): MailActions
     }
 
     override suspend fun doWork(): Result {
@@ -49,6 +53,18 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
 
         val accounts = dependencies.database().accounts().all()
         if (accounts.isEmpty()) return Result.success()
+
+        // Before the sync, not after, and that ordering is the whole reason this
+        // is here. A queued archive and a delta sync disagree about the same
+        // conversation: the sync would fetch the server's copy, which still has
+        // the Inbox label, and write it over the local row -- so the change the
+        // user made offline would visibly *undo itself* the moment the network
+        // came back, which is worse than it never having been sent.
+        //
+        // A failure is not reported up. The sync below is what decides whether
+        // this run is worth retrying, and a queue that could not drain will
+        // still be there next time by construction.
+        runCatching { dependencies.mailActions().flush() }
 
         val outcomes = accounts.map { dependencies.deltaSync().sync(it.uid) }
 
@@ -91,10 +107,41 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
                 .enqueueUniquePeriodicWork(NAME, ExistingPeriodicWorkPolicy.KEEP, request)
         }
 
+        /**
+         * Asks for a run as soon as there is a network, for a change that could not be sent.
+         *
+         * WorkManager rather than a coroutine watching connectivity, and that is the whole point: a
+         * queued archive has to survive the app being swiped away, which every in-process listener
+         * does not. The constraint is what makes this "when the network comes back" rather than
+         * "now" — the job simply waits, at no cost, for as long as the phone is in a lift.
+         *
+         * `KEEP`, so five changes made offline ask for one run rather than five. The work drains
+         * the whole queue, so the first request already covers the rest; `REPLACE` would push the
+         * run further out each time somebody swiped, which is the opposite of what they want.
+         */
+        fun requestFlush(context: Context) {
+            val request =
+                OneTimeWorkRequestBuilder<SyncWorker>()
+                    .setConstraints(
+                        Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+                    )
+                    .setBackoffCriteria(
+                        BackoffPolicy.EXPONENTIAL,
+                        BACKOFF_MINUTES,
+                        TimeUnit.MINUTES,
+                    )
+                    .build()
+
+            WorkManager.getInstance(context)
+                .enqueueUniqueWork(FLUSH_NAME, ExistingWorkPolicy.KEEP, request)
+        }
+
         /** Stops syncing, for when the last account is removed. */
         fun cancel(context: Context) {
             WorkManager.getInstance(context).cancelUniqueWork(NAME)
         }
+
+        private const val FLUSH_NAME = "plmail.flush"
 
         private const val INTERVAL_MINUTES = 15L
 

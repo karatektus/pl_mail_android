@@ -1,6 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!--
+      Declared here rather than in :app because the class that needs it is here.
+      A library that reads the network state and leaves the permission to
+      whoever merges it is a library that throws a SecurityException in an app
+      that forgot, which is exactly the kind of thing nobody discovers until a
+      release build.
+
+      Normal-protection, granted at install, and it reads nothing about the
+      network beyond whether there is one: no SSID, no address, no traffic.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application>
         <!--
           How a downloaded attachment reaches another app.

@@ -5,7 +5,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import dagger.hilt.android.lifecycle.HiltViewModel
+import de.plmail.core.data.AccountsRepository
 import de.plmail.core.data.ActionTarget
+import de.plmail.core.data.Connectivity
 import de.plmail.core.data.Feed
 import de.plmail.core.data.FeedRepository
 import de.plmail.core.data.Label
@@ -14,6 +16,7 @@ import de.plmail.core.data.LabelSelection
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
+import de.plmail.core.data.Outbox
 import de.plmail.core.data.UndoableAction
 import de.plmail.core.database.ThreadEntity
 import javax.inject.Inject
@@ -31,8 +34,40 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** An account that is not answering, named so the banner can say which. */
-data class UnreachableAccount(val accountKey: String, val displayName: String)
+/**
+ * Something that is not answering, named so the banner can say which.
+ *
+ * [isWholeServer] decides the sentence, not just the noun. One account failing leaves the others
+ * refreshing and is worth saying so; the *session* failing means nothing was reached, and the
+ * reassurance that "the other accounts are still up to date" is then false about every row on the
+ * screen. It is also the case with no account name available at all — the call that would have
+ * listed them is the one that failed — so [displayName] is the address, and repeating it beside the
+ * hostname produced "Could not reach http://10.0.2.2:8002 at 10.0.2.2".
+ */
+data class UnreachableAccount(
+    val accountKey: String,
+    val displayName: String,
+    val isWholeServer: Boolean,
+)
+
+/**
+ * The list's honest account of itself when the server is not there.
+ *
+ * Three facts rather than one boolean, because they are three different sentences and the app has
+ * been guilty of collapsing them: the device has no network, the device has one and the server is
+ * not answering, and changes are waiting to be sent. A phone in a lift and a NAS that has been
+ * switched off need different words — one of them is fixable from the quick settings and the other
+ * is not — and "N changes waiting" is what makes the first two survivable rather than alarming.
+ */
+data class OfflineState(
+    val isOffline: Boolean,
+    /** The server's address as stored, so the banner can name it rather than say "the server". */
+    val host: String?,
+    val pendingChanges: Int,
+) {
+    val isQuiet: Boolean
+        get() = !isOffline && pendingChanges == 0
+}
 
 /** The "Label as" sheet, once its ticks have been resolved. */
 data class LabelSheetState(val targets: List<ActionTarget>, val selection: LabelSelection)
@@ -45,6 +80,9 @@ constructor(
     private val mail: MailRepository,
     private val actions: MailActions,
     private val labelRepository: LabelRepository,
+    connectivity: Connectivity,
+    outbox: Outbox,
+    accounts: AccountsRepository,
 ) : ViewModel() {
 
     private val announcements = ActionAnnouncements()
@@ -196,6 +234,7 @@ constructor(
                     UnreachableAccount(
                         accountKey = it.accountKey,
                         displayName = names[it.accountKey] ?: it.accountKey,
+                        isWholeServer = it.isWholeServer,
                     )
                 }
             }
@@ -203,6 +242,31 @@ constructor(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
                 initialValue = emptyList(),
+            )
+
+    /**
+     * Whether the app can reach anything, and what is waiting if it cannot.
+     *
+     * The host comes from the stored connection rather than from a failure, deliberately: a phone
+     * with no network never *makes* a failed request, so there is nothing to read a hostname out of
+     * — and "we can't reach your server" without the name of it is the kind of message this
+     * product's users have been complaining about for years.
+     */
+    val offline: StateFlow<OfflineState> =
+        combine(
+                connectivity.isOnline,
+                outbox.state,
+                accounts.serverHost,
+            ) { online, queue, host ->
+                OfflineState(isOffline = !online, host = host, pendingChanges = queue.pending)
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                // Online until told otherwise. A banner that flashes on for one
+                // frame at every launch, before the first callback arrives, is a
+                // banner people learn to ignore.
+                initialValue = OfflineState(isOffline = false, host = null, pendingChanges = 0),
             )
 
     private companion object {

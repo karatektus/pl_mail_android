@@ -32,6 +32,14 @@ abstract class DataModule {
      */
     @Multibinds abstract fun newMailListeners(): Set<NewMailListener>
 
+    /**
+     * The queue's view of the label list.
+     *
+     * Bound here rather than injected directly, so [Outbox] holds one method instead of a
+     * repository that reaches Room and OkHttp — see [KnownLabels].
+     */
+    @Binds @Singleton abstract fun knownLabels(real: LabelRepository): KnownLabels
+
     companion object {
 
         /**

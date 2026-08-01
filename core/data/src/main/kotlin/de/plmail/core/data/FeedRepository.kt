@@ -170,7 +170,16 @@ constructor(
         }
             .getOrElse { failure ->
                 _failures.update {
-                    listOf(SourceFailure(accountKey = connection.address.origin, error = failure))
+                    listOf(
+                        SourceFailure(
+                            // The origin, because there is nothing else: the
+                            // call that would have named the accounts is the
+                            // one that just failed.
+                            accountKey = connection.address.origin,
+                            error = failure,
+                            isWholeServer = true,
+                        )
+                    )
                 }
 
                 // The cached rows, still paged from the local table. An
