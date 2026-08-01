@@ -32,6 +32,7 @@ import de.plmail.feature.mail.MailShell
 import de.plmail.feature.mail.ThreadTarget
 import de.plmail.feature.onboarding.OnboardingScreen
 import de.plmail.feature.search.SearchScreen
+import de.plmail.feature.settings.AccountsScreen
 import de.plmail.feature.settings.AppearanceScreen
 import de.plmail.feature.settings.AppearanceViewModel
 import de.plmail.feature.settings.DiagnosticsScreen
@@ -123,6 +124,7 @@ private fun PlMailApp(
     var isSearching by rememberSaveable { mutableStateOf(false) }
     var isDiagnosing by rememberSaveable { mutableStateOf(false) }
     var isAdjustingAppearance by rememberSaveable { mutableStateOf(false) }
+    var isManagingAccounts by rememberSaveable { mutableStateOf(false) }
     var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
 
     // Over the mail list, never over the composer: the composer has closed by
@@ -207,6 +209,7 @@ private fun PlMailApp(
                     val screen =
                         when {
                             openThread != null -> Screen.MAIL
+                            isManagingAccounts -> Screen.ACCOUNTS
                             isAdjustingAppearance -> Screen.APPEARANCE
                             isDiagnosing -> Screen.DIAGNOSTICS
                             isSearching -> Screen.SEARCH
@@ -221,6 +224,7 @@ private fun PlMailApp(
                     // and lose the app from.
                     BackHandler(enabled = screen != Screen.MAIL) {
                         when (screen) {
+                            Screen.ACCOUNTS -> isManagingAccounts = false
                             Screen.APPEARANCE -> isAdjustingAppearance = false
                             Screen.DIAGNOSTICS -> isDiagnosing = false
                             Screen.SEARCH -> isSearching = false
@@ -228,7 +232,9 @@ private fun PlMailApp(
                         }
                     }
 
-                    if (screen == Screen.APPEARANCE) {
+                    if (screen == Screen.ACCOUNTS) {
+                        AccountsScreen(onBack = { isManagingAccounts = false })
+                    } else if (screen == Screen.APPEARANCE) {
                         AppearanceScreen(onBack = { isAdjustingAppearance = false })
                     } else if (screen == Screen.DIAGNOSTICS) {
                         // Above search in this chain rather than beside it,
@@ -250,6 +256,7 @@ private fun PlMailApp(
                             onSearch = { isSearching = true },
                             onDiagnostics = { isDiagnosing = true },
                             onAppearance = { isAdjustingAppearance = true },
+                            onAccounts = { isManagingAccounts = true },
                             onCompose = { composing = ComposeRequest.New },
                             onReply = { accountKey, emailId, all ->
                                 composing = ComposeRequest.Reply(accountKey, emailId, all)
@@ -309,4 +316,5 @@ private enum class Screen {
     SEARCH,
     DIAGNOSTICS,
     APPEARANCE,
+    ACCOUNTS,
 }

@@ -715,7 +715,36 @@ mutually exclusive either, so the fix is one derived `Screen` value used by both
 draws and the `BackHandler` that dismisses, rather than one handler per flag that can disagree with
 what is on screen.
 
-Still to come in M10: account list and order, sync-window display, and notification preferences.
+**The accounts screen closed M10 on 2026-08-01**, and the first thing it needed was a second
+account: the test stack had exactly one, so a reorder control could be written and could not be
+watched work. `SessionBuilder` exposes one JMAP account per plMail `Account` row on the user, so
+seeding a second row and three threads onto it — data, in the container's `/tmp`, never into the
+server checkout — was the whole of it. `Mailbox` bindings appear lazily, so the second account
+arrived with an Inbox and nothing else, which is exactly the state a real second mailbox starts in.
+
+Three things live on that screen because they are three answers to the same question, and the order
+is the one with consequences:
+
+- **The order cannot be `AccountEntity.sortIndex`.** That column is set from the *session's* order,
+  which is the server's answer and is reconstructible from it — as every column in that database has
+  to be, or the "drop and re-sync on any migration failure" policy silently destroys something. A
+  user's arrangement is not reconstructible, so it lives in DataStore, keyed by the account uid,
+  which comes back identical after a cache wipe. Verified by killing the app: the order and the
+  composer's From both survived.
+- **The order has to mean something outside the screen**, or it is decoration. The first account is
+  now what `LabelRepository.create` files a new label into and what the composer opens on — the
+  latter watched on the device, which is what proves the setting is real.
+- **The window is about the device, and says so.** "11 messages on this device, back to 31 Jul" is
+  the boundary of what is searchable, because this app pages backwards as the user scrolls and
+  nothing in the product had ever said that out loud. What the *server* holds needs a request, so it
+  sits behind a button that says it makes one — one `Email/query` per account, ascending, limit 1.
+  The server's own `sync.message_limit` and `sync.backfill_target` are not on JMAP at all; filed.
+
+Notification preferences are per account and stored as **muted**, not as notifying. The direction is
+the whole design: a mailbox added on the server has no entry, and storing the positive would leave it
+silent forever — indistinguishable from push being broken, which is the one failure this product
+cannot afford to fake. The check is made in `DeltaSync`, where the announcement is raised, so a
+listener added later cannot forget it.
 
 ### M10 · Appearance and settings — the rest
 The two-axis **Theme × Layout** model with density and knobs on top, in a `LocalPlMailTheme`

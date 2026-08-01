@@ -70,6 +70,7 @@
     <string name="labels_loading">Loading your labels…</string>
     <string name="label_new">New label</string>
     <string name="diagnostics">Diagnostics</string>
+    <string name="accounts">Accounts</string>
     <string name="label_new_title">New label</string>
     <string name="label_edit">Edit label</string>
     <string name="label_edit_title">Edit label</string>

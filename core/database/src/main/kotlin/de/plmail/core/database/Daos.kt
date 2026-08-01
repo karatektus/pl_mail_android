@@ -46,7 +46,34 @@ interface AccountDao {
 
     @Query("DELETE FROM accounts WHERE uid NOT IN (:keep)")
     suspend fun deleteMissing(keep: List<String>)
+
+    /**
+     * How much of an account is actually on this device, and how far back it reaches.
+     *
+     * The honest answer to "why can't I find that mail from March" — this app pages backwards as
+     * the user scrolls, so what is searchable is what has been paged, and nothing in the app said
+     * so anywhere. One grouped query rather than one per account: the accounts screen draws every
+     * row at once and this runs on the way in.
+     *
+     * `MIN(receivedAt)` ignores nulls in SQLite, which is the behaviour wanted rather than a
+     * coincidence to work around: `receivedAt` is nullable to match the wire type, and a message
+     * with no date cannot be the boundary of a date range.
+     */
+    @Query(
+        """
+        SELECT accountKey, COUNT(*) AS messages, MIN(receivedAt) AS oldestReceivedAt
+        FROM emails GROUP BY accountKey
+        """
+    )
+    fun observeCachedWindows(): Flow<List<CachedWindowRow>>
 }
+
+/** What one account's cache holds: how many messages, and the oldest one's date. */
+data class CachedWindowRow(
+    val accountKey: String,
+    val messages: Int,
+    val oldestReceivedAt: Long?,
+)
 
 @Dao
 interface MailboxDao {

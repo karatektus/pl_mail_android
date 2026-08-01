@@ -30,6 +30,7 @@ constructor(
     private val database: PlMailDatabase,
     private val clients: AccountClients,
     private val mail: MailRepository,
+    private val accounts: AccountsRepository,
 ) {
 
     /** Every label the user has, collapsed across accounts and in sidebar order. */
@@ -85,8 +86,12 @@ constructor(
      * this is the limitation to revisit.
      */
     suspend fun create(name: String, parent: Label? = null): MailboxId {
-        val accountKey =
-            database.accounts().all().minByOrNull { it.sortIndex }?.uid ?: error(NO_ACCOUNT)
+        // The user's order, not the session's. `sortIndex` is the server's
+        // answer and the arrows on the accounts screen do not touch it — the
+        // whole point of that screen is that "my main mailbox" is a decision
+        // this device holds, and creating a label somewhere else would be the
+        // most visible way of ignoring it.
+        val accountKey = accounts.primary()?.uid ?: error(NO_ACCOUNT)
 
         return createIn(accountKey, name, parent)
     }

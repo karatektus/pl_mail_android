@@ -57,6 +57,7 @@ constructor(
     private val database: PlMailDatabase,
     private val clients: AccountClients,
     private val mail: MailRepository,
+    private val accounts: AccountsRepository,
     /**
      * Told about mail that has just arrived.
      *
@@ -166,6 +167,12 @@ constructor(
         val inbox = database.mailboxes().byRole(accountKey, INBOX_ROLE)?.mailboxId
         val account = database.accounts().byUid(accountKey)
 
+        // Read here rather than checked by each listener, so muting an account
+        // silences it everywhere at once and a listener added later cannot
+        // forget. Read once per hydration rather than per chunk: a preference
+        // changed mid-sync should not split one delivery in half.
+        val mayInterrupt = accounts.isNotifying(accountKey)
+
         ids.chunked(HYDRATION_CHUNK).forEach { chunk ->
             val request = RequestBuilder()
             val get = request.add(EmailGet(accountId, ids = chunk))
@@ -190,7 +197,8 @@ constructor(
             // rebuilt -- and each of those would announce mail from March at
             // three in the morning.
             val arrived =
-                if (announce.isEmpty() || inbox == null || account == null) emptyList()
+                if (announce.isEmpty() || inbox == null || account == null || !mayInterrupt)
+                    emptyList()
                 else {
                     val known =
                         database

@@ -57,6 +57,7 @@ constructor(
     private val clients: AccountClients,
     private val credentials: CredentialStore,
     private val mail: MailRepository,
+    private val accounts: AccountsRepository,
 ) : DraftSender {
 
     /**
@@ -66,22 +67,28 @@ constructor(
      * filled in. [refreshIdentities] keeps it current.
      */
     fun identities(): Flow<List<SendIdentity>> =
-        combine(database.identities().observeAll(), database.accounts().observeAll()) {
-            identities,
-            accounts ->
-            val byKey = accounts.associateBy { it.uid }
+        combine(database.identities().observeAll(), accounts.ordered) { identities, ordered ->
+            val byKey = ordered.associateBy { it.uid }
 
-            identities.mapNotNull { identity ->
-                val account = byKey[identity.accountKey] ?: return@mapNotNull null
+            // Grouped by account in the user's own order rather than left in
+            // the identity table's, which is the *server's*. The composer opens
+            // on the first entry, so this is what decides which mailbox a new
+            // message is written from — and somebody who has put their personal
+            // account at the top of the settings screen has already answered
+            // that question.
+            identities
+                .mapNotNull { identity ->
+                    val account = byKey[identity.accountKey] ?: return@mapNotNull null
 
-                SendIdentity(
-                    accountKey = identity.accountKey,
-                    accountName = account.name,
-                    identityId = identity.identityId,
-                    name = identity.name,
-                    email = identity.email,
-                )
-            }
+                    SendIdentity(
+                        accountKey = identity.accountKey,
+                        accountName = account.name,
+                        identityId = identity.identityId,
+                        name = identity.name,
+                        email = identity.email,
+                    )
+                }
+                .sortedBy { ordered.indexOfFirst { account -> account.uid == it.accountKey } }
         }
 
     /**

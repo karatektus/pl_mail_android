@@ -80,4 +80,42 @@
     <string name="appearance_solid_panes_body">Turns off see-through panes. Android has no system setting for this, so it lives here; reduced motion is taken from your device settings automatically.</string>
     <string name="appearance_pane_alpha">Pane solidity</string>
     <string name="appearance_pane_sample">This is what a pane looks like.</string>
+
+    <string name="accounts">Accounts</string>
+    <string name="accounts_title">Accounts</string>
+    <string name="accounts_none">No accounts have been synced yet.</string>
+
+    <string name="accounts_order">Order</string>
+    <!--
+      Says what the order is *for*. "Move up" on its own is a control with no
+      consequence; the consequence is that the top account is the one a new
+      message and a new label go to.
+    -->
+    <string name="accounts_order_explains">The account at the top is the one new messages are written from and new labels are created in.</string>
+    <string name="accounts_move_up">Move %1$s up</string>
+    <string name="accounts_move_down">Move %1$s down</string>
+
+    <!--
+      About this device, and phrased so it cannot be read as being about the
+      server. The app pages backwards as you scroll, so what is on the phone is
+      what is searchable, which is the sentence search's empty state is
+      standing on.
+    -->
+    <plurals name="accounts_window_messages">
+        <item quantity="one">%1$d message on this device</item>
+        <item quantity="other">%1$d messages on this device</item>
+    </plurals>
+    <string name="accounts_window">%1$s, back to %2$s</string>
+    <string name="accounts_window_empty">Nothing from this account is on this device yet.</string>
+
+    <string name="accounts_server_window">Your server still holds mail back to %1$s.</string>
+    <string name="accounts_server_window_unknown">Your server did not report any mail for this account.</string>
+    <string name="accounts_ask_server">Ask what the server holds</string>
+    <string name="accounts_ask_server_explains">Asks each account for the date of its oldest message. This is the only thing on this screen that contacts your server.</string>
+    <string name="accounts_ask_failed">Could not ask: %1$s</string>
+
+    <string name="accounts_notify">Notify me about new mail</string>
+    <!-- Names the account, because every row's visible label is identical. -->
+    <string name="accounts_notify_a11y">Notify me about new mail from %1$s</string>
+    <string name="accounts_muted_explains">This account still syncs and still shows unread counts. It just will not interrupt you.</string>
 </resources>

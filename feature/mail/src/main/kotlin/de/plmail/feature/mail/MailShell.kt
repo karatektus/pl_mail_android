@@ -43,6 +43,7 @@ fun MailShell(
     onSearch: () -> Unit,
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
+    onAccounts: () -> Unit,
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
@@ -92,6 +93,10 @@ fun MailShell(
                 onAppearance = {
                     scope.launch { drawer.close() }
                     onAppearance()
+                },
+                onAccounts = {
+                    scope.launch { drawer.close() }
+                    onAccounts()
                 },
             )
         }

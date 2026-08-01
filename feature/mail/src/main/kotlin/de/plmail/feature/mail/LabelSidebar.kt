@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Delete
@@ -56,6 +57,7 @@ fun LabelSidebar(
     onCreate: () -> Unit,
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
+    onAccounts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val theme = PlMailTheme.values
@@ -157,6 +159,21 @@ fun LabelSidebar(
             PlMailDivider(
                 modifier = Modifier.padding(vertical = theme.spacing.small),
                 startIndent = theme.spacing.large,
+            )
+
+            NavigationDrawerItem(
+                selected = false,
+                onClick = onAccounts,
+                icon = {
+                    Icon(imageVector = Icons.Outlined.AccountCircle, contentDescription = null)
+                },
+                label = { Text(stringResource(R.string.accounts)) },
+                colors =
+                    NavigationDrawerItemDefaults.colors(
+                        unselectedIconColor = theme.colors.inkMuted,
+                        unselectedTextColor = theme.colors.inkSoft,
+                        unselectedContainerColor = theme.colors.surface,
+                    ),
             )
 
             NavigationDrawerItem(

@@ -1,6 +1,5 @@
 package de.plmail.core.data
 
-import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.core.datastore.PushState
 import de.plmail.core.datastore.PushStateStore
@@ -83,7 +82,7 @@ data class DiagnosticsReport(
 class Diagnostics
 @Inject
 constructor(
-    private val database: PlMailDatabase,
+    private val accountsRepository: AccountsRepository,
     private val credentials: CredentialStore,
     private val pushState: PushStateStore,
     private val push: PushRepository,
@@ -100,7 +99,11 @@ constructor(
      */
     val report: Flow<DiagnosticsReport> =
         combine(
-            database.accounts().observeAll(),
+            // The user's order, so this screen lists mailboxes in the same
+            // sequence as everything else. A diagnostics screen that reorders
+            // the accounts it is diagnosing is one more thing to double-check
+            // at the moment somebody is least able to.
+            accountsRepository.ordered,
             pushState.state,
             credentials.connection.map { it?.address?.origin },
         ) { accounts, push, server ->
@@ -133,7 +136,7 @@ constructor(
      * from every angle here, and receives nothing for ever.
      */
     suspend fun check(): CheckOutcome {
-        val results = database.accounts().all().map { deltaSync.sync(it.uid) }
+        val results = accountsRepository.all().map { deltaSync.sync(it.uid) }
 
         val verified =
             pushState.state.first().subscriptionId?.let { id -> runCatching { push.isLive(id) } }

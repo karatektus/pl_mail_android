@@ -1,17 +1,11 @@
 package de.plmail.core.datastore
 
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.emptyPreferences
-import androidx.datastore.preferences.core.mutablePreferencesOf
 import androidx.datastore.preferences.core.stringPreferencesKey
 import app.cash.turbine.test
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 
@@ -94,43 +88,4 @@ class AppearanceStoreTest {
             expectNoEvents()
         }
     }
-}
-
-/**
- * A DataStore that emits on **every** write, equal or not.
- *
- * A `MutableStateFlow` would conflate the duplicates itself and make the test above pass whether or
- * not the store deduplicates — which is the shape of a test that guards nothing. The real DataStore
- * emits per successful write, so this does too.
- */
-private class EmittingDataStore : DataStore<Preferences> {
-    private var current: Preferences = emptyPreferences()
-    private val emissions = MutableSharedFlow<Preferences>(replay = 1)
-
-    init {
-        emissions.tryEmit(current)
-    }
-
-    override val data: Flow<Preferences>
-        get() = emissions
-
-    override suspend fun updateData(
-        transform: suspend (t: Preferences) -> Preferences
-    ): Preferences {
-        current = transform(current)
-        emissions.emit(current)
-
-        return current
-    }
-
-    suspend fun write(key: Preferences.Key<String>, value: String) {
-        updateData { existing ->
-            mutablePreferencesOf(*existing.asMap().map { (k, v) -> pair(k, v) }.toTypedArray())
-                .apply { this[key] = value }
-        }
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private fun pair(key: Preferences.Key<*>, value: Any): Preferences.Pair<Any> =
-        (key as Preferences.Key<Any>) to value
 }

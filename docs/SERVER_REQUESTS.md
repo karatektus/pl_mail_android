@@ -199,6 +199,39 @@ Three details worth having decided in advance, since they are what the swap will
   than the list behind it. `paneAlpha` is honoured; blur will have to be ignored until Compose grows
   a backdrop filter, and the client should say so rather than pretending.
 
+### The sync window is a real per-account setting and JMAP does not mention it
+
+**What the client wants to do.** Tell someone why a mail they know exists is not in search. plMail
+does not necessarily hold a whole mailbox: `sync.message_limit` caps a sync at the newest N
+messages, and `sync.backfill_target` records how far back a completed backfill actually reached. So
+"no results" can mean "not on your server", and the app currently cannot tell the difference between
+that and "not on this phone".
+
+**What it can do today.** Two observable facts, both honest and neither authoritative. The accounts
+screen shows how many of an account's messages are cached on the device and the date of the oldest,
+which is the boundary of what is *searchable* — the app pages backwards as the user scrolls, and
+that was previously visible nowhere in the product. Behind a button it also runs one
+`Email/query` per account, ascending, limit 1, and reports the date that comes back. That is the
+oldest message the server still holds, which is close to the answer and is not it: it cannot
+distinguish a mailbox whose owner simply has no older mail from one that has been trimmed, and it
+says nothing about whether a backfill is still walking backwards.
+
+**What was checked.** 2026-08-01, reading `~/pl_mail` and probing the 8002 stack.
+`Account::getSyncLimit()`, `getBackfillTarget()`, `getBackfillRanAt()` and `getBackfillAttempts()`
+are real accessors over the `settings` JSONB column, with `SYNC_LIMIT_CHOICES` offered in the web UI.
+`grep -rn 'SyncLimit\|BackfillTarget' src/Jmap/` returns nothing: neither the session object nor
+`Mailbox/get` nor any account capability mentions any of it. The `Email/query` probe works — both
+seeded accounts answered with the date of their oldest message on the first try.
+
+**Smallest change that would unblock it.** The two numbers in the per-account section of the session
+object, beside the mail capability: the message cap in force, and the target a backfill has reached.
+A boolean "a backfill is still running" would be a bonus and is not needed to say something true.
+
+**Client-side workaround.** In place, described above, and deliberately worded to claim only what it
+knows — "on this device", and "your server still holds mail back to". Guessing a retention policy
+from the observed boundary would produce a client that tells somebody their mail has been deleted
+when it has not.
+
 ### Scheduled send: `maxDelayedSend` is 0
 
 **What the client wants to do.** "Send tomorrow at 8am", which is table stakes against Gmail.

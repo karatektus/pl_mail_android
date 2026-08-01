@@ -58,4 +58,30 @@
     <string name="appearance_solid_panes_body">Schaltet durchscheinende Flächen ab. Android hat dafür keine Systemeinstellung, deshalb steht sie hier; reduzierte Bewegung wird automatisch aus den Geräteeinstellungen übernommen.</string>
     <string name="appearance_pane_alpha">Deckkraft der Flächen</string>
     <string name="appearance_pane_sample">So sieht eine Fläche aus.</string>
+
+    <string name="accounts">Konten</string>
+    <string name="accounts_title">Konten</string>
+    <string name="accounts_none">Es wurden noch keine Konten synchronisiert.</string>
+
+    <string name="accounts_order">Reihenfolge</string>
+    <string name="accounts_order_explains">Aus dem obersten Konto werden neue Nachrichten geschrieben, und dort werden neue Labels angelegt.</string>
+    <string name="accounts_move_up">%1$s nach oben</string>
+    <string name="accounts_move_down">%1$s nach unten</string>
+
+    <plurals name="accounts_window_messages">
+        <item quantity="one">%1$d Nachricht auf diesem Gerät</item>
+        <item quantity="other">%1$d Nachrichten auf diesem Gerät</item>
+    </plurals>
+    <string name="accounts_window">%1$s, zurück bis %2$s</string>
+    <string name="accounts_window_empty">Von diesem Konto liegt noch nichts auf diesem Gerät.</string>
+
+    <string name="accounts_server_window">Ihr Server hat noch Post bis zurück zum %1$s.</string>
+    <string name="accounts_server_window_unknown">Ihr Server hat für dieses Konto keine Post gemeldet.</string>
+    <string name="accounts_ask_server">Server fragen</string>
+    <string name="accounts_ask_server_explains">Fragt für jedes Konto das Datum der ältesten Nachricht ab. Nur das kontaktiert auf diesem Bildschirm Ihren Server.</string>
+    <string name="accounts_ask_failed">Abfrage fehlgeschlagen: %1$s</string>
+
+    <string name="accounts_notify">Bei neuer Post benachrichtigen</string>
+    <string name="accounts_notify_a11y">Bei neuer Post von %1$s benachrichtigen</string>
+    <string name="accounts_muted_explains">Dieses Konto wird weiterhin synchronisiert und zeigt weiterhin ungelesene Nachrichten an. Es meldet sich nur nicht mehr.</string>
 </resources>
