@@ -104,10 +104,10 @@ data class PlMailSpacing(
 /**
  * Corner radii.
  *
- * **Radius applies to panes, not controls.** A sheet, a card and a dialog take [pane], which a
- * theme may make sharp or generous; a button, a chip and a field keep [control] whatever the theme
- * says. Letting the theme round controls too produces either pill-shaped cards or square buttons,
- * and both look like a mistake rather than a choice.
+ * **Radius applies to panes, not controls.** A sheet, a card and a section of a page take [pane],
+ * which a theme may make sharp or generous; a button, a chip and a field keep [control] whatever
+ * the theme says. Letting the theme round controls too produces either pill-shaped cards or square
+ * buttons, and both look like a mistake rather than a choice.
  */
 @Immutable
 data class PlMailRadii(
@@ -115,11 +115,14 @@ data class PlMailRadii(
     val control: Dp,
     val small: Dp,
     /**
-     * For the one control that floats over content.
+     * For anything that floats over the app rather than sitting in it — the compose button, and the
+     * composer itself where the window is wide enough to present it as a dialog.
      *
      * Fixed, and larger than [control], because a 56dp square with a 10dp radius reads as a
      * misplaced card rather than as a button. It is deliberately not [pane]: the flat layout sets
-     * that to zero, and a square floating button is exactly what this avoids.
+     * that to zero, which is right for a pane *in* the page — the flat look separates with
+     * hairlines instead of boxes — and wrong for something with a scrim behind it, where a square
+     * edge reads as a window that failed to size itself rather than as a deliberate shape.
      */
     val floating: Dp,
 )

@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -36,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -73,12 +77,24 @@ import de.plmail.jmap.mail.DraftComposer
  * The screen is deliberately plain: a From row that is always visible, address lines, a subject, a
  * body, and the quoted original behind a chip. Everything expensive — uploading, saving, the undo
  * window — happens outside it, which is what lets Send close the screen instantly.
+ *
+ * Reached through [ComposeHost], which decides whether this fills the window or floats in it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ComposeScreen(
     request: ComposeRequest,
     onClose: () -> Unit,
+    /**
+     * The window insets this screen is responsible for avoiding.
+     *
+     * A parameter rather than a default, because the answer genuinely differs: full screen, the app
+     * bar has to clear the status bar itself; inside the dialog presentation, the pane is already
+     * sized well clear of it and applying the insets again would open a band of dead space under
+     * the dialog's own title. That second application is a real defect this app has already shipped
+     * once, at the top of the inbox, so it is spelled out rather than inherited.
+     */
+    contentInsets: WindowInsets = ScaffoldDefaults.contentWindowInsets,
     viewModel: ComposeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -114,9 +130,12 @@ fun ComposeScreen(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        contentWindowInsets = contentInsets,
         snackbarHost = { SnackbarHost(snackbars) },
         topBar = {
             TopAppBar(
+                windowInsets =
+                    contentInsets.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top),
                 title = { Text(stringResource(R.string.compose_title)) },
                 navigationIcon = {
                     IconButton(onClick = { viewModel.close(onClose) }) {

@@ -25,9 +25,9 @@ import de.plmail.core.designsystem.PlMailDensity
 import de.plmail.core.designsystem.PlMailLayout
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.designsystem.PlMailThemeChoice
+import de.plmail.feature.compose.ComposeHost
 import de.plmail.feature.compose.ComposeRequest
 import de.plmail.feature.compose.ComposeRequestSaver
-import de.plmail.feature.compose.ComposeScreen
 import de.plmail.feature.compose.SendStatusHost
 import de.plmail.feature.mail.MailShell
 import de.plmail.feature.onboarding.OnboardingScreen
@@ -136,15 +136,13 @@ private fun PlMailApp(
                     },
                 )
 
-                val request = composing
-
-                when {
-                    request != null ->
-                        ComposeScreen(
-                            request = request,
-                            onClose = { composing = null },
-                        )
-                    isSearching ->
+                // The composer decides its own presentation from the window: a
+                // screen on a phone, a dialog over the mailbox on a tablet. The
+                // list below is a slot rather than a sibling because the two
+                // cases disagree about whether it should exist at all -- see
+                // ComposeHost.
+                ComposeHost(request = composing, onClose = { composing = null }) {
+                    if (isSearching) {
                         SearchScreen(
                             // The reader is M4's and reached from the list;
                             // opening a result closes search, so Back returns to
@@ -153,7 +151,7 @@ private fun PlMailApp(
                             onOpenThread = { _, _ -> isSearching = false },
                             onBack = { isSearching = false },
                         )
-                    else ->
+                    } else {
                         MailShell(
                             onSearch = { isSearching = true },
                             onCompose = { composing = ComposeRequest.New },
@@ -164,6 +162,7 @@ private fun PlMailApp(
                                 composing = ComposeRequest.Forward(accountKey, emailId)
                             },
                         )
+                    }
                 }
 
                 // Last, so it draws over the screen it belongs to, and inset

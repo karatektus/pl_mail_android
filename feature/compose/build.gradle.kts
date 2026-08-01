@@ -19,6 +19,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.androidx.compose.material.icons.extended)
+    // Only for the window size class: whether there is room to present the
+    // composer as a dialog rather than as a screen is a question about the
+    // window, and asking it any other way means hardcoding a breakpoint that
+    // then disagrees with the one the mail pane uses.
+    implementation(libs.androidx.compose.material3.adaptive)
     implementation(libs.kotlinx.coroutines.core)
 
     // The one third-party dependency in this path, and the reason is narrow:
