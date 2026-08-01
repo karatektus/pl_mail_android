@@ -1,5 +1,7 @@
 package de.plmail.feature.mail.reader
 
+import de.plmail.core.designsystem.PlMailThemeChoice
+import de.plmail.core.designsystem.paletteFor
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -160,40 +162,192 @@ class MessageColorProfileTest {
 /**
  * The document that reaches the WebView.
  *
- * The rule worth a test of its own is the second inversion: a document inverted without inverting
- * its imagery back renders every photograph as a negative, which is more obviously broken than the
- * white background it was meant to fix.
+ * These are string assertions over a stylesheet, which is normally a poor kind of test — but the
+ * previous version of this class shows why they are worth writing carefully rather than not at all.
+ * It asserted that `max-width: 100% !important` was present and called the case "wide content
+ * cannot force a horizontal scroll". It passed for the whole time a receipt's amounts were being
+ * clipped off the right-hand edge of the pane, because `max-width` is not what fits a message: a
+ * table cell with a specified width raises its column's *minimum*, and no `max-width` can shrink a
+ * box below its minimum. So each case below names the failure it would catch rather than the
+ * declaration it happens to find.
  */
 class MessageDocumentTest {
 
     private val body = "<p>Hello</p><img src=\"cid:logo\">"
 
+    /** A palette with values nothing else in the document could coincidentally contain. */
+    private val palette =
+        MessagePalette(
+            paper = "#101112",
+            ink = "#131415",
+            inkMuted = "#161718",
+            link = "#191A1B",
+            line = "#1C1D1E",
+            isDark = true,
+        )
+
+    private fun wrap(style: MessageRenderStyle) = MessageDocument.wrap(body, style, palette)
+
+    /**
+     * The rule the reported bug turned on.
+     *
+     * A receipt whose columns are `<td width="380">` is pinned at 760px by the table algorithm and
+     * overflows a phone whatever else is in the stylesheet — labels render, the amounts beside them
+     * do not. Releasing the specified widths is the only thing that lets it reflow.
+     */
+    @Test
+    fun `table cells cannot pin a table wider than the pane`() {
+        assertTrue(
+            wrap(MessageRenderStyle.ORIGINAL).contains("td, th, col, colgroup { width: auto"),
+            "cell widths are not released, so a fixed-width table will clip its right-hand column",
+        )
+    }
+
+    /**
+     * The image cap has to be a length, not a percentage.
+     *
+     * A percentage `max-width` is ignored while an element's intrinsic contribution is computed, so
+     * a 2000px banner still sizes the table around it. `vw` resolves at that moment and a
+     * percentage does not, which is the entire reason this rule looks unusual.
+     */
+    @Test
+    fun `images are capped in viewport units`() {
+        assertTrue(
+            wrap(MessageRenderStyle.ORIGINAL).contains("max-width: min(100%, calc(100vw -"),
+            "a percentage-only cap does not constrain a wide image's intrinsic width",
+        )
+    }
+
+    /**
+     * The wrapper's padding and the width an image may reach are one number twice.
+     *
+     * Drift between them is invisible in review and shows up as a sliver of the sender's background
+     * on the right of every message with a full-width image — read out of the CSS here rather than
+     * asserted as a literal, so the test fails on disagreement rather than on a value changing.
+     */
+    @Test
+    fun `the inset and the viewport cap agree`() {
+        val css = wrap(MessageRenderStyle.ORIGINAL)
+
+        val padding = Regex("padding: (\\d+)px").find(css)?.groupValues?.get(1)?.toInt()
+        val subtracted = Regex("calc\\(100vw - (\\d+)px\\)").find(css)?.groupValues?.get(1)?.toInt()
+
+        assertEquals(padding?.times(2), subtracted, "the wrapper inset and the vw cap have drifted")
+    }
+
+    /**
+     * The page must never scroll sideways; the message may.
+     *
+     * `overflow` on `body` propagates to the viewport, so putting the scroller there would drag the
+     * whole page — and with it the reader's vertical gesture — rather than the message.
+     */
+    @Test
+    fun `the message scrolls horizontally, not the page`() {
+        val css = wrap(MessageRenderStyle.ORIGINAL)
+
+        assertTrue(css.contains("<body><div id=\"plmail-message-root\">$body</div></body>"))
+        assertTrue(css.contains("#plmail-message-root {"))
+        assertTrue(css.substringAfter("#plmail-message-root {").contains("overflow-x: auto"))
+        assertFalse(
+            Regex("^\\s*(html|body)[^{]*\\{[^}]*overflow", RegexOption.MULTILINE)
+                .containsMatchIn(css),
+            "overflow on html or body propagates to the viewport: $css",
+        )
+    }
+
     @Test
     fun `inversion inverts imagery back`() {
-        val html = MessageDocument.wrap(body, MessageRenderStyle.DARK_INVERTED)
+        val html = wrap(MessageRenderStyle.DARK_INVERTED)
 
-        assertTrue(html.contains("body { filter: invert(1) hue-rotate(180deg)"))
+        assertTrue(html.contains("#plmail-message-root { filter: invert(1) hue-rotate(180deg)"))
         assertTrue(
             html.contains("img, picture, video, svg, [style*=\"background-image\"]"),
             "imagery is not inverted back: $html",
         )
     }
 
+    /**
+     * Nothing in an adapted document may be a colour the theme does not have.
+     *
+     * The first version painted `#121212` and `#e6e6e6`, which are Material's near-black and
+     * near-white and belong to none of this app's six themes — so a message adapted under Nord sat
+     * on a grey rectangle inside a blue-grey app, and the strip of it showing through the
+     * document's padding read as a black band down the edge of the message.
+     */
     @Test
-    fun `a restyled message inverts nothing`() {
-        val html = MessageDocument.wrap(body, MessageRenderStyle.DARK_RESTYLED)
+    fun `an adapted message uses the theme's own colours`() {
+        val restyled = wrap(MessageRenderStyle.DARK_RESTYLED)
 
-        assertFalse(html.contains("invert("), "restyling must not invert: $html")
-        assertTrue(html.contains("background: #121212"))
+        assertFalse(restyled.contains("invert("), "restyling must not invert: $restyled")
+        assertTrue(restyled.contains(palette.ink))
+        assertTrue(restyled.contains(palette.link))
+        assertTrue(restyled.contains(palette.line))
+
+        // Every style that *adapts* anything. ORIGINAL is excluded deliberately
+        // and is the one place a literal colour is still right: it paints the
+        // white sheet the sender wrote against, which is not a theme decision.
+        listOf(
+                MessageRenderStyle.DARK_RESTYLED,
+                MessageRenderStyle.DARK_INVERTED,
+                MessageRenderStyle.DARK_NATIVE,
+            )
+            .forEach { style ->
+                assertFalse(
+                    Regex("#(121212|e6e6e6|9ecbff|3a3a3a|b8b8b8|ffffff)", RegexOption.IGNORE_CASE)
+                        .containsMatchIn(wrap(style)),
+                    "$style still carries a hardcoded colour",
+                )
+            }
+    }
+
+    /**
+     * The adapted styles paint no background at all, and that is the point.
+     *
+     * The reader draws the card and the WebView is transparent, so an unpainted document takes the
+     * card's colour by construction. Painting one here would be a second copy of the theme's paper
+     * that has to keep agreeing with the first, and the way that fails is a seam exactly where the
+     * sender's own background stops.
+     */
+    @Test
+    fun `an adapted message paints no paper of its own`() {
+        listOf(MessageRenderStyle.DARK_RESTYLED, MessageRenderStyle.DARK_INVERTED).forEach { style
+            ->
+            assertFalse(
+                Regex("#plmail-message-root[^}]*background:").containsMatchIn(wrap(style)),
+                "$style paints its own paper and will not match the card behind it",
+            )
+        }
     }
 
     @Test
     fun `the original is left alone`() {
-        val html = MessageDocument.wrap(body, MessageRenderStyle.ORIGINAL)
+        val html =
+            MessageDocument.wrap(body, MessageRenderStyle.ORIGINAL, palette.copy(isDark = false))
 
         assertFalse(html.contains("invert("))
-        assertFalse(html.contains("#121212"))
         assertFalse(html.contains("color-scheme"))
+        assertFalse(html.contains(palette.ink), "the original must not be recoloured")
+        assertFalse(
+            Regex("#plmail-message-root[^}]*background:").containsMatchIn(html),
+            "a light theme must not paint paper the sender did not ask for",
+        )
+    }
+
+    /**
+     * "Show original" has to show something.
+     *
+     * It is the escape hatch from adaptation, and in a dark theme it is the *only* way this style
+     * is reached — so a message that declares no background of its own would otherwise render the
+     * user agent's near-black default text straight onto the card, which under Nord is a dark
+     * blue-grey. The message would be there, be correct, and be unreadable.
+     */
+    @Test
+    fun `asking for the original in the dark puts it on paper`() {
+        assertTrue(
+            Regex("#plmail-message-root \\{ background: #ffffff")
+                .containsMatchIn(wrap(MessageRenderStyle.ORIGINAL)),
+            "the unadapted message has no paper and will be black on a dark card",
+        )
     }
 
     /**
@@ -204,26 +358,47 @@ class MessageDocumentTest {
      */
     @Test
     fun `the colour scheme is declared only for a self-darkening message`() {
-        assertTrue(
-            MessageDocument.wrap(body, MessageRenderStyle.DARK_NATIVE)
-                .contains("color-scheme: dark")
-        )
-        assertFalse(
-            MessageDocument.wrap(body, MessageRenderStyle.DARK_RESTYLED).contains("color-scheme")
-        )
+        assertTrue(wrap(MessageRenderStyle.DARK_NATIVE).contains("color-scheme: dark"))
+        assertFalse(wrap(MessageRenderStyle.DARK_RESTYLED).contains("color-scheme"))
     }
 
     @Test
     fun `the body is embedded rather than escaped`() {
         // Escaping it would render the mail as source code. The server
         // sanitises; the WebView sandbox is what makes that safe.
-        assertTrue(MessageDocument.wrap(body, MessageRenderStyle.ORIGINAL).contains(body))
+        assertTrue(wrap(MessageRenderStyle.ORIGINAL).contains(body))
     }
+}
+
+/** The bridge from the theme's tokens to the two dozen bytes of CSS a message is adapted with. */
+class MessagePaletteTest {
 
     @Test
-    fun `wide content cannot force a horizontal scroll`() {
-        val html = MessageDocument.wrap(body, MessageRenderStyle.ORIGINAL)
+    fun `colours are emitted as six-digit hex`() {
+        val palette = MessagePalette.of(paletteFor(PlMailThemeChoice.NORD, isDark = true))
 
-        assertTrue(html.contains("max-width: 100% !important"))
+        listOf(palette.paper, palette.ink, palette.inkMuted, palette.link, palette.line).forEach {
+            assertTrue(
+                Regex("^#[0-9A-F]{6}$").matches(it),
+                "$it is not a CSS colour — alpha or a short form would be dropped by the parser",
+            )
+        }
+    }
+
+    /**
+     * Every theme resolves to a different paper, which is the whole point of the change.
+     *
+     * Adapted messages used to land on one hardcoded near-black whatever the app looked like. If
+     * two themes ever produced the same paper here, a message would stop following the theme again
+     * and nothing else would notice.
+     */
+    @Test
+    fun `each dark theme adapts a message onto its own paper`() {
+        val papers =
+            listOf(PlMailThemeChoice.DARK, PlMailThemeChoice.NORD, PlMailThemeChoice.DUSK).map {
+                MessagePalette.of(paletteFor(it, isDark = true)).paper
+            }
+
+        assertEquals(papers.size, papers.toSet().size, "two themes share a message background")
     }
 }

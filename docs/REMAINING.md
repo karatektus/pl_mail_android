@@ -57,6 +57,14 @@ Everything M10 asked for is in:
   offline" from "plMail could not reach `<host>`"; mutations that hit a transport failure are
   queued in DataStore and drained by a network-constrained WorkManager job. Verified end to end on
   the emulator with the radios off — the queued Trash reached the server.
+- **The reader renders hostile HTML.** Three product-owner bugs, all reproduced against a seeded
+  800px Stripe-style receipt and all watched fixed on the emulator: a fixed-width table's right-hand
+  column was laid out past the pane and clipped, so a receipt showed its labels and none of its
+  amounts; the conversation could not be scrolled at all, putting reply and forward out of reach;
+  and adaptation for the dark used one hardcoded near-black rather than the chosen theme. See
+  `MessageDocument` for the fitting rules and why `max-width` alone is not one, and `ReaderWebView`
+  for the height. Reply and forward are now also a pinned bar, so they no longer depend on a
+  WebView's measurement being right.
 
 ### M11 — what is NOT done
 
@@ -109,6 +117,8 @@ on this machine, that is said rather than implied.
 | **Material You against an actual wallpaper change** | A wallpaper set on the AVD and the dynamic-colour switch on. | **Not blocked.** `adb shell` cannot set a wallpaper directly on API 36 without a helper, but the emulator's own Settings app can. What is being checked is that the *whole* token set moves, not just the accent. |
 | **The pane-alpha slider's visual effect below 100%** | The boxed layout selected, then the slider moved. | **Not blocked, and slightly suspicious.** `PlMailPane` only applies alpha when `layout == BOXED`, which is correct and documented — but it means the slider does nothing at all in the flat layout, which is the default, and the appearance screen does not say so. Worth checking whether the control is drawn disabled or simply appears broken. |
 | **German at real length on a narrow screen** | — | **Closed this session.** Found two real defects (chip budget floor, English system-label names) and fixed both. See `ThreadRowNarrowTest`. |
+| **The reader's own dark strategies, on a message that actually uses them** | A message declaring `prefers-color-scheme` (`DARK_NATIVE`), and one with a `cid:` inline image, under a dark theme. | **Not blocked.** `DARK_RESTYLED`, `DARK_INVERTED` and `ORIGINAL` were all watched under Nord this session against the seeded receipt and a plain-text message; `DARK_NATIVE` was not, because no seeded message declares a scheme, and it is the one path that hands rendering to `WebSettingsCompat` rather than to our stylesheet. A three-line body with a `@media (prefers-color-scheme: dark)` block would settle it. |
+| **The reader on a message with attachments, and on a thread of several** | Any seeded thread with more than one message. | **Not blocked, and worth doing.** The message card and the pinned bar were both only seen on single-message threads. The pinned bar deliberately answers the *newest* message while the row inside each card answers that card's, and nothing has confirmed the two look distinguishable when four cards are stacked. |
 | **The tablet AVD** | `~/Android/run-emulator.sh plmail_tablet_api36`, or the Windows AVD reconfigured. | **Untouched for three sessions and now four.** The two-pane list/detail, the permanent drawer, the composer-as-dialog and the new `rowLabelSlots` decision all only exist on a tablet. `rowLabelSlots` in particular takes the *pane* width precisely because a tablet's list pane can be narrower than a phone — and that reasoning has never been looked at on a tablet. |
 
 ---
@@ -117,6 +127,28 @@ on this machine, that is said rather than implied.
 
 Written down because previous sessions' honesty about exactly this has led directly to real bugs.
 
+- **A search result does not open the conversation.** `MainActivity` wires the search screen's
+  `onOpenThread` to `{ _, _ -> isSearching = false }` — it closes search and returns to whatever
+  list was underneath, and the thread that was tapped is never shown. Found while trying to reach a
+  seeded message; M7 is marked done and this is the one thing search is for. It also matters more
+  than it looks, because search is the *only* way to reach a conversation the feed has not paged.
+- **A thread's row and its reader disagree about the avatar letter.** The reader now takes the
+  initial from the display name and falls back to the address, so "Anthropic, PBC" is an A; the list
+  row still hashes and letters from the address alone and shows an I for `invoice+statements@`.
+  `ThreadRow` is in `core/ui` and was another agent's file this session, so only the reader was
+  changed. The *colour* must keep coming from the address — see `avatarInitial`'s note.
+- **The inbox feed does not notice a message the server already has.** A thread inserted
+  server-side is returned by `Email/query` immediately, and the app's list still does not show it
+  after a relaunch or after Diagnostics' "Check now" — `FeedMediator.initialize` skips the refresh
+  whenever the feed has any cached rows, and `Email/changes` did not report the insert. Worked
+  around while testing by labelling the thread with a label whose local feed was empty. Whether this
+  is a server changelog gap or a client one has not been established, and it is the reason a
+  freshly-seeded message appears to vanish.
+- **A message whose body inverts is drawn on pure black.** `invert(1)` of a newsletter's white paper
+  is `#000`, which under Nord sits inside a `#3B4252` card and reads as a hard rectangle. It is
+  correct — that is what inversion means, and Gmail does the same — but a small `brightness()` in
+  the filter would land it nearer the theme. Not attempted, because every colour in the message
+  moves with it and the "show original" hatch is one tap away.
 - **The unreachable banner is sticky.** `FeedRepository._failures` is only rewritten when a page
   load runs. After the offline test, the network came back, the outbox drained through WorkManager
   and the banner "plMail could not reach 10.0.2.2" was **still on screen** — because nothing had
@@ -267,10 +299,25 @@ New from this session:
   explicitly in any script.
 - **Seeding server-side data is allowed; writing to the server checkout is not.** The distinction
   matters because `compose.test.yaml` bind-mounts `./:/app`, so a script written to `/app` *is* a
-  write to `~/pl_mail`. Write it to the container's own `/tmp` instead:
-  `docker compose -p pl_mail_android -f compose.test.yaml exec -T app sh -c 'cat > /tmp/x.php' < local.php`.
-  The kernel boots from `/app/vendor/autoload.php` and `test.service_container` gives access to
-  private services.
+  write to `~/pl_mail`. Write it to the container's own `/tmp` instead — `docker cp local.php
+  <project>-app-1:/tmp/x.php && docker exec <project>-app-1 php /tmp/x.php`. The kernel boots from
+  `/app/vendor/autoload.php` and `test.service_container` gives access to private services, but
+  **booting it by hand skips the Dotenv the console does for you**: the first failure is
+  `Environment variable not found: "TRUSTED_PROXIES"` during `preBoot`, which looks like a database
+  problem and is not. `(new Symfony\Component\Dotenv\Dotenv())->bootEnv('/app/.env', 'test');`
+  before `new Kernel(...)` fixes it.
+- **A WebView calls `requestLayout()` from inside its inherited constructor.** `ViewGroup` does it
+  through `setFlags`, long before the Chromium backend exists, so an override that asks the view
+  anything about its content dies with `IllegalStateException: AwContents must be created if we are
+  not posting!` — and it dies on opening a message, which is the whole app. A Kotlin subclass's own
+  fields are still at their JVM defaults at that moment, which is what makes a plain
+  `private var isConstructed = false` with `init { isConstructed = true }` the guard that works.
+  See `ReaderWebView`.
+- **Iterating on a message's CSS does not need a build.** The document `MessageDocument.wrap`
+  produces is a static file: write it to disk, `python3 -m http.server` in WSL, open
+  `http://10.0.2.2:<port>/probe.html` in the emulator's Chrome. That turned a twelve-minute
+  build-install-navigate loop into ten seconds and is what found the two rules a `max-width` cannot
+  express. `file:///sdcard/...` does **not** work — Chrome refuses it with `ERR_ACCESS_DENIED`.
 - **A second JMAP account is one `Account` row on the e2e user.** `SessionBuilder` exposes one JMAP
   account per row. System labels are created lazily, so a fresh second account arrives with an
   Inbox and nothing else — which is a *better* test than a fully-furnished one.

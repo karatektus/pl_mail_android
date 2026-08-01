@@ -177,10 +177,14 @@ fun PlMailTheme(
  *
  * `SYSTEM` is the only value that needs [isDark] told to it; the rest carry their own scheme, which
  * is why choosing Nord on a phone in light mode gives Nord rather than a light approximation of it.
- * Internal rather than private so `PaletteContrastTest` can sweep every theme through the same
- * resolver the app uses, instead of listing the palettes again and quietly missing one.
+ *
+ * Public rather than private so tests can sweep every theme through the same resolver the app uses
+ * instead of listing the palettes again and quietly missing one — `PaletteContrastTest` here, and
+ * the reader's `MessagePaletteTest`, which checks that a message adapted for the dark lands on the
+ * chosen theme's paper rather than on one hardcoded near-black. [Palette] itself stays internal:
+ * this is the way in, and it is the only one, so nothing outside can name a colour.
  */
-internal fun paletteFor(theme: PlMailThemeChoice, isDark: Boolean): PlMailColors =
+fun paletteFor(theme: PlMailThemeChoice, isDark: Boolean): PlMailColors =
     when (theme) {
         PlMailThemeChoice.NORD -> Palette.Nord
         PlMailThemeChoice.DUSK -> Palette.Dusk

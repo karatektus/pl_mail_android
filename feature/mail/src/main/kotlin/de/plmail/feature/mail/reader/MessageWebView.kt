@@ -1,20 +1,31 @@
 package de.plmail.feature.mail.reader
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import java.io.ByteArrayInputStream
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /**
  * Whether a message may load pictures from the internet.
@@ -43,21 +54,53 @@ enum class RemoteImages {
 fun MessageWebView(
     body: String,
     style: MessageRenderStyle,
+    palette: MessagePalette,
     remoteImages: RemoteImages,
     modifier: Modifier = Modifier,
     /** Resolves an inline `cid:` reference to bytes already in the blob cache. */
     inlineImage: (String) -> InlineImage? = { null },
 ) {
-    val document = remember(body, style) { MessageDocument.wrap(body, style) }
+    val document = remember(body, style, palette) { MessageDocument.wrap(body, style, palette) }
+
+    /**
+     * The document's height, in pixels, as the WebView last reported it.
+     *
+     * This is the fix for "you cannot scroll past the message", and it has to be Compose state
+     * rather than a `WRAP_CONTENT` layout param. A WebView's content height is not known when the
+     * view is first measured — the page has not been laid out yet — so the interop node is measured
+     * at whatever the view says then, and when the page finishes and the view asks for another
+     * layout, only the *view* resizes. The Compose `LayoutNode` keeps the height it was given, so
+     * the `LazyColumn` computes a scroll range for an item that is a fraction of what is actually
+     * drawn, decides there is nothing to scroll, and the reader is frozen with the message's own
+     * chrome — and every action under it — off the bottom of the screen.
+     *
+     * Reset with the document, so toggling "show original" on a message that gets shorter does not
+     * leave the item padded out to the taller rendering's height.
+     */
+    var contentHeight by remember(document) { mutableIntStateOf(0) }
 
     AndroidView(
-        // clipToBounds because a WebView paints its own background across the
-        // area it has drawn, which in a LazyColumn is larger than the bounds it
-        // was laid out with -- it covers the sender row above it, which then
-        // exists in the accessibility tree while being invisible on screen.
-        modifier = modifier.fillMaxWidth().clipToBounds(),
+        modifier =
+            modifier
+                .fillMaxWidth()
+                // Only once a height has been reported. Before that the view keeps
+                // WRAP_CONTENT and draws whatever it can, which is what makes the
+                // first frame of a cached message immediate rather than empty.
+                .then(
+                    if (contentHeight > 0) {
+                        Modifier.height(with(LocalDensity.current) { contentHeight.toDp() })
+                    } else {
+                        Modifier
+                    }
+                )
+                // clipToBounds because a WebView paints its own background across
+                // the area it has drawn, which in a LazyColumn is larger than the
+                // bounds it was laid out with -- it covers the sender row above it,
+                // which then exists in the accessibility tree while being invisible
+                // on screen.
+                .clipToBounds(),
         factory = { context ->
-            WebView(context).apply {
+            ReaderWebView(context).apply {
                 configure()
 
                 // Transparent, so the Compose surface behind shows through
@@ -65,10 +108,11 @@ fun MessageWebView(
                 // own CSS paints the background it wants.
                 setBackgroundColor(android.graphics.Color.TRANSPARENT)
 
-                // WRAP_CONTENT, or the WebView reports its default height inside
-                // the LazyColumn's unbounded measurement and pushes everything
-                // above it off the screen. The symptom is a reader showing only
-                // a body, with the subject and sender apparently gone.
+                // WRAP_CONTENT until the height above is known, or the WebView
+                // reports its default height inside the LazyColumn's unbounded
+                // measurement and pushes everything above it off the screen. The
+                // symptom is a reader showing only a body, with the subject and
+                // sender apparently gone.
                 layoutParams =
                     ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -77,6 +121,8 @@ fun MessageWebView(
             }
         },
         update = { webView ->
+            webView.onContentHeight = { height -> contentHeight = height }
+
             webView.webViewClient = MessageClient(remoteImages, inlineImage)
 
             if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
@@ -96,6 +142,126 @@ fun MessageWebView(
             webView.loadDataWithBaseURL(null, document, "text/html", "utf-8", null)
         },
     )
+}
+
+/**
+ * A WebView that reports its height to Compose, and gives a vertical drag back to the list.
+ *
+ * The two together are "you cannot scroll past the message", and the *order* is worth recording
+ * because it was diagnosed the wrong way round first. The height is the cause: with the interop
+ * node measured short, the `LazyColumn` has no scroll range at all, and a drag started anywhere —
+ * including on the sender row, well outside this view — moves nothing. The gesture work below only
+ * matters once there is something to scroll; its absence is what made the reader creep down by a
+ * couple of pixels per swipe rather than scroll, because the WebView was taking the drag and
+ * spending it on a few pixels of overflow of its own.
+ *
+ * `android.webkit.WebView` is not a `NestedScrollingChild` — it never has been — so Compose's
+ * nested-scroll interop has nothing on the other end to talk to, and the interop view takes the
+ * gesture on ACTION_DOWN and keeps it. Nothing here tries to change that. The gesture is
+ * disambiguated once, at the touch slop, and then owned: a drag that is mostly vertical releases
+ * the ancestors' interception, which is the signal Compose's `PointerInteropFilter` watches for and
+ * which lets the list's own scroll gesture take the pointer over. Anything else stays with the
+ * WebView — a tap, a long press for text selection, and in particular a horizontal drag, which is
+ * how a table too wide to reflow is read (see [MessageDocument]).
+ *
+ * The release is re-asserted *after* `super.onTouchEvent`, not before, because the WebView asks for
+ * interception itself while it believes it is scrolling.
+ */
+private class ReaderWebView(context: Context) : WebView(context) {
+
+    private val slop = ViewConfiguration.get(context).scaledTouchSlop
+    private var downX = 0f
+    private var downY = 0f
+
+    /** Null until the gesture has moved past the slop and its direction is known. */
+    private var isVerticalDrag: Boolean? = null
+
+    /** Told the composable how tall the document is. See [MessageWebView]. */
+    var onContentHeight: (Int) -> Unit = {}
+
+    private var reportedHeight = 0
+
+    /**
+     * False until *this* class's constructor has run, and it is load-bearing rather than defensive.
+     *
+     * `WebView`'s inherited constructor calls `requestLayout()` — `ViewGroup.initViewGroup` does it
+     * through `setFlags` — so the override below runs before the Chromium backend behind this view
+     * exists. Asking it for a scroll range at that point throws `IllegalStateException: AwContents
+     * must be created if we are not posting!` and the app dies the moment a message is opened.
+     * Found by running it; nothing in the type system hints at it, because a Kotlin subclass's
+     * fields are all still at their JVM defaults while the superclass constructor is on the stack —
+     * which is exactly what makes this flag work.
+     */
+    private var isConstructed = false
+
+    init {
+        isConstructed = true
+    }
+
+    /**
+     * The one moment the document's height is known to have changed.
+     *
+     * WebView raises this itself when its content size changes — it is what a `WRAP_CONTENT`
+     * WebView in a plain `ScrollView` relies on — so it is the honest signal rather than a poll on
+     * a timer.
+     *
+     * `contentHeight`, deliberately, and **not** `computeVerticalScrollRange`, which was the first
+     * attempt and looked better for being already in pixels. A scroll range is `max(content, the
+     * view's own height)`, so once this view has been laid out at some height it can never report
+     * anything smaller — the reader showed the receipt followed by a screen and a half of empty
+     * card, because the first, tall measurement latched. A document's height has to be able to go
+     * down as well as up.
+     *
+     * CSS pixels are converted with the display density rather than with `getScale()`: the scale is
+     * fixed here — the document declares `initial-scale=1` and zoom is off — and `getScale()` is
+     * deprecated.
+     *
+     * Guarded on the value rather than fired every time, because Compose reacts by re-measuring
+     * this view, which requests layout again — an unguarded report is an infinite loop rather than
+     * a taller message.
+     */
+    override fun requestLayout() {
+        super.requestLayout()
+
+        if (!isConstructed) return
+
+        val height = (contentHeight * resources.displayMetrics.density).roundToInt()
+
+        if (height > 0 && height != reportedHeight) {
+            reportedHeight = height
+            onContentHeight(height)
+        }
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                downX = event.x
+                downY = event.y
+                isVerticalDrag = null
+
+                // Claimed up front and given back below if the drag turns out to
+                // be the list's. A tap has to reach the WebView intact or links
+                // and text selection stop working.
+                parent?.requestDisallowInterceptTouchEvent(true)
+            }
+
+            MotionEvent.ACTION_MOVE ->
+                if (isVerticalDrag == null) {
+                    val dx = abs(event.x - downX)
+                    val dy = abs(event.y - downY)
+
+                    if (dx > slop || dy > slop) isVerticalDrag = dy > dx
+                }
+        }
+
+        val handled = super.onTouchEvent(event)
+
+        if (isVerticalDrag == true) parent?.requestDisallowInterceptTouchEvent(false)
+
+        return handled
+    }
 }
 
 /** An inline part, already fetched. */
@@ -179,11 +345,30 @@ private fun WebView.configure() {
     settings.allowContentAccess = false
     settings.domStorageEnabled = false
     settings.setGeolocationEnabled(false)
-    // The message is already width-constrained by MessageDocument's CSS; this
-    // stops a table with fixed pixel widths from making the whole view
-    // horizontally scrollable anyway.
-    settings.loadWithOverviewMode = true
+
+    // The viewport is the pane's own width in CSS pixels, and the message is
+    // fitted to it by MessageDocument's stylesheet rather than by zooming.
+    //
+    // `loadWithOverviewMode` used to be on here with a comment claiming it
+    // stopped fixed-width tables from scrolling the view. It does not: it only
+    // applies when the wide viewport is enabled, so it was doing nothing at all
+    // while reading as the thing that handled the case. Turning the pair on
+    // instead is the other legitimate answer -- lay the message out at its
+    // authored width and zoom the page out to fit -- and it was rejected
+    // because an 840px receipt on a phone lands near half scale, which is type
+    // too small to read. See MessageDocument for the decision.
     settings.useWideViewPort = false
+    settings.loadWithOverviewMode = false
+
+    // Both bars off, and the horizontal one is not cosmetic: the wrapper
+    // element scrolls, not the page, so a page-level bar would advertise a
+    // scroll that cannot happen.
     isVerticalScrollBarEnabled = false
     isHorizontalScrollBarEnabled = false
+
+    // The body is laid out at its full height inside a list that scrolls, so
+    // the WebView has nothing of its own to fling. Leaving this on lets a
+    // rounding error in the measured height become a momentum scroll that eats
+    // the gesture -- see ReaderWebView.
+    overScrollMode = View.OVER_SCROLL_NEVER
 }

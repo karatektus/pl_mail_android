@@ -4,8 +4,9 @@ import android.content.Context
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,17 +14,23 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Forward
+import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +49,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -60,9 +68,16 @@ import de.plmail.feature.mail.R
 import de.plmail.feature.mail.SnoozeMenu
 import de.plmail.feature.mail.SnoozePicker
 
-/** The letter shown on a sender's avatar. Skips punctuation, so "+ada@…" is still an A. */
-private fun avatarInitial(seed: String): String =
-    seed.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?"
+/**
+ * The letter shown on a sender's avatar. Skips punctuation, so "+ada@…" is still an A.
+ *
+ * The **display name** is preferred over the address here, which is the opposite of what the avatar
+ * *colour* is hashed from and deliberately so. Colour has to be stable for a person, so it comes
+ * from the address; the letter is a label for a human reading it, and "Anthropic, PBC" showing an I
+ * because the address is `invoice+statements@…` reads as a bug rather than as a hash.
+ */
+private fun avatarInitial(name: String?, address: String?): String =
+    (name.orEmpty() + address.orEmpty()).firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "?"
 
 /**
  * One conversation.
@@ -94,7 +109,16 @@ fun ReaderScreen(
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val isDark = isSystemInDarkTheme()
+
+    // The *app's* scheme, never the system's. `isSystemInDarkTheme()` was here
+    // and it is wrong in both directions once there are six themes: Nord on a
+    // phone in light mode drew every message as sent -- a white newsletter in a
+    // dark app -- and Solar on a phone in dark mode inverted messages onto a
+    // near-black that the light theme around them never uses.
+    val colors = PlMailTheme.colors
+    val isDark = colors.isDark
+    val palette = remember(colors) { MessagePalette.of(colors) }
+
     val context = LocalContext.current
     val snackbars = remember { SnackbarHostState() }
 
@@ -178,12 +202,24 @@ fun ReaderScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbars) },
+        bottomBar = {
+            // The conversation's newest message, expanded or not. A thread is
+            // answered at its end; the per-message row inside each card is what
+            // answers a particular one.
+            state.messages.lastOrNull()?.let { newest ->
+                ReaderActionBar(
+                    onReply = { onReply(newest.email.emailId, false) },
+                    onForward = { onForward(newest.email.emailId) },
+                )
+            }
+        },
     ) { insets ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(insets)) {
             items(items = state.messages, key = { it.email.uid }) { message ->
                 Message(
                     message = message,
                     isDark = isDark,
+                    palette = palette,
                     busyAttachments = state.busyAttachments,
                     onToggle = { viewModel.toggleExpanded(message.email.uid) },
                     onShowImages = { viewModel.allowRemoteImages(message.email.uid) },
@@ -195,22 +231,83 @@ fun ReaderScreen(
                         savePicker.launch(attachment.name ?: DEFAULT_SAVE_NAME)
                     },
                     onShowSource = { viewModel.showSource(message) },
+                    onReply = { all -> onReply(message.email.emailId, all) },
+                    onForward = { onForward(message.email.emailId) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Reply and forward, always on screen.
+ *
+ * **Structural, not decorative.** The reply actions used to live only under the message they
+ * answer, which meant reaching them depended on the reader being able to scroll past a body whose
+ * height is measured by a WebView. On a message that measured badly — or, before [ReaderWebView],
+ * on any message at all, because the body ate the drag — the two verbs a mail client exists for
+ * could not be reached and the app was unusable on that message. Pinning them removes the
+ * dependency: whatever the body does, these are reachable in one tap.
+ *
+ * Two buttons, not three. Reply-all stays in the per-message row, where the "would this reach
+ * anyone a plain reply would not" test is computed and where there is room for it — three pills of
+ * German ("Antworten", "Allen antworten", "Weiterleiten") do not fit a 320dp phone without
+ * ellipsis, and a button reading "Allen antwo…" is worse than one more scroll.
+ */
+@Composable
+private fun ReaderActionBar(onReply: () -> Unit, onForward: () -> Unit) {
+    val spacing = PlMailTheme.spacing
+    val colors = PlMailTheme.colors
+
+    Column(modifier = Modifier.background(colors.surface).navigationBarsPadding()) {
+        // The bar is part of the page, separated by a line rather than lifted by
+        // a shadow, like every other edge in this app.
+        PlMailDivider()
+
+        Row(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(horizontal = spacing.gutter, vertical = spacing.small),
+            horizontalArrangement = Arrangement.spacedBy(spacing.small),
+        ) {
+            val tonal =
+                ButtonDefaults.filledTonalButtonColors(
+                    containerColor = colors.accentSoft,
+                    contentColor = colors.accent,
                 )
 
-                // Under the message they answer, rather than in the app bar.
-                // A thread is several messages and "reply" has to mean "to this
-                // one" -- replying to the newest when the user was reading the
-                // third quotes the wrong text and threads against the wrong id.
-                if (message.isExpanded) {
-                    ReplyActions(
-                        canReplyAll = message.hasOtherRecipients,
-                        onReply = { onReply(message.email.emailId, false) },
-                        onReplyAll = { onReply(message.email.emailId, true) },
-                        onForward = { onForward(message.email.emailId) },
-                    )
-                }
+            FilledTonalButton(
+                onClick = onReply,
+                modifier = Modifier.weight(1f).heightIn(min = spacing.touchTarget),
+                colors = tonal,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.Reply,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = spacing.tiny),
+                )
+                Text(
+                    text = stringResource(R.string.reader_reply),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
 
-                PlMailDivider()
+            FilledTonalButton(
+                onClick = onForward,
+                modifier = Modifier.weight(1f).heightIn(min = spacing.touchTarget),
+                colors = tonal,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.Forward,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = spacing.tiny),
+                )
+                Text(
+                    text = stringResource(R.string.reader_forward),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -390,6 +487,7 @@ private fun ReplyActions(
 private fun Message(
     message: ReaderMessage,
     isDark: Boolean,
+    palette: MessagePalette,
     busyAttachments: Set<String>,
     onToggle: () -> Unit,
     onShowImages: () -> Unit,
@@ -398,6 +496,8 @@ private fun Message(
     onOpenAttachment: (AttachmentEntity) -> Unit,
     onSaveAttachment: (AttachmentEntity) -> Unit,
     onShowSource: () -> Unit,
+    onReply: (all: Boolean) -> Unit,
+    onForward: () -> Unit,
 ) {
     val body = message.body
 
@@ -415,19 +515,43 @@ private fun Message(
     val spacing = PlMailTheme.spacing
     val colors = PlMailTheme.colors
 
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = spacing.small)) {
+    // A card, in both layouts, and it is the one place this app boxes something
+    // the flat layout would otherwise leave on the page. The reason is not
+    // decoration: a message body is sender-authored paper with a background of
+    // its own, and running it to the screen edge means the sender's colour and
+    // the app's chrome meet with nothing between them. That is what the black
+    // band down the left was -- the dark style's own page colour showing through
+    // the document's padding, against the app's surface, looking like a
+    // rendering fault. Bounded and inset, the message reads as an object and the
+    // seam has nowhere to appear.
+    //
+    // radii.control rather than radii.pane, because pane is zero in the flat
+    // layout by design and this shape has to exist in both.
+    val shape = RoundedCornerShape(PlMailTheme.radii.control)
+
+    Column(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(horizontal = spacing.small, vertical = spacing.tiny)
+                .background(colors.raised, shape)
+                .border(spacing.hair, colors.line, shape)
+                .clip(shape)
+    ) {
         Row(
             modifier =
                 Modifier.fillMaxWidth()
                     .clickable(onClick = onToggle)
                     .heightIn(min = spacing.touchTarget)
-                    .padding(horizontal = spacing.gutter, vertical = spacing.medium),
+                    .padding(horizontal = spacing.medium, vertical = spacing.medium),
             horizontalArrangement = Arrangement.spacedBy(spacing.medium),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val seed = message.email.fromAddress ?: message.email.fromName.orEmpty()
 
-            PlMailAvatar(seed = seed, label = avatarInitial(seed))
+            PlMailAvatar(
+                seed = seed,
+                label = avatarInitial(message.email.fromName, message.email.fromAddress),
+            )
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -471,7 +595,7 @@ private fun Message(
                 text = stringResource(R.string.body_not_downloaded),
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.inkMuted,
-                modifier = Modifier.padding(horizontal = spacing.gutter),
+                modifier = Modifier.padding(horizontal = spacing.medium, vertical = spacing.small),
             )
             return@Column
         }
@@ -500,11 +624,17 @@ private fun Message(
             }
         }
 
+        // No horizontal padding, and that is deliberate: the document carries
+        // its own 12px inset and the card carries the rest, so the message's
+        // paper reaches the card's edge. Padding here would open a strip of card
+        // colour between the two that the sender's own background stops short
+        // of -- the band this card exists to remove.
         MessageWebView(
             body = body,
             style = style,
+            palette = palette,
             remoteImages = message.remoteImages,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = spacing.small),
+            modifier = Modifier.fillMaxWidth(),
         )
 
         // Under the body and above the reply buttons, which is where the eye
@@ -516,6 +646,18 @@ private fun Message(
             busy = busyAttachments,
             onOpen = onOpenAttachment,
             onSave = onSaveAttachment,
+        )
+
+        // Inside the card, under the message they answer. A thread is several
+        // messages and "reply" has to mean "to this one" -- replying to the
+        // newest when the user was reading the third quotes the wrong text and
+        // threads against the wrong id. The pinned bar answers the conversation;
+        // this answers a message.
+        ReplyActions(
+            canReplyAll = message.hasOtherRecipients,
+            onReply = { onReply(false) },
+            onReplyAll = { onReply(true) },
+            onForward = onForward,
         )
     }
 }
