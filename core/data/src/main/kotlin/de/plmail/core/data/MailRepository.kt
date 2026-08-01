@@ -242,9 +242,20 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
         database.accounts().setEmailState(accountKey, state)
     }
 
-    /** Records the outcome of a sync so the diagnostics screen can show it. */
-    suspend fun recordSync(accountKey: String, at: Long?, error: String?) {
-        database.accounts().recordSync(accountKey, at, error)
+    /** Records a sync that worked, so the diagnostics screen can say when. */
+    suspend fun recordSyncSucceeded(accountKey: String, at: Long) {
+        database.accounts().recordSyncSucceeded(accountKey, at)
+    }
+
+    /**
+     * Records a sync that did not, leaving the last successful time alone.
+     *
+     * Deliberately additive. What the user needs to see is "it last worked at 09:14, and since then
+     * this is what happens" — a failure that also cleared the timestamp would present a working
+     * server that had a bad morning as one that has never worked at all.
+     */
+    suspend fun recordSyncFailed(accountKey: String, error: String?) {
+        database.accounts().recordSyncFailed(accountKey, error)
     }
 
     /** The composite key for one account on one server. */

@@ -47,6 +47,17 @@ object PushSetup {
         return true
     }
 
+    /**
+     * Which app is currently carrying the pushes, if any.
+     *
+     * Read from the connector rather than remembered, because the user can change it in the
+     * distributor itself and the app is not told.
+     */
+    fun distributor(context: Context): String? = UnifiedPush.getSavedDistributor(context)
+
+    /** How many distributors are installed. Zero and "several" are different problems. */
+    fun available(context: Context): List<String> = UnifiedPush.getDistributors(context)
+
     /** Stops push, leaving the periodic sync as the only path. */
     fun disable(context: Context) {
         UnifiedPush.unregister(context, INSTANCE)

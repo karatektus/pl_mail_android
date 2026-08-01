@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="back">Zurück</string>
+
+    <string name="diagnostics_title">Diagnose</string>
+    <string name="diagnostics_server">Server</string>
+    <string name="diagnostics_address">Adresse</string>
+    <string name="diagnostics_not_connected">Nicht verbunden</string>
+
+    <string name="diagnostics_accounts">Konten</string>
+    <string name="diagnostics_no_accounts">Es wurde noch kein Konto synchronisiert.</string>
+    <string name="diagnostics_last_sync">Letzte erfolgreiche Synchronisierung</string>
+    <string name="diagnostics_never">Nie</string>
+    <string name="diagnostics_last_error">Seitdem: %1$s</string>
+    <string name="diagnostics_no_cursor">Keine Synchronisierungsposition gespeichert; die nächste Aktualisierung lädt dieses Konto von vorn.</string>
+
+    <string name="diagnostics_push">Push</string>
+    <string name="diagnostics_distributor">Verteiler</string>
+    <string name="diagnostics_none">Keiner</string>
+    <string name="diagnostics_no_distributor">Es ist kein Push-Verteiler installiert. E-Mails kommen weiterhin an, aber nur wenn die App nachsieht – alle 15 Minuten oder beim Öffnen. Mit ntfy gibt es wieder sofortige Zustellung.</string>
+    <string name="diagnostics_several_distributors">Mehrere Verteiler sind installiert (%1$s), aber keiner ist ausgewählt. Wählen Sie einen in dessen eigener App aus und aktivieren Sie Push hier erneut.</string>
+    <string name="diagnostics_registered">Beim Server registriert</string>
+    <string name="diagnostics_not_registered">Nicht registriert</string>
+    <string name="diagnostics_last_push">Letzte Push-Nachricht</string>
+    <string name="diagnostics_verified">Der Server bestätigt: Diese Registrierung ist verifiziert und wird beliefert.</string>
+    <string name="diagnostics_unverified">Diese Registrierung wurde nie verifiziert, deshalb liefert der Server nichts aus. Aktivieren Sie Push erneut, um die Bestätigung zu wiederholen.</string>
+    <string name="diagnostics_push_error">Letztes Push-Problem: %1$s</string>
+    <string name="diagnostics_enable_push">Push aktivieren</string>
+
+    <string name="diagnostics_check">Jetzt prüfen</string>
+    <string name="diagnostics_check_explains">Synchronisiert alle Konten und fragt den Server, ob Push verifiziert ist. Nur das kontaktiert von dieser Seite aus Ihren Server.</string>
+    <string name="diagnostics_check_failed">Prüfung fehlgeschlagen: %1$s</string>
+</resources>

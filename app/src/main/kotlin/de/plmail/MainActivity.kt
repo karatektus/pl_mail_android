@@ -34,6 +34,7 @@ import de.plmail.feature.mail.MailShell
 import de.plmail.feature.mail.ThreadTarget
 import de.plmail.feature.onboarding.OnboardingScreen
 import de.plmail.feature.search.SearchScreen
+import de.plmail.feature.settings.DiagnosticsScreen
 import de.plmail.notifications.NotificationRequest
 import de.plmail.notifications.RequestNotificationPermission
 import de.plmail.notifications.notificationRequest
@@ -120,6 +121,7 @@ private fun PlMailApp(
     // would make peers into a chain, and the module boundary exists to prevent
     // exactly that. :app is the one place allowed to know about all three.
     var isSearching by rememberSaveable { mutableStateOf(false) }
+    var isDiagnosing by rememberSaveable { mutableStateOf(false) }
     var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
 
     // Over the mail list, never over the composer: the composer has closed by
@@ -195,7 +197,13 @@ private fun PlMailApp(
                 // cases disagree about whether it should exist at all -- see
                 // ComposeHost.
                 ComposeHost(request = composing, onClose = { composing = null }) {
-                    if (isSearching && openThread == null) {
+                    if (isDiagnosing && openThread == null) {
+                        // Above search in this chain rather than beside it,
+                        // because a notification tap has to win over both: mail
+                        // arriving is a reason to leave a screen the user opened
+                        // to find out why mail was not arriving.
+                        DiagnosticsScreen(onBack = { isDiagnosing = false })
+                    } else if (isSearching && openThread == null) {
                         SearchScreen(
                             // The reader is M4's and reached from the list;
                             // opening a result closes search, so Back returns to
@@ -207,6 +215,7 @@ private fun PlMailApp(
                     } else {
                         MailShell(
                             onSearch = { isSearching = true },
+                            onDiagnostics = { isDiagnosing = true },
                             onCompose = { composing = ComposeRequest.New },
                             onReply = { accountKey, emailId, all ->
                                 composing = ComposeRequest.Reply(accountKey, emailId, all)

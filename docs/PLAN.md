@@ -601,7 +601,44 @@ of elevation shadows; quick purposeful motion. Targets stay ≥48dp and body ≥
 in both schemes — a theme that fails contrast is not finished. Roborazzi coverage across light and
 dark grows with it, because that is what stops the look regressing while M8 and M9 are built on top.
 
-### M10 · Appearance and settings
+### M10 · Appearance and settings — **diagnostics landed 2026-08-01**
+
+`:feature:settings` exists, and what is in it is the **diagnostics screen**, taken first within M10
+because it is the one screen this audience needs at the moment they most need something: they run
+the server, so when mail stops arriving they are also the person who has to find out why — and the
+app could previously only tell them that nothing was wrong. Per-account last *successful* sync and
+the error since it, the server address as stored, the distributor package, when the subscription was
+registered, when a push last physically arrived, and a "check now" that syncs and asks the server
+whether the subscription is verified.
+
+Three things were wrong underneath it, and all three were invisible until something tried to draw
+them.
+
+1. **The push subscription id was thrown away.** `PushRepository.isLive` exists to detect an
+   unverified subscription — registered, correct from every other angle, delivering nothing for
+   ever — and it takes an id the app never kept. The diagnostic was written and unreachable. It is
+   now in `PushStateStore`, in DataStore rather than Room precisely because the database's
+   destructive-migration policy would drop it and a device that has lost its subscription id cannot
+   check or revoke its own registration.
+2. **Recording a sync failure erased the last successful sync.** One `UPDATE` wrote both columns, so
+   a failure passed `at = null` and deleted the timestamp — turning "worked at 09:14, failing since"
+   into "never worked", which sends the reader to look at their credential instead of at the last
+   two hours. Split into two statements and pinned by an instrumented test, because nothing about
+   the failure is loud.
+3. **Nothing recorded that a push had arrived.** Every other line on that screen is the app
+   describing its own intentions; "last push received" is the only one that is evidence.
+
+`PushTransport` is an interface in `:core:data` implemented in `:app`, the same way round as
+`MailDestinations`, because only `:app` knows UnifiedPush exists.
+
+The screen deliberately makes **no requests when it is opened**. Adding traffic to a server somebody
+is already worried about is the wrong first move, so everything is recorded state except the one
+button that says it contacts the server.
+
+Still to come in M10: the Theme × Layout chooser with density, account list and order, sync-window
+display, and notification preferences.
+
+### M10 · Appearance and settings — the rest
 The two-axis **Theme × Layout** model with density and knobs on top, in a `LocalPlMailTheme`
 `CompositionLocal` over semantic tokens (`surface`, `line`, `raised`/`hover`,
 `ink`/`ink-soft`/`ink-muted`/`ink-faint`, `accent*`, `sunken`, `field*`,

@@ -53,6 +53,7 @@ dependencies {
     implementation(projects.feature.mail)
     implementation(projects.feature.compose)
     implementation(projects.feature.search)
+    implementation(projects.feature.settings)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

@@ -80,7 +80,7 @@ constructor(
         return try {
             val outcome = run(client, AccountId(account.accountId), accountKey, StateToken(since))
 
-            mail.recordSync(accountKey, at = System.currentTimeMillis(), error = null)
+            mail.recordSyncSucceeded(accountKey, at = System.currentTimeMillis())
             outcome
         } catch (resync: JmapError) {
             if (resync.requiresResync) {
@@ -88,11 +88,11 @@ constructor(
                 database.accounts().setEmailState(accountKey, null)
                 SyncResult.NeedsRepage
             } else {
-                mail.recordSync(accountKey, at = null, error = resync.message)
+                mail.recordSyncFailed(accountKey, resync.message)
                 SyncResult.Failed(resync)
             }
         } catch (failed: Exception) {
-            mail.recordSync(accountKey, at = null, error = failed.message)
+            mail.recordSyncFailed(accountKey, failed.message)
             SyncResult.Failed(failed)
         }
     }

@@ -41,6 +41,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun MailShell(
     onSearch: () -> Unit,
+    onDiagnostics: () -> Unit,
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
@@ -80,6 +81,12 @@ fun MailShell(
                 onCreate = {
                     editing = LabelEditorRequest.New
                     scope.launch { drawer.close() }
+                },
+                onDiagnostics = {
+                    // Closed first, so returning from diagnostics does not come
+                    // back to an open drawer over the mail the user was reading.
+                    scope.launch { drawer.close() }
+                    onDiagnostics()
                 },
             )
         }

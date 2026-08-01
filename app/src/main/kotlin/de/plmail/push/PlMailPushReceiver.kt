@@ -8,6 +8,7 @@ import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import de.plmail.core.data.PushRegistration
 import de.plmail.core.data.PushRepository
+import de.plmail.core.datastore.PushStateStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -35,6 +36,8 @@ class PlMailPushReceiver : MessagingReceiver() {
     @InstallIn(SingletonComponent::class)
     interface Dependencies {
         fun push(): PushRepository
+
+        fun pushState(): PushStateStore
     }
 
     /**
@@ -53,19 +56,33 @@ class PlMailPushReceiver : MessagingReceiver() {
             // loud: a distributor that negotiates no encryption is a
             // configuration problem, not a silent no-op.
             Log.w(TAG, "Distributor returned an endpoint with no keys; push cannot be encrypted.")
+            launch(context) { _, state -> state.failed(NO_KEYS) }
             return
         }
 
-        launch(context) { push ->
-            push.subscribe(
-                registration =
-                    PushRegistration(
-                        endpoint = endpoint.url,
-                        p256dh = keys.pubKey,
-                        auth = keys.auth,
-                    ),
-                deviceClientId = instance,
-            )
+        launch(context) { push, state ->
+            val subscriptionId =
+                push.subscribe(
+                    registration =
+                        PushRegistration(
+                            endpoint = endpoint.url,
+                            p256dh = keys.pubKey,
+                            auth = keys.auth,
+                        ),
+                    deviceClientId = instance,
+                )
+
+            // Kept, rather than discarded as it was. The id is the only way to
+            // ask the server whether this subscription was ever *verified*, and
+            // an unverified subscription is registered, reported as fine by
+            // every other signal, and delivers nothing for ever. Without the id
+            // stored, the check written for exactly that failure could not be
+            // run at all.
+            if (subscriptionId == null) {
+                state.failed(NO_SERVER)
+            } else {
+                state.registered(subscriptionId, endpoint.url, System.currentTimeMillis())
+            }
         }
     }
 
@@ -76,7 +93,16 @@ class PlMailPushReceiver : MessagingReceiver() {
      * load-bearing — until the verification code is echoed back, nothing else is ever delivered.
      */
     override fun onMessage(context: Context, message: PushMessage, instance: String) {
-        launch(context) { push -> push.handle(message.content) }
+        launch(context) { push, state ->
+            // Recorded before the payload is looked at, and recorded whatever
+            // it turns out to say. This is the one line on the diagnostics
+            // screen that is evidence rather than belief: something the server
+            // sent actually arrived on this device. A payload the client cannot
+            // parse still proves the chain works, so counting only the ones it
+            // understood would hide a client bug behind "push is not working".
+            state.received(System.currentTimeMillis())
+            push.handle(message.content)
+        }
     }
 
     /**
@@ -85,26 +111,45 @@ class PlMailPushReceiver : MessagingReceiver() {
      * Nothing to do beyond letting the periodic sync carry on: it never stopped, precisely so that
      * losing push degrades to slower mail rather than to no mail.
      */
-    override fun onUnregistered(context: Context, instance: String) = Unit
+    override fun onUnregistered(context: Context, instance: String) {
+        // The registration is gone, so the stored id is a lie: asking the
+        // server about it would report a subscription this device can no longer
+        // receive on. Cleared rather than kept, so the diagnostics screen says
+        // "not registered" -- which is true, and actionable -- instead of
+        // "registered" beside a last-push time from last Tuesday.
+        launch(context) { _, state -> state.cleared() }
+    }
 
     override fun onRegistrationFailed(
         context: Context,
         reason: org.unifiedpush.android.connector.FailedReason,
         instance: String,
-    ) = Unit
+    ) {
+        Log.w(TAG, "Distributor refused to register: ${'$'}reason")
+        launch(context) { _, state -> state.failed(reason.name) }
+    }
 
     private companion object {
         const val TAG = "plMail.Push"
+
+        /**
+         * Reasons in the app's own words, not translated. They are read by whoever runs the server,
+         * beside a log they will grep, and a translated string is one they cannot search for.
+         */
+        const val NO_KEYS = "The distributor returned an endpoint with no encryption keys."
+        const val NO_SERVER = "No server is connected, so the endpoint was not registered."
     }
 
-    private fun launch(context: Context, block: suspend (PushRepository) -> Unit) {
+    private fun launch(
+        context: Context,
+        block: suspend (PushRepository, PushStateStore) -> Unit,
+    ) {
         Log.d(TAG, "push event")
-        val push =
+        val dependencies =
             EntryPointAccessors.fromApplication(
-                    context.applicationContext,
-                    Dependencies::class.java,
-                )
-                .push()
+                context.applicationContext,
+                Dependencies::class.java,
+            )
 
         // Application-scoped rather than tied to the broadcast: a receiver has
         // about ten seconds, and the Email/changes loop a push triggers can
@@ -113,7 +158,8 @@ class PlMailPushReceiver : MessagingReceiver() {
             // Logged rather than swallowed. A push path that fails quietly is
             // indistinguishable from one that was never triggered, and this
             // runs where no user is watching.
-            runCatching { block(push) }.onFailure { Log.w(TAG, "Push handling failed", it) }
+            runCatching { block(dependencies.push(), dependencies.pushState()) }
+                .onFailure { Log.w(TAG, "Push handling failed", it) }
         }
     }
 }

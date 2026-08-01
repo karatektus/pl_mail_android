@@ -29,8 +29,20 @@ interface AccountDao {
     @Query("UPDATE accounts SET threadState = :state WHERE uid = :uid")
     suspend fun setThreadState(uid: String, state: String?)
 
-    @Query("UPDATE accounts SET lastSyncedAt = :at, lastSyncError = :error WHERE uid = :uid")
-    suspend fun recordSync(uid: String, at: Long?, error: String?)
+    /**
+     * A sync that worked. Clears the last error, because it is no longer true.
+     *
+     * Two statements rather than one with nullable parameters, and that is the whole point. The
+     * single version wrote both columns every time, so recording a *failure* passed `at = null` and
+     * erased the timestamp of the last sync that had worked — deleting the one fact a diagnostics
+     * screen exists to show. "Last synced three days ago, and here is the error" is a diagnosis;
+     * "never synced, and here is the error" is the same screen lying about the same server.
+     */
+    @Query("UPDATE accounts SET lastSyncedAt = :at, lastSyncError = NULL WHERE uid = :uid")
+    suspend fun recordSyncSucceeded(uid: String, at: Long)
+
+    @Query("UPDATE accounts SET lastSyncError = :error WHERE uid = :uid")
+    suspend fun recordSyncFailed(uid: String, error: String?)
 
     @Query("DELETE FROM accounts WHERE uid NOT IN (:keep)")
     suspend fun deleteMissing(keep: List<String>)

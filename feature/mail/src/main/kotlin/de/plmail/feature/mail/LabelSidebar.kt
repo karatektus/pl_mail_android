@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Drafts
 import androidx.compose.material.icons.outlined.Inbox
+import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Report
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material3.Icon
@@ -52,6 +53,7 @@ fun LabelSidebar(
     selected: Label?,
     onSelect: (Label) -> Unit,
     onCreate: () -> Unit,
+    onDiagnostics: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val theme = PlMailTheme.values
@@ -143,6 +145,33 @@ fun LabelSidebar(
                     )
                 }
             }
+        }
+
+        item {
+            // Below the labels and below the rule, because it is not one. This
+            // is where settings will sit too; diagnostics arrives first because
+            // it is the one thing this audience needs at the moment they most
+            // need something, and until now the app could only tell them
+            // nothing was wrong.
+            PlMailDivider(
+                modifier = Modifier.padding(vertical = theme.spacing.small),
+                startIndent = theme.spacing.large,
+            )
+
+            NavigationDrawerItem(
+                selected = false,
+                onClick = onDiagnostics,
+                icon = {
+                    Icon(imageVector = Icons.Outlined.MonitorHeart, contentDescription = null)
+                },
+                label = { Text(stringResource(R.string.diagnostics)) },
+                colors =
+                    NavigationDrawerItemDefaults.colors(
+                        unselectedIconColor = theme.colors.inkMuted,
+                        unselectedTextColor = theme.colors.inkSoft,
+                        unselectedContainerColor = theme.colors.surface,
+                    ),
+            )
         }
     }
 }

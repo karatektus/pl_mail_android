@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="back">Back</string>
+
+    <string name="diagnostics_title">Diagnostics</string>
+    <string name="diagnostics_server">Server</string>
+    <string name="diagnostics_address">Address</string>
+    <string name="diagnostics_not_connected">Not connected</string>
+
+    <string name="diagnostics_accounts">Accounts</string>
+    <string name="diagnostics_no_accounts">No accounts have been synced yet.</string>
+    <string name="diagnostics_last_sync">Last successful sync</string>
+    <string name="diagnostics_never">Never</string>
+    <!-- The error verbatim after our words: it is what gets searched for. -->
+    <string name="diagnostics_last_error">Since then: %1$s</string>
+    <!--
+      Not phrased as a fault. No cursor means the next refresh re-pages instead
+      of syncing incrementally, which is the ordinary result of being away long
+      enough for the server's change log to move past this device.
+    -->
+    <string name="diagnostics_no_cursor">No sync position stored, so the next refresh reloads this account from the top.</string>
+
+    <string name="diagnostics_push">Push</string>
+    <string name="diagnostics_distributor">Distributor</string>
+    <string name="diagnostics_none">None</string>
+    <string name="diagnostics_no_distributor">No push distributor is installed. Mail still arrives, but only when the app checks — every 15 minutes, or when you open it. Installing ntfy restores instant delivery.</string>
+    <string name="diagnostics_several_distributors">Several distributors are installed (%1$s) and none has been chosen. Pick one in its own app, then enable push here.</string>
+    <string name="diagnostics_registered">Registered with the server</string>
+    <string name="diagnostics_not_registered">Not registered</string>
+    <string name="diagnostics_last_push">Last push received</string>
+    <string name="diagnostics_verified">The server confirms this subscription is verified and delivering.</string>
+    <!--
+      The single most likely reason push "does not work": the subscription
+      exists, everything else looks correct, and it receives nothing forever
+      because the verification handshake never completed.
+    -->
+    <string name="diagnostics_unverified">This subscription was never verified, so the server will not deliver to it. Enable push again to redo the handshake.</string>
+    <string name="diagnostics_push_error">Last push problem: %1$s</string>
+    <string name="diagnostics_enable_push">Enable push</string>
+
+    <string name="diagnostics_check">Check now</string>
+    <string name="diagnostics_check_explains">Syncs every account and asks the server whether push is verified. This is the only thing on this screen that contacts your server.</string>
+    <string name="diagnostics_check_failed">Check failed: %1$s</string>
+</resources>

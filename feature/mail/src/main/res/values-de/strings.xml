@@ -55,6 +55,7 @@
     <string name="open_labels">Labels</string>
     <string name="labels_loading">Labels werden geladen…</string>
     <string name="label_new">Neues Label</string>
+    <string name="diagnostics">Diagnose</string>
     <string name="label_new_title">Neues Label</string>
     <string name="label_edit">Label bearbeiten</string>
     <string name="label_edit_title">Label bearbeiten</string>
