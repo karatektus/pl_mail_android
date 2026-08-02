@@ -65,11 +65,29 @@ class FeedMediator(
      * But an empty table is not a synced empty inbox, it is a client that has never synced.
      * Skipping there leaves a freshly paired account showing nothing at all until the user scrolls
      * far enough to trigger an append — which, on an empty list, they cannot do.
+     *
+     * And neither is a *full* table necessarily still describable: an account with no delta cursor
+     * has to be paged again rather than shown as it was. See [needsRepage].
      */
     override suspend fun initialize(): InitializeAction =
-        if (!cachedRowsAnswerThis || database.feed().count(feedId) == 0)
+        if (!cachedRowsAnswerThis || database.feed().count(feedId) == 0 || needsRepage())
             InitializeAction.LAUNCH_INITIAL_REFRESH
         else InitializeAction.SKIP_INITIAL_REFRESH
+
+    /**
+     * Whether any account behind this feed has lost its delta cursor.
+     *
+     * "No cursor" is exactly "this device can no longer describe this account incrementally", which
+     * is exactly "re-page" — and the account row is already where that fact lives. [DeltaSync]
+     * clears the column when the server answers `cannotCalculateChanges` and when the change log is
+     * too long to be worth walking, so reading it here is what finally makes
+     * `SyncResult.NeedsRepage` durable: until this, the sync worked out that the list was
+     * unreconstructible and then threw that conclusion away, and the list went on drawing whatever
+     * it happened to hold.
+     */
+    private suspend fun needsRepage(): Boolean = sources.any {
+        database.accounts().byUid(it.accountKey)?.emailState == null
+    }
 
     override suspend fun load(
         loadType: LoadType,
@@ -77,8 +95,11 @@ class FeedMediator(
     ): MediatorResult {
         return try {
             when (loadType) {
-                // The list is newest-first and only grows downward: everything
-                // newer arrives through sync, not through paging upward.
+                // The list is newest-first and only grows downward, because
+                // nothing above the top has to be *paged* for: [FeedProjection]
+                // writes each synced conversation straight into the feeds it
+                // belongs to, so mail newer than the first row is already a row
+                // in this table by the time Paging would think to ask upward.
                 LoadType.PREPEND -> return MediatorResult.Success(endOfPaginationReached = true)
 
                 LoadType.REFRESH -> restart()
@@ -89,7 +110,28 @@ class FeedMediator(
             if (batch.failures.isNotEmpty()) onFailures(batch.failures)
 
             val held = database.withTransaction {
-                if (loadType == LoadType.REFRESH) database.feed().clearFeed(feedId)
+                // Only when the pull actually answered, and only on a refresh.
+                //
+                // The cursors moved in here rather than into `restart()` so that
+                // a refresh which could not reach the server no longer destroys
+                // how deep the user had paged before finding that out. That is
+                // half the fix: `feed.next` does *not* throw when a source
+                // fails, it records the failure and returns the rows it could
+                // get -- so an unreachable server still arrived here with an
+                // empty batch and wiped the list off the disk. Which nothing had
+                // ever done, because nothing called REFRESH after the first
+                // load; pull-to-refresh is what makes a user able to empty their
+                // own inbox by tugging on it in a tunnel.
+                //
+                // Keeping the rows on any failure rather than clearing per
+                // account: a partial refresh leaves a conversation archived
+                // elsewhere on screen until a clean one, which is a stale list.
+                // The alternative is a blank one, and only one of those two can
+                // be mistaken for lost mail.
+                if (loadType == LoadType.REFRESH && batch.failures.isEmpty()) {
+                    database.feed().clearFeed(feedId)
+                    database.feed().clearCursors(feedId)
+                }
 
                 database.feed().upsertEntries(batch.rows.map { it.toEntry(feedId) })
                 feed.cursors.forEach { database.feed().upsertCursor(it.toEntity(feedId)) }
@@ -115,9 +157,14 @@ class FeedMediator(
         }
     }
 
-    /** Drops every cursor so the next pull starts from the top. */
-    private suspend fun restart() {
-        sources.forEach { database.feed().clearCursors(it.accountKey) }
+    /**
+     * Sends the merge back to the top, in memory only.
+     *
+     * The stored cursors are cleared inside [load]'s transaction rather than here — see the comment
+     * there. This half has to happen first regardless, because it is what the pull about to be made
+     * reads from.
+     */
+    private fun restart() {
         feed.restore(sources.map { FeedCursor(accountKey = it.accountKey, atOrBefore = null) })
         restored = true
     }

@@ -240,14 +240,23 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
     /**
      * Stores the Email state a page was read at.
      *
-     * Only ever moves forward from *absent* to set here; delta sync owns it afterwards. A blank
-     * state is ignored rather than written, because a cursor of "" is not a starting point and
-     * would send `Email/changes` somewhere it cannot answer from.
+     * Only ever moves from *absent* to set here; delta sync owns it afterwards. That sentence was
+     * true of the documentation and false of the code, which wrote the column unconditionally — and
+     * this is called from every page load, so scrolling deep into a list jumped the cursor to "now"
+     * and every change since the last `Email/changes` was stepped over and could never be reported
+     * afterwards. The stale inbox nobody could explain.
+     *
+     * The rule is enforced in SQL rather than as a read-then-write here, because delta sync writes
+     * the same column on every round while pages are being loaded — see
+     * `AccountDao.setEmailStateIfAbsent`, which also explains why nothing compares the two tokens.
+     *
+     * A blank state is ignored rather than written, because a cursor of "" is not a starting point
+     * and would send `Email/changes` somewhere it cannot answer from.
      */
     suspend fun recordEmailState(accountKey: String, state: String) {
         if (state.isBlank()) return
 
-        database.accounts().setEmailState(accountKey, state)
+        database.accounts().setEmailStateIfAbsent(accountKey, state)
     }
 
     /**

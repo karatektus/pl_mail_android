@@ -66,6 +66,15 @@ data class DiagnosticsReport(
     val pushVerified: Boolean? = null,
     /** What went wrong the last time the checks were run, if anything. */
     val checkError: String? = null,
+    /**
+     * Accounts the last check found could not be synced from their stored position, by key.
+     *
+     * Drawn against the account it belongs to rather than as one line at the bottom, because that
+     * is the only place it means anything: "one of your mailboxes has to reload" is not a
+     * diagnosis. Empty until somebody presses the button, like [pushVerified] and for the same
+     * reason — nothing here probes.
+     */
+    val repagedAccounts: List<String> = emptyList(),
     val isChecking: Boolean = false,
 )
 
@@ -136,16 +145,28 @@ constructor(
      * from every angle here, and receives nothing for ever.
      */
     suspend fun check(): CheckOutcome {
-        val results = accountsRepository.all().map { deltaSync.sync(it.uid) }
+        // Paired with the account it came from, because two of the outcomes are
+        // about a *particular* mailbox and a bare list of results cannot say
+        // which.
+        val results = accountsRepository.all().map { it.uid to deltaSync.sync(it.uid) }
 
         val verified =
             pushState.state.first().subscriptionId?.let { id -> runCatching { push.isLive(id) } }
 
         return CheckOutcome(
             // A sync that says "re-page" is not a failure, and neither is one
-            // that found nothing. Only a genuine Failed is worth reporting up
-            // here -- the per-account rows carry the detail either way.
-            failures = results.filterIsInstance<SyncResult.Failed>().map { it.error },
+            // that found nothing. Only a genuine Failed belongs here -- the
+            // per-account rows carry the detail either way.
+            failures = results.mapNotNull { (_, result) -> (result as? SyncResult.Failed)?.error },
+            // And "re-page" is not nothing either, which is what it used to be
+            // treated as. It is the one outcome that *explains* a list somebody
+            // is looking at while wondering why it is stale -- a screen whose
+            // whole purpose is telling an administrator what state their client
+            // is in must not be the one thing that drops it.
+            repaged =
+                results.mapNotNull { (accountKey, result) ->
+                    accountKey.takeIf { result is SyncResult.NeedsRepage }
+                },
             pushVerified = verified?.getOrNull(),
             pushCheckError = verified?.exceptionOrNull()?.message,
         )
@@ -158,6 +179,8 @@ constructor(
 
     data class CheckOutcome(
         val failures: List<Throwable>,
+        /** Accounts, by key, that the check found have to be paged again rather than synced. */
+        val repaged: List<String>,
         val pushVerified: Boolean?,
         val pushCheckError: String?,
     )

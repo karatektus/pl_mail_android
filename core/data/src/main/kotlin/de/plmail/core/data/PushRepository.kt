@@ -49,11 +49,7 @@ sealed interface PushPayload {
 @Singleton
 class PushRepository
 @Inject
-constructor(
-    private val clients: AccountClients,
-    private val deltaSync: DeltaSync,
-    private val database: de.plmail.core.database.PlMailDatabase,
-) {
+constructor(private val clients: AccountClients, private val changes: StateChangeApplier) {
 
     /**
      * Registers [registration], replacing any previous subscription for this device.
@@ -101,16 +97,11 @@ constructor(
 
             is PushPayload.Changed ->
                 // A push is a trigger, never the news itself. It says a state
-                // token moved; what moved is Email/changes' job to find out.
-                parsed.accounts.keys.forEach { accountId ->
-                    database
-                        .accounts()
-                        .all()
-                        .filter { it.accountId == accountId }
-                        .forEach {
-                            deltaSync.sync(it.uid)
-                        }
-                }
+                // token moved; what moved is Email/changes' job to find out --
+                // and that is the same sentence an EventSource `state` event
+                // carries, so both are answered by one class rather than by two
+                // that can drift apart.
+                changes.apply(parsed.accounts)
 
             PushPayload.Unrecognised -> Unit
         }

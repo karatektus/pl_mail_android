@@ -44,6 +44,17 @@ enum class Feed(val id: String) {
 }
 
 /**
+ * Told that an account has just answered.
+ *
+ * One method rather than the whole of [FeedRepository], for the same reason [KnownLabels] is one
+ * method rather than the whole of `LabelRepository`: [DeltaSync] has no business holding a class
+ * that builds pagers and opens sockets, and a seam this narrow cannot quietly grow into one.
+ */
+fun interface ReachableAccounts {
+    fun answered(accountKey: String)
+}
+
+/**
  * The unified inbox, as pages.
  *
  * Builds one [AccountPager] per JMAP account behind the stored credential — one credential reaches
@@ -57,7 +68,8 @@ constructor(
     private val credentials: CredentialStore,
     private val transports: TransportFactory,
     private val mail: MailRepository,
-) {
+    repages: RepageSignal,
+) : ReachableAccounts {
 
     private val _failures = MutableStateFlow<List<SourceFailure>>(emptyList())
 
@@ -76,6 +88,36 @@ constructor(
      * the whole point is that three working accounts keep drawing while a fourth is down.
      */
     val failures = _failures.asStateFlow()
+
+    /**
+     * Accounts a sync has decided cannot be brought up to date incrementally.
+     *
+     * Re-exposed here for the same reason [failures] is: the list layer already holds this
+     * repository and should not have to reach past it to a signal class in this module to learn
+     * something about the list it is drawing. A plain [Flow] rather than the `SharedFlow` behind
+     * it, because the only thing a collector may do with it is collect.
+     */
+    val repagedAccounts: Flow<String> = repages.accounts
+
+    /**
+     * Withdraws the claim that this account cannot be reached.
+     *
+     * [_failures] used to be rewritten only by a page load, so the "could not reach nas.local"
+     * banner outlived the outage that caused it: nothing re-pages until the user scrolls, and on a
+     * list that already fits the screen they never will. The banner then sat over mail that was, by
+     * that point, being synced perfectly well — which teaches people to ignore the one message the
+     * app has for a server that really is down.
+     *
+     * A whole-server failure is cleared by *any* account answering, deliberately. That entry means
+     * the session itself could not be fetched, and a successful sync is proof that it can be: there
+     * is no narrower fact to withdraw, because the failure never named an account in the first
+     * place.
+     */
+    override fun answered(accountKey: String) {
+        _failures.update { held ->
+            held.filterNot { it.accountKey == accountKey || it.isWholeServer }
+        }
+    }
 
     /**
      * How many conversations one list holds, from the two things that know.

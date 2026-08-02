@@ -60,6 +60,10 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    // ProcessLifecycleOwner, for ForegroundPresence. Only :app may hold this:
+    // "the whole app is visible" is a process-wide fact and there is exactly one
+    // place that can observe it.
+    implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.kotlinx.coroutines.core)
 

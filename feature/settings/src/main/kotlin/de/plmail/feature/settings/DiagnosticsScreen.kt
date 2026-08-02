@@ -98,7 +98,7 @@ fun DiagnosticsScreen(onBack: () -> Unit, viewModel: DiagnosticsViewModel = hilt
             verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.large),
         ) {
             Server(report)
-            Accounts(report.accounts)
+            Accounts(report.accounts, report.repagedAccounts)
             Push(report, onRetry = viewModel::retryPush)
             CheckNow(report, onCheck = viewModel::checkNow)
         }
@@ -120,7 +120,7 @@ private fun Server(report: DiagnosticsReport) {
 }
 
 @Composable
-private fun Accounts(accounts: List<AccountHealth>) {
+private fun Accounts(accounts: List<AccountHealth>, repaged: List<String>) {
     Section(stringResource(R.string.diagnostics_accounts)) {
         if (accounts.isEmpty()) {
             Text(
@@ -154,6 +154,16 @@ private fun Accounts(accounts: List<AccountHealth>) {
                         account.lastSyncedAt?.let { asAbsoluteTime(it) }
                             ?: stringResource(R.string.diagnostics_never),
                 )
+
+                if (account.accountKey in repaged) {
+                    // What the check just found, as opposed to what the row
+                    // below records. The two look alike and are not the same
+                    // claim: this one is "the server told us so, a moment ago,
+                    // in answer to you pressing the button", which is the only
+                    // line on this screen that explains a list that is quietly
+                    // out of date rather than visibly broken.
+                    Note(text = stringResource(R.string.diagnostics_repaged), tone = PaneTone.INFO)
+                }
 
                 if (!account.hasSyncCursor) {
                     // Deliberately not phrased as a fault. No cursor means the

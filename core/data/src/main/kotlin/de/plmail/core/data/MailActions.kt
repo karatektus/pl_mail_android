@@ -195,8 +195,7 @@ constructor(
                 when (action) {
                     MailAction.Archive,
                     MailAction.Trash,
-                    MailAction.MarkSpam ->
-                        database.feed().clearThread(Feed.UNIFIED_INBOX.id, threadUid)
+                    MailAction.MarkSpam -> clearFromInbox(threadUid)
 
                     // Undoing a removal has to put the row back, or the list
                     // keeps the conversation hidden until the next refresh and
@@ -260,7 +259,7 @@ constructor(
                             // on the server, so the local list has to lose it
                             // too -- otherwise the row sits there until the next
                             // refresh and the snooze looks like it did nothing.
-                            database.feed().clearThread(Feed.UNIFIED_INBOX.id, threadUid)
+                            clearFromInbox(threadUid)
                         } else {
                             // And waking it up is the same rule in reverse, which
                             // is the half that was missing. Undoing a snooze
@@ -287,20 +286,54 @@ constructor(
     }
 
     /**
+     * Takes a conversation out of every list that is the inbox under another name.
+     *
+     * The unified inbox *and* whichever category tab it is sitting on. Category membership hangs
+     * off the inbox binding — `FeedProjection.targetFeeds` derives it that way, and only that way —
+     * so an action that removes the binding removes the conversation from the tab by exactly the
+     * same reasoning, and the row has to go with it.
+     *
+     * Without this a conversation archived on the phone stayed in Promotions until some later sync
+     * happened to reconcile it: the swipe worked, the tab it was swiped out of went on showing it,
+     * and swiping it again did nothing visible. The unified inbox was cleared because it was the
+     * only list that existed when this was written; the tabs arrived afterwards.
+     */
+    private suspend fun clearFromInbox(threadUid: String) {
+        database.feed().clearThread(Feed.UNIFIED_INBOX.id, threadUid)
+
+        // From the row's own stored category, which is the same value the
+        // projection places it by. A second source for "which tab is this in"
+        // would eventually put a row in one list and take it out of another.
+        val category = MailCategory.fromWire(database.threads().byUid(threadUid)?.category)
+
+        category?.let { database.feed().clearThread(it.feedId, threadUid) }
+    }
+
+    /**
      * Puts a conversation back into the unified inbox's list.
      *
      * Shared by the two ways mail returns to the inbox — undoing an archive or a trash, and waking
      * something snoozed — because the failure they share is the same one: the row left the list the
      * moment the action landed, so a way back that does not re-insert it reads as a control that
      * did nothing.
+     *
+     * The category tab goes back with it, mirroring [clearFromInbox]. An undo that restored only
+     * the unified inbox would be a way back that puts the conversation somewhere other than where
+     * it was taken from, which is the same complaint one step further along.
      */
     private suspend fun restoreToInbox(target: ActionTarget, threadUid: String) {
         val thread = database.threads().byUid(threadUid) ?: return
 
+        val feeds =
+            listOfNotNull(
+                Feed.UNIFIED_INBOX.id,
+                MailCategory.fromWire(thread.category)?.feedId,
+            )
+
         database
             .feed()
             .upsertEntries(
-                listOf(
+                feeds.map { feedId ->
                     FeedEntryEntity(
                         // Exactly the key FeedMediator writes and clearThread
                         // deletes, and it has to be: a row keyed any other way is
@@ -310,14 +343,14 @@ constructor(
                         // same constant string for every conversation, so
                         // restoring two of them left one row that matched
                         // neither.
-                        uid = "${Feed.UNIFIED_INBOX.id}#$threadUid",
-                        feedId = Feed.UNIFIED_INBOX.id,
+                        uid = "$feedId#$threadUid",
+                        feedId = feedId,
                         sortDate = thread.latestReceivedAt,
                         accountKey = target.accountKey,
                         threadId = target.threadId,
                         emailId = target.threadId,
                     )
-                )
+                }
             )
     }
 

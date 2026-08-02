@@ -1,5 +1,6 @@
 package de.plmail.core.data
 
+import de.plmail.core.database.StoreKey
 import de.plmail.core.datastore.OutboxStore
 import de.plmail.jmap.protocol.JmapError
 import java.io.IOException
@@ -116,6 +117,24 @@ constructor(
 
         return true
     }
+
+    /**
+     * The conversations the queue is still holding a change for, as store keys.
+     *
+     * Read by [FeedProjection] before it rewrites a feed from the server's answer, and it is the
+     * one thing standing between a sync and a visible lie. `SyncWorker` drains this queue *before*
+     * syncing precisely so that the server's copy cannot undo a change made offline — but a drain
+     * that could not reach the server leaves the change here, and the sync that follows would then
+     * project the conversation back into the inbox the user archived it out of. Skipping these is
+     * how "your archive is still true on your phone" survives the network coming back halfway.
+     *
+     * Store keys rather than the targets themselves, because that is the form the caller compares
+     * against and the only one in which an account and a thread id cannot be paired up wrongly.
+     */
+    suspend fun pendingTargets(): Set<String> =
+        decode(store.queue.first())
+            .flatMap { it.targets }
+            .mapTo(mutableSetOf()) { StoreKey.objectKey(it.accountKey, it.threadId) }
 
     /**
      * Sends everything waiting, oldest first, and keeps whatever did not go.

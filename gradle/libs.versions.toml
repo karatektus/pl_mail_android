@@ -55,6 +55,10 @@ androidx-activity-compose = { group = "androidx.activity", name = "activity-comp
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
 androidx-lifecycle-viewmodel-compose = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-compose", version.ref = "lifecycle" }
 androidx-lifecycle-runtime-compose = { group = "androidx.lifecycle", name = "lifecycle-runtime-compose", version.ref = "lifecycle" }
+# ProcessLifecycleOwner: "the app is visible", debounced across configuration
+# changes, which the activity callbacks are not. What decides whether the
+# EventSource stream is open.
+androidx-lifecycle-process = { group = "androidx.lifecycle", name = "lifecycle-process", version.ref = "lifecycle" }
 
 # The BOM is what keeps every Compose artifact on one consistent set of
 # versions; individual Compose libraries below deliberately carry no version.

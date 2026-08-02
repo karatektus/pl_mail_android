@@ -19,6 +19,7 @@ import kotlinx.coroutines.launch
 private data class CheckState(
     val isChecking: Boolean = false,
     val pushVerified: Boolean? = null,
+    val repaged: List<String> = emptyList(),
     val error: String? = null,
 )
 
@@ -33,6 +34,7 @@ class DiagnosticsViewModel @Inject constructor(private val diagnostics: Diagnost
                     isChecking = checked.isChecking,
                     pushVerified = checked.pushVerified,
                     checkError = checked.error,
+                    repagedAccounts = checked.repaged,
                 )
             }
             .stateIn(
@@ -67,6 +69,11 @@ class DiagnosticsViewModel @Inject constructor(private val diagnostics: Diagnost
                 CheckState(
                     isChecking = false,
                     pushVerified = outcome.getOrNull()?.pushVerified,
+                    // Not folded into `error`: an account that has to re-page is
+                    // not a failure and must not be drawn as one. It is the
+                    // answer to "why is this list stale", which is a different
+                    // sentence from "this is broken".
+                    repaged = outcome.getOrNull()?.repaged.orEmpty(),
                     // The first failure, in its own words. Listing all of them
                     // would repeat what the per-account rows below already say;
                     // this line exists for the case where nothing reached an

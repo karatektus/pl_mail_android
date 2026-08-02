@@ -19,6 +19,13 @@
       enough for the server's change log to move past this device.
     -->
     <string name="diagnostics_no_cursor">No sync position stored, so the next refresh reloads this account from the top.</string>
+    <!--
+      The outcome the check used to find and say nothing about. Worth its own
+      line because it is the one that explains a list that is quietly out of
+      date: the server has moved past the position this device held, so nothing
+      was wrong and nothing arrived either.
+    -->
+    <string name="diagnostics_repaged">The server could not answer from this account\'s stored sync position, so its lists will be reloaded from the top. No mail has been lost.</string>
 
     <string name="diagnostics_push">Push</string>
     <string name="diagnostics_distributor">Distributor</string>

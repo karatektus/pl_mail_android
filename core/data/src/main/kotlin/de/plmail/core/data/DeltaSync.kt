@@ -59,6 +59,24 @@ constructor(
     private val mail: MailRepository,
     private val accounts: AccountsRepository,
     /**
+     * What makes a synced conversation *visible*.
+     *
+     * Held here rather than folded into `storeEmails`, deliberately: that method is also the
+     * pager's `onPage`, where [FeedMediator] is already writing the correct rows for the list being
+     * paged, so projecting there would double the write cost of every page on the hot scrolling
+     * path and produce nothing that was not already there. The sync is the only writer that has no
+     * mediator behind it.
+     */
+    private val projection: FeedProjection,
+    private val repages: RepageSignal,
+    /**
+     * Told when an account answers, so a stale "could not reach" banner can come down.
+     *
+     * A one-method seam onto `FeedRepository` rather than the repository itself — see
+     * [ReachableAccounts].
+     */
+    private val reachable: ReachableAccounts,
+    /**
      * Told about mail that has just arrived.
      *
      * A set rather than a single listener, and multibound rather than required, so that a module
@@ -67,6 +85,19 @@ constructor(
      */
     private val announce: Set<@JvmSuppressWildcards NewMailListener> = emptySet(),
 ) {
+
+    /**
+     * Every account, in turn.
+     *
+     * The catch-up the app owes its user whenever it comes back into view or is pulled down on, and
+     * the reason it is one call: three places were about to write the same loop, and the one that
+     * got it slightly wrong would have been the one running while nobody was watching.
+     *
+     * Sequential rather than concurrent. The accounts behind one credential share a server, and
+     * that server advertises how many requests it will take at once — spending the whole budget on
+     * catching up leaves nothing for the list the user is actually looking at.
+     */
+    suspend fun syncAll(): List<SyncResult> = accounts.all().map { sync(it.uid) }
 
     suspend fun sync(accountKey: String): SyncResult {
         val account = database.accounts().byUid(accountKey) ?: return SyncResult.UpToDate
@@ -82,11 +113,25 @@ constructor(
             val outcome = run(client, AccountId(account.accountId), accountKey, StateToken(since))
 
             mail.recordSyncSucceeded(accountKey, at = System.currentTimeMillis())
+
+            // The account has just answered, so any banner saying it cannot be
+            // reached is describing an outage that is over. Said here rather
+            // than left to the next page load, which is what it used to wait
+            // for: nothing re-pages until somebody scrolls.
+            reachable.answered(accountKey)
+
             outcome
         } catch (resync: JmapError) {
             if (resync.requiresResync) {
                 // The one condition that justifies discarding a cursor.
                 database.accounts().setEmailState(accountKey, null)
+
+                // Signalled as well as stored. The null cursor is what a list
+                // built *after* this reads; a list already on screen was built
+                // before it and would go on drawing rows nothing can bring up to
+                // date.
+                repages.repage(accountKey)
+
                 SyncResult.NeedsRepage
             } else {
                 mail.recordSyncFailed(accountKey, resync.message)
@@ -137,6 +182,8 @@ constructor(
                 // Further than this and a full re-page is cheaper than
                 // continuing to walk the log.
                 database.accounts().setEmailState(accountKey, null)
+                repages.repage(accountKey)
+
                 return SyncResult.NeedsRepage
             }
         }
@@ -188,6 +235,7 @@ constructor(
 
             val results = client.send(request)
             val emails = results.result(get).list
+            val conversations = results.result(threads).list
 
             // Asked *before* the write, because the write is what makes them
             // known. This is the whole definition of "new": mail this device has
@@ -218,9 +266,26 @@ constructor(
             mail.storeEmails(
                 accountKey,
                 emails,
-                results.result(threads).list,
+                conversations,
                 fetchedAt = System.currentTimeMillis(),
             )
+
+            // Immediately after the write, because the write is what the
+            // projection reads: the thread rows it decides membership from are
+            // the ones storeEmails has just summarised, carrying the server's
+            // own labels and category. Without this the whole sync is invisible
+            // -- the lists read `feed_entries`, and nothing on this path had
+            // ever written it.
+            //
+            // The same union of thread ids storeEmails summarised: a page
+            // carrying one reply comes with its conversation, and a message
+            // whose Thread/get did not answer still moved a list it is in.
+            projection.reconcile(
+                accountKey,
+                (conversations.map { it.id.value } + emails.mapNotNull { it.threadId?.value })
+                    .toSet(),
+            )
+
             count += emails.size
 
             // After the write, so a notification the user taps opens a

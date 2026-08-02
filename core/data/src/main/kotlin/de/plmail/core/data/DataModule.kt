@@ -40,6 +40,15 @@ abstract class DataModule {
      */
     @Binds @Singleton abstract fun knownLabels(real: LabelRepository): KnownLabels
 
+    /**
+     * The sync's view of the failure banner.
+     *
+     * Bound rather than injected directly for the same reason [KnownLabels] is: [DeltaSync] would
+     * otherwise hold the whole of `FeedRepository` — pagers, sockets and all — to withdraw one
+     * sentence from a list.
+     */
+    @Binds @Singleton abstract fun reachableAccounts(real: FeedRepository): ReachableAccounts
+
     companion object {
 
         /**

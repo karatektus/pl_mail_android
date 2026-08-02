@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -115,6 +116,14 @@ fun MailScreen(
     val unreachable by viewModel.unreachable.collectAsStateWithLifecycle()
     val offline by viewModel.offline.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
+    val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
+
+    // The in-process half of making `NeedsRepage` mean anything. A sync that
+    // finds the server can no longer answer from this account's stored position
+    // clears the cursor, which is what a list built *afterwards* reads -- this
+    // list was built before it, and without being told would go on drawing rows
+    // that nothing can bring up to date.
+    LaunchedEffect(Unit) { viewModel.repagedAccounts.collect { threads.refresh() } }
 
     // Back clears a selection before it leaves the screen: a selection is a
     // mode, and leaving a mode is what back is for.
@@ -331,16 +340,40 @@ fun MailScreen(
                     )
                 }
 
-            ThreadList(
-                threads = threads,
-                rowsInFeed = rowsInFeed,
-                labels = labels,
-                viewing = label,
-                selection = selection,
-                onThreadSelected = onThreadSelected,
-                onToggleSelected = viewModel::toggleSelected,
-                onAction = { thread, action -> viewModel.apply(action, listOf(thread.target())) },
-            )
+            PullToRefreshBox(
+                // Both phases, because the gesture is one gesture. The mediator's
+                // own refresh is over as soon as the first page has been
+                // committed, and the sync behind it is what corrects every other
+                // list -- an indicator that stopped at the first would report the
+                // pull as finished while most of what it does is still in flight.
+                isRefreshing =
+                    threads.loadState.mediator?.refresh is LoadState.Loading || isSyncing,
+                onRefresh = {
+                    // The sync first, and it is not the redundant half. Re-paging
+                    // rebuilds *this* list from the server's query; the sync is
+                    // one `Email/changes` per account, which is what moves
+                    // conversations into and out of every other feed and corrects
+                    // read and starred state everywhere the user has touched mail
+                    // on another device.
+                    viewModel.refresh()
+                    threads.refresh()
+                },
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                ThreadList(
+                    threads = threads,
+                    rowsInFeed = rowsInFeed,
+                    labels = labels,
+                    viewing = label,
+                    isSyncing = isSyncing,
+                    selection = selection,
+                    onThreadSelected = onThreadSelected,
+                    onToggleSelected = viewModel::toggleSelected,
+                    onAction = { thread, action ->
+                        viewModel.apply(action, listOf(thread.target()))
+                    },
+                )
+            }
         }
     }
 }
@@ -356,6 +389,8 @@ private fun ThreadList(
     labels: List<Label>,
     /** The label this list is showing, so its own name is not chipped onto every row in it. */
     viewing: Label?,
+    /** Whether a delta sync is still running behind the pull. See [hasNothingToShow]. */
+    isSyncing: Boolean,
     selection: Set<String>,
     onThreadSelected: (ThreadEntity) -> Unit,
     onToggleSelected: (String) -> Unit,
@@ -365,7 +400,7 @@ private fun ThreadList(
         // "Nothing here" and "still looking" are different answers, and showing
         // the first while the first page is in flight tells someone their inbox
         // is empty when it is not.
-        if (hasNothingToShow(threads.loadState, rowsInFeed)) {
+        if (hasNothingToShow(threads.loadState, rowsInFeed, isSyncing)) {
             PlMailEmptyState(
                 icon = Icons.Outlined.Inbox,
                 title = stringResource(R.string.inbox_empty),
@@ -505,11 +540,22 @@ private fun ThreadList(
  *
  * Both load states are consulted rather than the convenience one, for the reason in (1): the source
  * can still be reading the rows the mediator wrote after the mediator has finished writing them.
+ *
+ * [isSyncing] is the third window, and pull-to-refresh is what opened it. The delta sync outlives
+ * the mediator's refresh — it asks every account, not just the one list — and the rows it produces
+ * reach the table through `FeedProjection` rather than through Paging, so both load states are idle
+ * while conversations are still arriving. Saying "nothing here yet" underneath a spinner that is
+ * still turning is precisely the claim this function exists to prevent.
  */
-internal fun hasNothingToShow(state: CombinedLoadStates, rowsInFeed: Int?): Boolean =
+internal fun hasNothingToShow(
+    state: CombinedLoadStates,
+    rowsInFeed: Int?,
+    isSyncing: Boolean = false,
+): Boolean =
     when {
         rowsInFeed == null -> false
         rowsInFeed > 0 -> false
+        isSyncing -> false
         state.source.refresh is LoadState.Loading -> false
         state.mediator?.refresh is LoadState.Loading -> false
         else -> true

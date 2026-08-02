@@ -23,6 +23,26 @@ interface AccountDao {
     @Query("UPDATE accounts SET emailState = :state WHERE uid = :uid")
     suspend fun setEmailState(uid: String, state: String?)
 
+    /**
+     * The first cursor an account is given, and only the first.
+     *
+     * A page load reports the Email state its answer was read at, which is *now* — so writing it
+     * unconditionally steps the delta cursor over everything that has changed since the last
+     * `Email/changes`, and those changes can then never be reported. Scrolling deep into a list
+     * would silently cost the user the mail that arrived while they scrolled.
+     *
+     * Expressed in SQL rather than as a read-then-write in Kotlin because delta sync writes this
+     * column on every round of a sync that runs concurrently with page loads; the check and the
+     * write have to be one statement or the window between them is exactly the bug.
+     *
+     * No comparison of tokens, deliberately. Today the server's state is `MAX(sequence)` and looks
+     * orderable, but it is an opaque JMAP token — a client that started ordering it would have
+     * taken on a server implementation detail that can change without anybody being able to tell
+     * it. "Only if absent" needs no ordering.
+     */
+    @Query("UPDATE accounts SET emailState = :state WHERE uid = :uid AND emailState IS NULL")
+    suspend fun setEmailStateIfAbsent(uid: String, state: String)
+
     @Query("UPDATE accounts SET mailboxState = :state WHERE uid = :uid")
     suspend fun setMailboxState(uid: String, state: String?)
 
@@ -303,8 +323,27 @@ interface FeedDao {
 
     @Upsert suspend fun upsertCursor(cursor: FeedCursorEntity)
 
-    @Query("DELETE FROM feed_cursors WHERE accountKey = :accountKey")
-    suspend fun clearCursors(accountKey: String)
+    /**
+     * Throws away how deep one list has been paged.
+     *
+     * Scoped to the feed, and the account-scoped version this replaced was a real bug: refreshing
+     * the inbox deleted the cursors of every label and category list that account contributes to,
+     * so the next append in any of them started from the top and rewrote rows the user had already
+     * scrolled past.
+     */
+    @Query("DELETE FROM feed_cursors WHERE feedId = :feedId")
+    suspend fun clearCursors(feedId: String)
+
+    /**
+     * Every list this account has actually been paged into.
+     *
+     * What "live" means for a list that has to receive newly synced mail, and it keys on cursors
+     * rather than on entries on purpose: the two answers differ precisely for a list that has been
+     * paged and is genuinely empty — a Promotions tab with nothing in it yet — which is exactly the
+     * list that must not be skipped when a promotion finally arrives.
+     */
+    @Query("SELECT DISTINCT feedId FROM feed_cursors WHERE accountKey = :accountKey")
+    suspend fun feedsPagedBy(accountKey: String): List<String>
 }
 
 @Dao

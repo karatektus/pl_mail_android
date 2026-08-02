@@ -7,6 +7,7 @@ import de.plmail.jmap.client.KeyFingerprint
 import de.plmail.jmap.client.PairingInvitation
 import de.plmail.jmap.client.ParsedAddress
 import de.plmail.jmap.client.ServerAddress
+import de.plmail.jmap.client.StreamingTransport
 import de.plmail.jmap.protocol.JmapError
 import de.plmail.jmap.testing.RecordingTransport
 import kotlin.test.Test
@@ -81,16 +82,17 @@ class ServerConnectorTest {
         var sawPin: KeyFingerprint? = null
         val connector =
             ServerConnector(
-                transports = { _, pinned ->
-                    sawPin = pinned
-                    if (pinned == null) {
-                        RecordingTransport {
-                            throw JmapError.UntrustedCertificate("nas.local", fingerprint)
+                transports =
+                    factory { _, pinned ->
+                        sawPin = pinned
+                        if (pinned == null) {
+                            RecordingTransport {
+                                throw JmapError.UntrustedCertificate("nas.local", fingerprint)
+                            }
+                        } else {
+                            RecordingTransport.alwaysReturning(session)
                         }
-                    } else {
-                        RecordingTransport.alwaysReturning(session)
-                    }
-                },
+                    },
                 deviceName = "Pixel",
             )
 
@@ -186,7 +188,7 @@ class ServerConnectorTest {
             HttpResponse(200, mapOf("Content-Type" to "application/json"), body.encodeToByteArray())
         }
 
-        val outcome = ServerConnector({ _, _ -> transport }, "Pixel 8").pair(invitation())
+        val outcome = ServerConnector(factory { _, _ -> transport }, "Pixel 8").pair(invitation())
 
         assertIs<ConnectionAttempt.Connected>(outcome)
         assertEquals(secret, outcome.server.credential.secret)
@@ -222,7 +224,29 @@ class ServerConnectorTest {
     }
 
     private fun connector(transport: () -> JmapTransport): ServerConnector =
-        ServerConnector({ _, _ -> transport() }, deviceName = "Pixel")
+        ServerConnector(factory { _, _ -> transport() }, deviceName = "Pixel")
+
+    /**
+     * A factory around one transport.
+     *
+     * Spelled out rather than passed as a lambda because [TransportFactory] grew a second method
+     * and stopped being a `fun interface`. That method throws here rather than answering with the
+     * same transport: nothing in onboarding opens an event stream, and a fake that quietly obliged
+     * would let one of these tests keep passing while the connector did something no server on this
+     * path is ever asked to do.
+     */
+    private fun factory(
+        create: (ServerAddress, KeyFingerprint?) -> JmapTransport
+    ): TransportFactory =
+        object : TransportFactory {
+            override fun create(address: ServerAddress, pinned: KeyFingerprint?): JmapTransport =
+                create(address, pinned)
+
+            override fun createStreaming(
+                address: ServerAddress,
+                pinned: KeyFingerprint?,
+            ): StreamingTransport = error("Onboarding opens no event stream.")
+        }
 
     private fun address(text: String = "https://nas.local"): ServerAddress {
         val parsed = ServerAddress.parse(text)

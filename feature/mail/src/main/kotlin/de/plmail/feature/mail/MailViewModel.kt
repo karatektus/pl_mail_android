@@ -8,6 +8,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.AccountsRepository
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.Connectivity
+import de.plmail.core.data.DeltaSync
 import de.plmail.core.data.FeedRepository
 import de.plmail.core.data.Label
 import de.plmail.core.data.LabelRepository
@@ -76,14 +77,69 @@ data class LabelSheetState(val targets: List<ActionTarget>, val selection: Label
 class MailViewModel
 @Inject
 constructor(
-    feed: FeedRepository,
+    private val feed: FeedRepository,
     private val mail: MailRepository,
     private val actions: MailActions,
     private val labelRepository: LabelRepository,
+    private val deltaSync: DeltaSync,
     connectivity: Connectivity,
     outbox: Outbox,
     accounts: AccountsRepository,
 ) : ViewModel() {
+
+    private val _isSyncing = MutableStateFlow(false)
+
+    /**
+     * Whether the *server* half of a pull-to-refresh is still running.
+     *
+     * Separate from Paging's own load state because a pull does two things, and Paging can only see
+     * one of them. Re-paging the list on screen is the visible half; the delta sync is the half
+     * that brings every other list, and every read and flag state anywhere, up to date. A spinner
+     * tied to the mediator alone disappears while that is still going, so the gesture looks
+     * finished before the thing the user pulled for has happened.
+     */
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+    /**
+     * Accounts a sync has decided can no longer be described incrementally.
+     *
+     * The screen re-pages on each one. `SyncResult.NeedsRepage` is durable in the account's null
+     * cursor, which is what a list built *afterwards* reads — but the list somebody is looking at
+     * was built before it, and would go on drawing rows nothing can bring up to date.
+     */
+    val repagedAccounts: Flow<String> = feed.repagedAccounts
+
+    /**
+     * The server half of a pull-to-refresh.
+     *
+     * One `Email/changes` per account, which is the cheapest possible way to correct *everything*:
+     * the projection puts each changed conversation into the lists it now belongs to, so pulling on
+     * the inbox also fixes Promotions, every label list, and the read and starred state of anything
+     * touched on another device. Re-paging alone would only correct the list being pulled.
+     *
+     * Guarded rather than restarted, because a second pull while the first is in flight would ask
+     * the same server the same question twice.
+     *
+     * The flag is raised here rather than inside the coroutine, and both halves of that matter: two
+     * pulls in the same frame would otherwise both read `false` and both launch, and the indicator
+     * would not appear until the sync had already been dispatched.
+     */
+    fun refresh() {
+        if (_isSyncing.value) return
+
+        _isSyncing.value = true
+
+        viewModelScope.launch {
+            try {
+                deltaSync.syncAll()
+            } finally {
+                // In a `finally` because the flag is what dismisses the spinner:
+                // a sync that threw would otherwise leave the list pinned under
+                // an indicator that never stops.
+                _isSyncing.value = false
+            }
+        }
+    }
 
     private val announcements = ActionAnnouncements()
     val announcement: StateFlow<ActionAnnouncement?> = announcements.announcement

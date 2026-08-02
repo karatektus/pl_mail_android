@@ -4,12 +4,15 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
 import de.plmail.core.data.ServerConnector
+import de.plmail.core.data.TransportFactory
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.core.datastore.SealedSecret
 import de.plmail.core.datastore.SecretCipher
 import de.plmail.jmap.client.HttpResponse
 import de.plmail.jmap.client.JmapTransport
 import de.plmail.jmap.client.KeyFingerprint
+import de.plmail.jmap.client.ServerAddress
+import de.plmail.jmap.client.StreamingTransport
 import de.plmail.jmap.protocol.JmapError
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -296,9 +299,28 @@ class OnboardingViewModelTest {
 
     private fun viewModel(transport: (KeyFingerprint?) -> JmapTransport): OnboardingViewModel =
         OnboardingViewModel(
-            connector = ServerConnector({ _, pinned -> transport(pinned) }, deviceName = "Pixel"),
+            connector = ServerConnector(factory(transport), deviceName = "Pixel"),
             credentials = store,
         )
+
+    /**
+     * A factory over one transport, chosen by the pin.
+     *
+     * Spelled out rather than passed as a lambda because [TransportFactory] grew a second method
+     * and stopped being a `fun interface`. That method throws here rather than obliging: onboarding
+     * opens no event stream, and a fake that answered would let this keep passing while the
+     * connector did something no server on this path is ever asked to do.
+     */
+    private fun factory(transport: (KeyFingerprint?) -> JmapTransport): TransportFactory =
+        object : TransportFactory {
+            override fun create(address: ServerAddress, pinned: KeyFingerprint?): JmapTransport =
+                transport(pinned)
+
+            override fun createStreaming(
+                address: ServerAddress,
+                pinned: KeyFingerprint?,
+            ): StreamingTransport = error("Onboarding opens no event stream.")
+        }
 }
 
 /** Reversible, and marked, so a store that forgot to seal is caught rather than passing quietly. */

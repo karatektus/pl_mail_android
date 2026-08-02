@@ -7,6 +7,7 @@ import de.plmail.jmap.client.JmapTransport
 import de.plmail.jmap.client.KeyFingerprint
 import de.plmail.jmap.client.PairingInvitation
 import de.plmail.jmap.client.ServerAddress
+import de.plmail.jmap.client.StreamingTransport
 import de.plmail.jmap.protocol.JmapError
 import de.plmail.jmap.protocol.Session
 
@@ -17,9 +18,26 @@ import de.plmail.jmap.protocol.Session
  * accepting a key means building a *new* OkHttp client around a new trust manager, so "retry with
  * this fingerprint" cannot be expressed by passing an argument to a request. It also keeps OkHttp
  * out of the connector, so the whole onboarding path is testable on the JVM.
+ *
+ * No longer a `fun interface`, because a connection that is *meant* to sit silent needs a client
+ * built differently rather than a request sent differently — see [createStreaming].
  */
-fun interface TransportFactory {
+interface TransportFactory {
     fun create(address: ServerAddress, pinned: KeyFingerprint?): JmapTransport
+
+    /**
+     * A transport for a connection that is supposed to say nothing for minutes at a time.
+     *
+     * The server holds an EventSource connection open for 300 seconds by design and writes nothing
+     * while the mailbox is quiet, so the ordinary client's read timeout aborts it every sixty
+     * seconds — and the symptom is a stream that appears to work and reconnects for ever, on a
+     * server that is behaving perfectly.
+     *
+     * A separate method rather than a timeout argument to [create], because "no read timeout" must
+     * not be one boolean away from every JMAP method call: a request that never gives up is a sync
+     * that hangs until the process dies.
+     */
+    fun createStreaming(address: ServerAddress, pinned: KeyFingerprint?): StreamingTransport
 }
 
 /** A server that answered, with the credential that worked and the key that was accepted. */

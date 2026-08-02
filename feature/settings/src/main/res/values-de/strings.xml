@@ -13,6 +13,7 @@
     <string name="diagnostics_never">Nie</string>
     <string name="diagnostics_last_error">Seitdem: %1$s</string>
     <string name="diagnostics_no_cursor">Keine Synchronisierungsposition gespeichert; die nächste Aktualisierung lädt dieses Konto von vorn.</string>
+    <string name="diagnostics_repaged">Der Server konnte von der gespeicherten Synchronisierungsposition dieses Kontos aus nicht antworten; seine Listen werden daher von vorn geladen. Es sind keine Nachrichten verloren gegangen.</string>
 
     <string name="diagnostics_push">Push</string>
     <string name="diagnostics_distributor">Verteiler</string>
