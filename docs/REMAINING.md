@@ -1,9 +1,12 @@
 # What is left
 
 Written 2026-08-01, at the end of the session that landed the accounts screen, the narrow-screen
-row fixes and the offline queue. `docs/PLAN.md` carries the architecture, the decisions and the
-milestone history; **this file is the honest status and the to-do list**, and it exists because a
-milestone marked "done" that is not is worse than one marked partial.
+row fixes and the offline queue. Revised 2026-08-02, at the end of the session that made the app
+notice a change on the server — which is also the session that found this file's own M6 row saying
+"done" about something that was not, and its central open question already answered. `docs/PLAN.md`
+carries the architecture, the decisions and the milestone history; **this file is the honest status
+and the to-do list**, and it exists because a milestone marked "done" that is not is worse than one
+marked partial.
 
 Read this first, then `PLAN.md` for why anything is the way it is.
 
@@ -19,14 +22,53 @@ Read this first, then `PLAN.md` for why anything is the way it is.
 | M3 Unified inbox | **done** | |
 | M4 Reader | **done** | |
 | M5 Actions, undo, bulk | **done** | offline queue added M11, see below |
-| M6 Staying current (sync, SSE, push, notifications) | **done** | |
+| M6 Staying current (sync, SSE, push, notifications) | **done** | ticked early; genuinely closed 2026-08-02, see below |
 | M7 Search | **done** | |
 | M8 Compose | **done** | scheduled send blocked on server |
 | M9 Organising (labels, snooze) | **done** | colour adopted 2026-08-01, see below |
-| Inbox categories (Gmail tabs) | **done, server branch unmerged** | see below |
+| Inbox categories (Gmail tabs) | **done, server merged** | `84c3f1b` on plMail `main`, verified on the wire — see below |
 | Design system | **done** | six themes, two layouts, three densities |
 | **M10 Appearance and settings** | **done** | see below |
 | **M11 Polish and ship-readiness** | **partial — roughly a third** | see below |
+
+### M6 — marked done long ago, and only true as of 2026-08-02
+
+M6 was ticked when the pieces existed rather than when they worked together, which is the exact
+mistake this file was written to catch. Every part of "staying current" was present and the app
+still could not notice a message the server already had.
+
+What was actually missing, in the order a message would have hit it:
+
+- **`DeltaSync` never wrote `feed_entries`.** It asked `Email/changes` correctly, hydrated what came
+  back and stored the messages and their conversations — but every list in the app draws from the
+  materialised feed table, and until this session only `FeedMediator` and `MailActions` ever wrote
+  it. A completely correct sync therefore changed nothing anybody could see. The mail was on the
+  device and invisible, which is the same screen as a sync that never ran.
+- **`SyncResult.NeedsRepage` had no consumer.** The sync worked out that an account could no longer
+  be described incrementally and then threw that conclusion away, so the list went on drawing
+  whatever it happened to hold.
+- **`FeedMediator.initialize` skipped the refresh forever** once the feed table held any rows, and
+  PREPEND was a no-op. Between them there was no path by which the top of a list could grow.
+- **`recordEmailState` clobbered the delta cursor on every page load.** A page reports the Email
+  state its answer was read at, which is *now*, so scrolling deep into a list stepped the cursor
+  over changes that had never been fetched — after which they could never be reported.
+- **The EventSource client had zero call sites**, and there was neither a pull-to-refresh gesture
+  nor a foreground trigger. Nothing asked the server anything at the one moment a user expects an
+  answer, which is when they open the app.
+
+What closes it: `FeedProjection`, which puts each synced conversation into the lists it belongs to
+and takes it out of the ones it does not; `RepageSignal`, which makes the re-page conclusion durable
+for a list already on screen; `AccountDao.setEmailStateIfAbsent`, which stops page loads stepping
+over the cursor; `ForegroundPresence` and `LiveUpdates`, which sync every account when the app comes
+into view and open the stream behind a gate on devices where Web Push is not already doing the job;
+and pull-to-refresh on the list itself. `FeedProjectionTest`, `FeedMediatorTest`,
+`EmailStateCursorTest`, `StateChangeApplierTest` and `DeltaSyncTest` pin the parts of that which are
+statements about what ends up in the database, and they run on the JVM under Robolectric rather than
+on an emulator, so they run on every build.
+
+**The server was confirmed correct throughout.** All three ingest paths — delivery, JMAP submission
+and web compose — record through `PostIngestPipeline`, so `Email/changes` really did have the
+insert to report. Every cause above was on this side.
 
 ### M10 — done as of this session
 
@@ -137,24 +179,35 @@ Written down because previous sessions' honesty about exactly this has led direc
   row still hashes and letters from the address alone and shows an I for `invoice+statements@`.
   `ThreadRow` is in `core/ui` and was another agent's file this session, so only the reader was
   changed. The *colour* must keep coming from the address — see `avatarInitial`'s note.
-- **The inbox feed does not notice a message the server already has.** A thread inserted
-  server-side is returned by `Email/query` immediately, and the app's list still does not show it
-  after a relaunch or after Diagnostics' "Check now" — `FeedMediator.initialize` skips the refresh
-  whenever the feed has any cached rows, and `Email/changes` did not report the insert. Worked
-  around while testing by labelling the thread with a label whose local feed was empty. Whether this
-  is a server changelog gap or a client one has not been established, and it is the reason a
-  freshly-seeded message appears to vanish.
+- **The inbox feed did not notice a message the server already had, and it was entirely
+  client-side.** Previous sessions left this saying that whether it was a server changelog gap or a
+  client one had not been established. It is established, and it was five separate client defects
+  rather than one:
+  `DeltaSync` never wrote `feed_entries`, so a correct sync was invisible; `NeedsRepage` had no
+  consumer, so a cursor the server had disowned changed nothing; `FeedMediator.initialize` skipped
+  the refresh forever once the table had rows while PREPEND was a no-op, so the top of the list
+  could not grow; `recordEmailState` clobbered the delta cursor on every page load, so changes were
+  stepped over and never reported; and there was no pull-to-refresh, no foreground sync and no SSE
+  wiring, so nothing asked at the moment somebody opens the app. The workaround previous sessions
+  used — labelling the thread with a label whose local feed was empty — worked because an empty
+  feed is the one case `initialize` did refresh. **The server was confirmed correct:** all three
+  ingest paths record through `PostIngestPipeline`, so the changelog really did carry the insert.
+  Closed 2026-08-02; see the M6 section above for what landed.
 - **A message whose body inverts is drawn on pure black.** `invert(1)` of a newsletter's white paper
   is `#000`, which under Nord sits inside a `#3B4252` card and reads as a hard rectangle. It is
   correct — that is what inversion means, and Gmail does the same — but a small `brightness()` in
   the filter would land it nearer the theme. Not attempted, because every colour in the message
   moves with it and the "show original" hatch is one tap away.
-- **The unreachable banner is sticky.** `FeedRepository._failures` is only rewritten when a page
-  load runs. After the offline test, the network came back, the outbox drained through WorkManager
-  and the banner "plMail could not reach 10.0.2.2" was **still on screen** — because nothing had
-  re-paged the list. It is pre-existing (this session only changed the wording), and it means any
-  transport failure leaves a banner up until the user pulls to refresh. The fix is probably to
-  clear `_failures` on a successful sync as well as on a successful page.
+- **The unreachable banner was sticky, and the gesture it waited for did not exist.**
+  `FeedRepository._failures` was only rewritten when a page load ran, so after the offline test the
+  network came back, the outbox drained through WorkManager and the banner "plMail could not reach
+  10.0.2.2" was **still on screen** — nothing had re-paged the list. The note left here previously
+  said it stayed up "until the user pulls to refresh", which quietly assumed a gesture the app did
+  not have: nothing called `REFRESH` after the first load, and on a list that fits the screen the
+  user could never trigger an append either. Both halves are fixed. There is a pull-to-refresh on
+  the mail list now, and `FeedRepository` implements `ReachableAccounts`, so `DeltaSync` withdraws
+  the claim as soon as an account answers — including the whole-server entry, because a successful
+  sync is proof the session can be fetched and there is no narrower fact to withdraw.
 - **`./gradlew build` intermittently fails a `lintAnalyze*` task.** Seen three times this session,
   on `:feature:search:lintAnalyzeDebugUnitTest`, `:feature:onboarding:lintAnalyze*` and
   `:core:notifications:lintAnalyzeDebugUnitTest`. Each succeeded when run alone immediately
@@ -192,6 +245,33 @@ Written down because previous sessions' honesty about exactly this has led direc
 - **`Outbox.drain` swallows the reason a change was refused.** It drops the mutation, which is
   right, but nothing is recorded anywhere the user can see. A change made offline that the server
   later refuses disappears silently. The diagnostics screen would be the honest home for it.
+- **The repo moved, and the fallout is not where you would look for it.** This checkout is now
+  `~/plmailstuff/pl_mail_android` rather than `~/pl_mail_android`, and moving it broke two things
+  that have nothing to do with each other. The **server** repo's git worktrees pointed at the old
+  path and had to be fixed with `git worktree repair`. And Gradle kept **transform snapshots
+  keyed on the old path**, so `:app:mergeLibDex*` fails citing a directory that no longer exists —
+  a failure that reads as a corrupt dependency and is nothing of the kind. The cure is to delete
+  the project's own `.gradle` directory and `~/.gradle/caches/9.6.1/transforms`; a clean is not
+  enough, because the stale entries are in the caches rather than in the build directory.
+- **`onRefresh` fires the delta sync and `threads.refresh()` concurrently, and they can
+  interleave.** A REFRESH transaction clearing this feed's cursors while `FeedProjection.reconcile`
+  is reading `feedsPagedBy` can make the projection skip that feed for one batch. It is transient —
+  the refresh's own page covers the top of the list, which is where anything the projection would
+  have written is going to be — and it is deliberately **not** serialised: serialising would make
+  pull-to-refresh wait on a possibly-asleep NAS before showing anything, which is the one thing the
+  gesture must not do. Written down because the interleaving is real and a future session watching
+  a single conversation fail to appear once should know it is this rather than the projection.
+- **A failed refresh still resets the persisted cursor to the top.** The rows survive — that is
+  what `batch.failures.isEmpty()` guards — but `restart()` has already reset the in-memory cursors
+  and `load` writes them back regardless, so an unreachable refresh leaves the feed holding rows it
+  can no longer say how deep it paged for. The visible cost is re-fetching pages the cache already
+  has on the next append, not lost mail, which is why it was left. `FeedMediatorTest` asserts the
+  rows rather than the cursor for this case, deliberately and with the reason written down.
+- **`SendDraftCommand` on the server records change-log rows but never drains the push queue.** The
+  console command fires neither `kernel.terminate` nor the worker events the drain is hung off, so
+  the state moves and the *immediate* push does not go out; the next `/changes` reports it
+  perfectly well. It only matters for testing — a send made from the console looks like a push that
+  was dropped — and it is a server-side detail, so it is recorded rather than filed.
 
 ---
 
@@ -209,9 +289,9 @@ terms of what each unblocks on the client:
 | Scheduled send (`maxDelayedSend` > 0) | "Send tomorrow at 8am"; the current undo window is seconds and does not survive the process |
 | Sync window in the session object | The accounts screen could say what the *server* retains rather than inferring it from the oldest message |
 
-Two have closed. **`Mailbox.color` is merged** into plMail `main` and adopted here. **The inbox
-categories are implemented on `feat/jmap-categories`** and await a human merge — that branch is the
-only thing between this client's category navigation and a real account.
+Two have closed, and both are now merged into plMail `main`: **`Mailbox.color`** (`b06b909`),
+adopted here on 2026-08-01, and **the inbox categories** (`84c3f1b`), merged on 2026-08-02. Nothing
+stands between this client's category navigation and a real account any more.
 
 ### Label colour — **adopted 2026-08-01**
 
@@ -234,13 +314,17 @@ transcription:
   `PaletteContrastTest` now sweeps nine tokens × six schemes against both `surface` and `sunken` at
   4.5:1 — the sweep this file asked for.
 
-### The inbox categories — **client done, server branch unmerged**
+### The inbox categories — **client done, server merged 2026-08-02**
 
 plMail has classified inbox mail into Gmail's five categories for a long time and the web has had a
-tab bar over it. There was no JMAP surface at all. The server side is on **`feat/jmap-categories`**
-in a worktree at `~/pl_mail_categories`, one commit, and **needs a human to merge**; the client is
-built against it and degrades correctly without it (every `Thread.category` is null, so the drawer's
-category group never appears).
+tab bar over it. There was no JMAP surface at all. The server side is now **merged into plMail
+`main`** as `84c3f1b`; the `feat/jmap-categories` branch and the `~/pl_mail_categories` worktree it
+was built in are gone. Verified live on the wire against the ordinary stack rather than a patched
+one: `Thread.category` and `Email.category` are published, the `threadCategory` filter condition
+narrows `Email/query` correctly, and a token this vocabulary does not contain is refused with
+`invalidArguments` rather than silently matching nothing. The client still degrades correctly
+against an older plMail — every `Thread.category` comes back null, so the drawer's category group
+never appears.
 
 - Navigation is Gmail's drawer, not a tab strip: the five categories are rows indented under Inbox,
   above the other system labels. A tab strip over the list would be a second navigation control

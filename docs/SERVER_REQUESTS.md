@@ -8,10 +8,10 @@ list anyone is working from. Read `~/pl_mail` freely — that is how these entri
 accurately — but never write to it.
 
 **Two exceptions have now been made, both explicitly authorised and both worked in a git worktree of
-their own** rather than in `~/pl_mail`: `Mailbox.color`, which is merged, and the inbox categories,
-which are not. Both are described under "Landed" below. The rule is unchanged for everything else,
-and the worktree is what makes an exception safe — the primary checkout's branch never moves and no
-parallel session's `git add` can sweep the work up.
+their own** rather than in `~/pl_mail`: `Mailbox.color` and the inbox categories. **Both are now
+merged into `main`** and both are described under "Landed" below. The rule is unchanged for
+everything else, and the worktree is what makes an exception safe — the primary checkout's branch
+never moves and no parallel session's `git add` can sweep the work up.
 
 ## The rule this file exists to serve
 
@@ -248,7 +248,7 @@ colour drawn on Nord's Polar Night.
 Main has since gained commits mapping Gmail and Outlook colours onto the same vocabulary by hue, so
 a real account arrives already coloured.
 
-### The inbox categories — **on the branch `feat/jmap-categories`, not merged**
+### The inbox categories — **merged into plMail `main`** (`84c3f1b`), 2026-08-02
 
 Not previously in this file, because the ask and the implementation happened in one session. plMail
 has classified inbox mail into Gmail's five categories for a long time and the web has had a tab bar
@@ -271,8 +271,13 @@ which is indistinguishable, from the device, from a genuinely quiet category.
 A thread with a null category matches no tab, exactly as `MessageThreadRepository::findForUnifiedInbox`
 has it. `app:backfill category` is what fills those in.
 
-**Needs a human to merge.** Branch `feat/jmap-categories` off `main`, one commit, worktree at
-`~/pl_mail_categories`. Suite 678 → 690 tests with the same 4 errors and 43 failures; PHPStan clean.
+**Merged**, and verified on the wire afterwards rather than taken on trust — the whole point of a
+merge is that the client now meets the same code every other client will. Against the ordinary
+stack, on 2026-08-02: `Thread/get` publishes `category` and `Email/get` publishes its per-message
+counterpart; `Email/query` with a `threadCategory` condition returns exactly that tab's
+conversations and no others; and a token outside the vocabulary is refused with `invalidArguments`
+rather than quietly matching nothing, which is the behaviour a client can actually detect. The
+`feat/jmap-categories` branch and the `~/pl_mail_categories` worktree are both gone.
 
 ---
 
@@ -406,9 +411,26 @@ close enough to test everything downstream and is a state the product itself can
 
 None of this is filed as an ask. It is a test-harness problem, not a client one.
 
-### JMAP state moves only on real mutations
+### JMAP state records on every ingest path, seeders included — **this entry used to say the opposite**
 
-`app:test:seed-mail` writes messages directly without advancing the Email state, so it cannot
-trigger a push however much mail it creates — `queryState` stays put. A real `Email/set` does move
-it. This is correct behaviour, not a bug, but it makes the seeder useless for testing push and delta
-sync, which is worth knowing before spending an evening on it.
+This section previously read: *"`app:test:seed-mail` writes messages directly without advancing the
+Email state, so it cannot trigger a push however much mail it creates."* **That is now false, and
+it is worth saying plainly because it was wrong in a way that misled debugging across several
+sessions** — it made "the seeded message never appeared on the phone" look like a known and
+expected property of the harness, so nobody looked at the client, where the actual bug was. If a
+statement in this file ever explains away a symptom that neatly, re-probe it before building on it.
+
+State recording landed on all three ingest paths this session, all merged into `main`:
+`ComposeController::persistDraft` for mail written on the web, `MessageSendService` for mail sent,
+and the test seeders. Everything now records through `PostIngestPipeline`, so the change log
+carries an inserted message whichever route it arrived by.
+
+Verified rather than read: **Email state moved 593 → 837 across one `app:test:seed-mail` run**, and
+`Email/changes` from 593 reported the whole difference. The seeder is therefore a usable way to
+test push and delta sync, which is exactly what the old note said it could never be.
+
+One caveat that is a real limitation rather than a correction. `SendDraftCommand` writes its
+change-log rows but has no push drain behind it: the console fires neither `kernel.terminate` nor
+the worker events the drain hangs off, so the immediate push is skipped and the next `/changes` is
+what reports the send. A send made from the console therefore looks like a dropped push and is not
+one.

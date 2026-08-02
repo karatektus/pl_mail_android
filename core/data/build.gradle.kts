@@ -45,4 +45,20 @@ dependencies {
     testImplementation(libs.androidx.datastore.preferences)
     testImplementation(testFixtures(projects.core.jmap))
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    // The feed projection, the mediator and delta sync are all *about* what
+    // ends up in Room, so nothing below Room can test them: a fake DAO would
+    // only assert that the test's own idea of `feed_entries` matches itself.
+    // Robolectric runs `inMemoryDatabaseBuilder` on the JVM, which keeps these
+    // in the suite that runs on every build rather than in an androidTest
+    // source set that needs an emulator and therefore runs on none.
+    testImplementation(libs.robolectric)
+    // ApplicationProvider, which is what hands Room a Context under Robolectric.
+    testImplementation(libs.androidx.test.ext.junit)
+    // Robolectric is JUnit 4 and this module's other tests are JUnit 5. The
+    // platform runs both engines side by side only if the vintage one is
+    // present; without it the Robolectric classes are silently not discovered
+    // and the task passes having run none of them. `feature/mail` and
+    // `core/ui` carry the same pair for the same reason.
+    testRuntimeOnly(libs.junit.vintage.engine)
 }
