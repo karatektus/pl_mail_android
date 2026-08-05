@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_title">Calendar</string>
+    <string name="calendar_back">Back to your mail</string>
+    <string name="calendar_back_agenda">Back to the calendar</string>
+    <string name="calendar_today">Today</string>
+    <string name="calendar_new_event">New event</string>
+    <string name="calendar_all_day">All day</string>
+
+    <!--
+      Calm rather than cheerful. An empty month is an ordinary state, and a
+      screen that congratulates somebody on it is a screen they stop reading.
+    -->
+    <string name="calendar_empty">Nothing coming up</string>
+    <string name="calendar_empty_body">The next 30 days are clear.</string>
+    <string name="calendar_loading">Loading your calendar…</string>
+
+    <string name="calendar_offline">You are offline. This is the calendar already on your phone.</string>
+    <string name="calendar_unreachable">plMail could not reach %1$s. This is the calendar already on your phone.</string>
+    <string name="calendar_unreachable_unnamed">plMail could not reach your server. This is the calendar already on your phone.</string>
+    <!-- The server's own words. Several refusals here carry nothing else. -->
+    <string name="calendar_refresh_refused">The calendar could not be refreshed: %1$s</string>
+
+    <!--
+      The client cannot promise a far month is complete and must not pretend it
+      can: the server publishes how far it materialises as an opaque phrase, so
+      its words are quoted rather than parsed.
+    -->
+    <string name="calendar_horizon">Your server writes out repeating events for a bounded time around today (%1$s), so days beyond that may be incomplete.</string>
+    <string name="calendar_horizon_generic">Your server writes out repeating events for a bounded time around today, so days far ahead may be incomplete.</string>
+
+    <!--
+      One sentence per row for TalkBack, in place of four fragments the listener
+      would have to reassemble.
+    -->
+    <string name="calendar_row_a11y">%1$s, %2$s, on %3$s</string>
+    <string name="calendar_row_a11y_located">%1$s, %2$s, at %3$s, on %4$s</string>
+
+    <string name="calendar_event">Event</string>
+    <string name="calendar_edit">Edit</string>
+    <string name="calendar_delete">Delete</string>
+    <string name="calendar_cancel">Cancel</string>
+    <string name="calendar_ok">OK</string>
+    <string name="calendar_save">Save</string>
+
+    <string name="calendar_readonly">This calendar does not accept changes.</string>
+    <!-- The reason travels with the control, so a greyed button is not a mystery. -->
+    <string name="calendar_edit_forbidden">Edit. %1$s</string>
+    <string name="calendar_delete_forbidden">Delete. %1$s</string>
+
+    <string name="calendar_field_title">Title</string>
+    <string name="calendar_field_location">Location</string>
+    <string name="calendar_field_description">Description</string>
+    <string name="calendar_field_calendar">Calendar</string>
+    <string name="calendar_field_status">Status</string>
+    <string name="calendar_status_tentative">Tentative</string>
+    <string name="calendar_status_cancelled">Called off</string>
+
+    <string name="calendar_time_range">%1$s – %2$s</string>
+    <string name="calendar_hours">h</string>
+    <string name="calendar_minutes">min</string>
+    <!--
+      A floating event means the same clock time wherever it is read, so it is
+      shown exactly as it was written rather than converted.
+    -->
+    <string name="calendar_floating">No time zone. Shown at the time it was written.</string>
+    <string name="calendar_zone">Time zone: %1$s</string>
+    <string name="calendar_repeat">Repeat</string>
+    <string name="calendar_repeats">Repeats</string>
+
+    <string name="calendar_delete_title">Delete this event?</string>
+    <!-- Says what is lost. There is no calendar bin, unlike mail's Trash. -->
+    <string name="calendar_delete_body">This cannot be undone: a calendar has no bin to recover from.</string>
+    <string name="calendar_delete_body_recurring">This deletes every occurrence of the event, not just this one. It cannot be undone: a calendar has no bin to recover from.</string>
+
+    <string name="calendar_new_title">New event</string>
+    <string name="calendar_edit_title">Edit event</string>
+    <string name="calendar_untitled">Untitled</string>
+    <string name="calendar_title_hint">An event saved with no title is called %1$s.</string>
+    <string name="calendar_starts">Starts</string>
+    <string name="calendar_ends">Ends</string>
+    <string name="calendar_end_before_start">Those times do not work — the end has to come after the start.</string>
+    <string name="calendar_pick_date">%1$s: choose a date</string>
+    <string name="calendar_pick_time">%1$s: choose a time</string>
+
+    <string name="calendar_repeat_never">Does not repeat</string>
+    <string name="calendar_repeat_daily">Every day</string>
+    <string name="calendar_repeat_weekly">Every week</string>
+    <string name="calendar_repeat_monthly">Every month</string>
+    <string name="calendar_repeat_yearly">Every year</string>
+    <!--
+      Shown instead of the dropdown while editing something that already
+      repeats. plMail writes five simple rules and carries every other rule
+      faithfully; saying so is what stops this app being blamed for leaving it
+      alone.
+    -->
+    <string name="calendar_repeat_kept">Repeats. How often is left exactly as it is when you save.</string>
+
+    <string name="calendar_none_writable">None of your calendars accepts new events.</string>
+    <string name="calendar_write_refused">The server refused this change: %1$s</string>
+    <string name="calendar_write_unreachable">plMail could not reach %1$s. Nothing was changed.</string>
+    <string name="calendar_write_unreachable_unnamed">plMail could not reach your server. Nothing was changed.</string>
+    <string name="calendar_gone">This server is no longer offering a calendar.</string>
+</resources>

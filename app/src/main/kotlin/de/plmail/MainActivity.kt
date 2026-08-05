@@ -24,6 +24,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import de.plmail.core.designsystem.PlMailTheme
+import de.plmail.feature.calendar.CalendarScreen
 import de.plmail.feature.compose.ComposeHost
 import de.plmail.feature.compose.ComposeRequest
 import de.plmail.feature.compose.ComposeRequestSaver
@@ -116,6 +117,7 @@ private fun PlMailApp(
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val connection by viewModel.connection.collectAsStateWithLifecycle()
+    val hasCalendar by viewModel.hasCalendar.collectAsStateWithLifecycle()
 
     // Search and compose live here rather than inside the mail shell because
     // they are their own feature modules: :feature:mail depending on either
@@ -125,6 +127,7 @@ private fun PlMailApp(
     var isDiagnosing by rememberSaveable { mutableStateOf(false) }
     var isAdjustingAppearance by rememberSaveable { mutableStateOf(false) }
     var isManagingAccounts by rememberSaveable { mutableStateOf(false) }
+    var isCalendaring by rememberSaveable { mutableStateOf(false) }
     var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
 
     // Over the mail list, never over the composer: the composer has closed by
@@ -210,6 +213,7 @@ private fun PlMailApp(
                         when {
                             openThread != null -> Screen.MAIL
                             isManagingAccounts -> Screen.ACCOUNTS
+                            isCalendaring -> Screen.CALENDAR
                             isAdjustingAppearance -> Screen.APPEARANCE
                             isDiagnosing -> Screen.DIAGNOSTICS
                             isSearching -> Screen.SEARCH
@@ -225,6 +229,7 @@ private fun PlMailApp(
                     BackHandler(enabled = screen != Screen.MAIL) {
                         when (screen) {
                             Screen.ACCOUNTS -> isManagingAccounts = false
+                            Screen.CALENDAR -> isCalendaring = false
                             Screen.APPEARANCE -> isAdjustingAppearance = false
                             Screen.DIAGNOSTICS -> isDiagnosing = false
                             Screen.SEARCH -> isSearching = false
@@ -234,6 +239,12 @@ private fun PlMailApp(
 
                     if (screen == Screen.ACCOUNTS) {
                         AccountsScreen(onBack = { isManagingAccounts = false })
+                    } else if (screen == Screen.CALENDAR) {
+                        // The calendar owns its own detail and editor and its
+                        // own back between them; what :app decides is only
+                        // whether the calendar or the mail is on screen, the
+                        // same way it does for every other swapped screen here.
+                        CalendarScreen(onBack = { isCalendaring = false })
                     } else if (screen == Screen.APPEARANCE) {
                         AppearanceScreen(onBack = { isAdjustingAppearance = false })
                     } else if (screen == Screen.DIAGNOSTICS) {
@@ -257,6 +268,12 @@ private fun PlMailApp(
                             onDiagnostics = { isDiagnosing = true },
                             onAppearance = { isAdjustingAppearance = true },
                             onAccounts = { isManagingAccounts = true },
+                            // Null hides the drawer entry outright, which is
+                            // what an instance publishing no calendars
+                            // capability has to look like: a product without a
+                            // calendar, rather than a control that opens an
+                            // empty one.
+                            onCalendar = if (hasCalendar) ({ isCalendaring = true }) else null,
                             onCompose = { composing = ComposeRequest.New },
                             onReply = { accountKey, emailId, all ->
                                 composing = ComposeRequest.Reply(accountKey, emailId, all)
@@ -313,6 +330,7 @@ private fun PlMailAppTheme(
  */
 private enum class Screen {
     MAIL,
+    CALENDAR,
     SEARCH,
     DIAGNOSTICS,
     APPEARANCE,

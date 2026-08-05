@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_title">Kalender</string>
+    <string name="calendar_back">Zurück zur Post</string>
+    <string name="calendar_back_agenda">Zurück zum Kalender</string>
+    <string name="calendar_today">Heute</string>
+    <string name="calendar_new_event">Neuer Termin</string>
+    <string name="calendar_all_day">Ganztägig</string>
+
+    <string name="calendar_empty">Nichts steht an</string>
+    <string name="calendar_empty_body">Die nächsten 30 Tage sind frei.</string>
+    <string name="calendar_loading">Kalender wird geladen…</string>
+
+    <string name="calendar_offline">Sie sind offline. Das sind die Termine, die bereits auf dem Gerät liegen.</string>
+    <string name="calendar_unreachable">plMail konnte %1$s nicht erreichen. Das sind die Termine, die bereits auf dem Gerät liegen.</string>
+    <string name="calendar_unreachable_unnamed">plMail konnte den Server nicht erreichen. Das sind die Termine, die bereits auf dem Gerät liegen.</string>
+    <string name="calendar_refresh_refused">Der Kalender konnte nicht aktualisiert werden: %1$s</string>
+
+    <string name="calendar_horizon">Ihr Server schreibt wiederkehrende Termine nur für einen begrenzten Zeitraum um den heutigen Tag heraus (%1$s). Weiter entfernte Tage können deshalb unvollständig sein.</string>
+    <string name="calendar_horizon_generic">Ihr Server schreibt wiederkehrende Termine nur für einen begrenzten Zeitraum um den heutigen Tag heraus. Weit entfernte Tage können deshalb unvollständig sein.</string>
+
+    <string name="calendar_row_a11y">%1$s, %2$s, in %3$s</string>
+    <string name="calendar_row_a11y_located">%1$s, %2$s, Ort %3$s, in %4$s</string>
+
+    <string name="calendar_event">Termin</string>
+    <string name="calendar_edit">Bearbeiten</string>
+    <string name="calendar_delete">Löschen</string>
+    <string name="calendar_cancel">Abbrechen</string>
+    <string name="calendar_ok">OK</string>
+    <string name="calendar_save">Speichern</string>
+
+    <string name="calendar_readonly">Dieser Kalender nimmt keine Änderungen an.</string>
+    <string name="calendar_edit_forbidden">Bearbeiten. %1$s</string>
+    <string name="calendar_delete_forbidden">Löschen. %1$s</string>
+
+    <string name="calendar_field_title">Titel</string>
+    <string name="calendar_field_location">Ort</string>
+    <string name="calendar_field_description">Beschreibung</string>
+    <string name="calendar_field_calendar">Kalender</string>
+    <string name="calendar_field_status">Status</string>
+    <string name="calendar_status_tentative">Mit Vorbehalt</string>
+    <string name="calendar_status_cancelled">Abgesagt</string>
+
+    <string name="calendar_time_range">%1$s – %2$s</string>
+    <string name="calendar_hours">Std.</string>
+    <string name="calendar_minutes">Min.</string>
+    <string name="calendar_floating">Keine Zeitzone. Wird so angezeigt, wie er eingetragen wurde.</string>
+    <string name="calendar_zone">Zeitzone: %1$s</string>
+    <string name="calendar_repeat">Wiederholung</string>
+    <string name="calendar_repeats">Wiederholt sich</string>
+
+    <string name="calendar_delete_title">Diesen Termin löschen?</string>
+    <string name="calendar_delete_body">Das lässt sich nicht rückgängig machen: Ein Kalender hat keinen Papierkorb.</string>
+    <string name="calendar_delete_body_recurring">Damit wird jedes Vorkommen des Termins gelöscht, nicht nur dieses. Das lässt sich nicht rückgängig machen: Ein Kalender hat keinen Papierkorb.</string>
+
+    <string name="calendar_new_title">Neuer Termin</string>
+    <string name="calendar_edit_title">Termin bearbeiten</string>
+    <string name="calendar_untitled">Unbenannt</string>
+    <string name="calendar_title_hint">Ein Termin ohne Titel heißt %1$s.</string>
+    <string name="calendar_starts">Beginn</string>
+    <string name="calendar_ends">Ende</string>
+    <string name="calendar_end_before_start">Diese Zeiten passen nicht — das Ende muss nach dem Beginn liegen.</string>
+    <string name="calendar_pick_date">%1$s: Datum wählen</string>
+    <string name="calendar_pick_time">%1$s: Uhrzeit wählen</string>
+
+    <string name="calendar_repeat_never">Wiederholt sich nicht</string>
+    <string name="calendar_repeat_daily">Täglich</string>
+    <string name="calendar_repeat_weekly">Wöchentlich</string>
+    <string name="calendar_repeat_monthly">Monatlich</string>
+    <string name="calendar_repeat_yearly">Jährlich</string>
+    <string name="calendar_repeat_kept">Wiederholt sich. Wie oft, bleibt beim Speichern genau so, wie es ist.</string>
+
+    <string name="calendar_none_writable">Keiner Ihrer Kalender nimmt neue Termine an.</string>
+    <string name="calendar_write_refused">Der Server hat diese Änderung abgelehnt: %1$s</string>
+    <string name="calendar_write_unreachable">plMail konnte %1$s nicht erreichen. Es wurde nichts geändert.</string>
+    <string name="calendar_write_unreachable_unnamed">plMail konnte den Server nicht erreichen. Es wurde nichts geändert.</string>
+    <string name="calendar_gone">Dieser Server bietet keinen Kalender mehr an.</string>
+</resources>

@@ -40,7 +40,9 @@ import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -232,6 +234,42 @@ constructor(
 
     /** Every calendar, invisible ones included — see `CalendarDao.observeAll`. */
     fun calendars(): Flow<List<CalendarEntity>> = database.calendars().observeAll()
+
+    /**
+     * Whether this install has a calendar at all, for deciding whether to offer one.
+     *
+     * Two sources, because either alone is wrong. The **session** is the authority — an instance
+     * that publishes no calendars capability has no calendar and must not be offered one — but
+     * asking it needs the network, and a cold launch on a train would then hide a calendar the
+     * device is holding a month of. The **cache** answers that case and cannot answer the first: it
+     * is empty before the first refresh, and a screen that could only appear after being opened
+     * could never be opened.
+     *
+     * So: the cache, or the session, and false while neither has spoken. The false comes first
+     * deliberately — a probe that has to time out must not hold the answer, because what is waiting
+     * on it is a navigation row that is either there or not.
+     */
+    fun isAvailable(): Flow<Boolean> =
+        combine(
+            calendars(),
+            flow {
+                emit(false)
+                emit(hasCalendarAccount())
+            },
+        ) { cached, published ->
+            cached.isNotEmpty() || published
+        }
+
+    /**
+     * One event **series** as the cache holds it, for an editor to open on.
+     *
+     * A series rather than the occurrence that was tapped, and that is the whole reason this exists
+     * beside [agenda]: an update sends whole properties, so a form seeded from one occurrence of a
+     * weekly standup would send that occurrence's date as the series' start and drag the entire
+     * series onto the day the user happened to be looking at.
+     */
+    suspend fun event(eventKey: String): CalendarEventEntity? =
+        database.calendarEvents().byUid(eventKey)
 
     /** Everything from [from] onwards, earliest first. The agenda. */
     fun agenda(from: LocalDate, limit: Int = AGENDA_LIMIT): Flow<List<AgendaRow>> =
@@ -681,6 +719,22 @@ constructor(
                 (rejected as? JmapError.MethodFailed)?.type ?: "serverFail",
                 rejected.message ?: "The server refused the change.",
             )
+        }
+
+    /**
+     * Whether the connected server nominates an account for calendars.
+     *
+     * False on anything that fails, including a transport error, because this only ever *adds* to
+     * what the cache already said — see [isAvailable]. Throwing here, or reporting "unknown", would
+     * turn a missing network into a question the caller cannot draw.
+     */
+    private suspend fun hasCalendarAccount(): Boolean =
+        try {
+            clients.current()?.session()?.primaryCalendarAccount != null
+        } catch (unreachable: IOException) {
+            false
+        } catch (refused: Exception) {
+            false
         }
 
     /** Re-asks the server where a recurring series now lands, over the range on screen. */

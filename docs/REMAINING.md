@@ -30,6 +30,7 @@ Read this first, then `PLAN.md` for why anything is the way it is.
 | Design system | **done** | six themes, two layouts, three densities |
 | **M10 Appearance and settings** | **done** | see below |
 | **M11 Polish and ship-readiness** | **partial — roughly a third** | see below |
+| M12 Calendar (protocol, cache, UI) | **done for what it claims** | the cuts are listed below and are deliberate |
 
 ### M6 — marked done long ago, and only true as of 2026-08-02
 
@@ -143,6 +144,54 @@ Everything below is untouched. Rough order of value:
 9. **Queued mutations in the composer.** The outbox covers mail *actions*. A send that fails offline
    still goes through `SendQueue`, which is in-memory and does not survive the process — worth
    deciding whether a draft that could not be submitted should join the outbox.
+
+### M12 — the calendar, and what is deliberately not in it
+
+Three commits: the vendor wire surface in `:core:jmap`, the cache and repository in `:core:data`,
+and `:feature:calendar` — an agenda, an event detail and an editor, reached from a drawer entry that
+only appears where the server publishes a calendar account at all.
+
+**What the phone does not do, and why each one is a decision rather than a gap.** These are written
+down because the web does all of them and somebody comparing the two surfaces will otherwise read
+each as a bug:
+
+- **Only the agenda.** No day, week or month view. The web has four and its own docked pane opens on
+  the agenda for the same reason a phone should: a month grid at 380px, or at 411dp, is a lot of
+  empty cells. Day view is the one worth adding next, and it is the one the web says a phone
+  actually reaches for.
+- **Thirty rolling days, and no paging.** The window drawn is the window refreshed, deliberately:
+  the unbounded `CalendarRepository.agenda()` would draw days out of whatever some earlier window
+  left in the cache — rows nothing has re-run and nothing will correct.
+- **No recurrence editor.** Create offers the web's five choices; an *edit* shows a read-only line
+  instead of the dropdown, and that is what keeps a foreign "every second Tuesday" intact.
+  `EventDraft.recurrenceRule` is create-only because the cache stores *whether* a series recurs and
+  not what by, so a rule built on an edit could only be a guess — and `NEVER` would clear it.
+- **No "this occurrence or all of them".** Every edit and every delete is the **series**. The editor
+  therefore opens on the series' own times rather than on the occurrence that was tapped, which is
+  the only shape that cannot silently drag a whole series onto the day somebody happened to be
+  looking at. Cancelling one occurrence is an `excluded` override and has no control yet.
+- **One calendar per event.** The web's editor is a checkbox per calendar, with rules about what
+  unticking one means that take two paragraphs of its own documentation. One calendar is the honest
+  subset: it never produces a state this editor cannot describe.
+- **No reminders field.** `alerts` is not writable over JMAP — the server answers
+  `invalidProperties` — so the control would be one whose obvious use fails after the form has been
+  filled in.
+- **No time-zone control**, so a new event takes the calendar's own zone, which is what the web
+  does. A floating event is drawn exactly as stored and says so; an event in another zone names its
+  zone rather than being converted, because a conversion the phone did and the web did not is two
+  surfaces disagreeing about one meeting.
+- **No `.ics` download, no "Not an event", no drag or resize.** The last of those has no gesture on
+  an agenda list at all.
+
+Two additions to `:core:data` were needed by the UI and are in the same commit: `isAvailable()`,
+which answers whether to draw the drawer entry from the cache *or* the session (either alone is
+wrong — the cache is empty before the first refresh and the session needs a network); and
+`event(eventKey)`, which is what lets the editor open on the series rather than on an occurrence.
+
+Not watched on a device by the session that wrote it: end-to-end verification is the supervisor's.
+The parts most worth looking at are the German agenda at 320dp, where "Ganztägig" has to fit a fixed
+72dp time column, and a read-only calendar, where Edit and Delete are drawn disabled with their
+reason in the content description.
 
 ---
 

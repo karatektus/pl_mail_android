@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import de.plmail.core.data.CalendarRepository
 import de.plmail.core.data.SyncWorker
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.push.PushSetup
@@ -34,8 +35,27 @@ class MainViewModel
 @Inject
 constructor(
     credentials: CredentialStore,
+    calendar: CalendarRepository,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
+
+    /**
+     * Whether this install has a calendar, which decides whether the drawer offers one.
+     *
+     * False to start with rather than true: the entry appears once there is evidence for it. A row
+     * that flashes in and out at every launch is worse than one that arrives a frame late — and an
+     * instance without the vendor calendar extension is a supported instance, not a broken one, so
+     * "no calendar" has to look like a product with no calendar rather than like a feature that
+     * failed to load.
+     */
+    val hasCalendar: StateFlow<Boolean> =
+        calendar
+            .isAvailable()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = false,
+            )
 
     val connection: StateFlow<ConnectionState> =
         credentials.connection

@@ -45,6 +45,8 @@ fun MailShell(
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
     onAccounts: () -> Unit,
+    /** Null where this install has no calendar. See [LabelSidebar]. */
+    onCalendar: (() -> Unit)?,
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
@@ -102,6 +104,13 @@ fun MailShell(
                     scope.launch { drawer.close() }
                     onAccounts()
                 },
+                onCalendar =
+                    onCalendar?.let { open ->
+                        {
+                            scope.launch { drawer.close() }
+                            open()
+                        }
+                    },
             )
         }
 

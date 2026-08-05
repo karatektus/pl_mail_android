@@ -15,6 +15,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Bedtime
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Campaign
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Drafts
@@ -87,6 +88,17 @@ fun LabelSidebar(
     selected: MailView,
     onSelect: (MailView) -> Unit,
     onCreate: () -> Unit,
+    /**
+     * Null where this install has no calendar, and then the row is not drawn at all.
+     *
+     * A callback rather than a boolean, because that is what makes the absence unforgeable: an
+     * instance that publishes no calendars capability has nothing for the row to open, and a
+     * disabled entry would say the feature is somewhere else rather than absent. `:feature:mail`
+     * deliberately learns nothing about calendars beyond whether there is one — the screen behind
+     * this is its own module, and a dependency from one feature onto another is what the module
+     * boundary exists to prevent.
+     */
+    onCalendar: (() -> Unit)?,
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
     onAccounts: () -> Unit,
@@ -193,6 +205,29 @@ fun LabelSidebar(
                 modifier = Modifier.padding(vertical = theme.spacing.small),
                 startIndent = theme.spacing.large,
             )
+
+            // First under the rule, because it is a *place* like the labels
+            // above it and the three below are settings. It is the only entry
+            // here that draws mail's peer rather than something about mail.
+            onCalendar?.let { open ->
+                NavigationDrawerItem(
+                    selected = false,
+                    onClick = open,
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Outlined.CalendarMonth,
+                            contentDescription = null,
+                        )
+                    },
+                    label = { Text(stringResource(R.string.calendar)) },
+                    colors =
+                        NavigationDrawerItemDefaults.colors(
+                            unselectedIconColor = theme.colors.inkMuted,
+                            unselectedTextColor = theme.colors.inkSoft,
+                            unselectedContainerColor = theme.colors.surface,
+                        ),
+                )
+            }
 
             NavigationDrawerItem(
                 selected = false,

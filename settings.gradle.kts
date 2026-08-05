@@ -64,3 +64,5 @@ include(":feature:compose")
 include(":feature:search")
 
 include(":feature:settings")
+
+include(":feature:calendar")
