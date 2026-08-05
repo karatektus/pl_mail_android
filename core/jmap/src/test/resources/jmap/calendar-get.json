@@ -1,0 +1,70 @@
+{
+    "methodResponses": [
+        [
+            "Calendar/get",
+            {
+                "accountId": "1",
+                "state": "fixed",
+                "list": [
+                    {
+                        "id": "10542",
+                        "name": "Personal",
+                        "color": "#2563eb",
+                        "sortOrder": 0,
+                        "isVisible": true,
+                        "isDefault": true,
+                        "timeZone": "Europe/Berlin",
+                        "role": "default",
+                        "isSynced": false,
+                        "myRights": {
+                            "mayReadItems": true,
+                            "mayAddItems": true,
+                            "mayUpdateAll": true,
+                            "mayRemoveItems": true,
+                            "mayDelete": false
+                        }
+                    },
+                    {
+                        "id": "10543",
+                        "name": "mailbox@e2e.test",
+                        "color": "#2563eb",
+                        "sortOrder": 0,
+                        "isVisible": true,
+                        "isDefault": false,
+                        "timeZone": "Europe/Berlin",
+                        "role": "account",
+                        "isSynced": false,
+                        "myRights": {
+                            "mayReadItems": true,
+                            "mayAddItems": true,
+                            "mayUpdateAll": true,
+                            "mayRemoveItems": true,
+                            "mayDelete": false
+                        }
+                    },
+                    {
+                        "id": "10544",
+                        "name": "second@e2e.test",
+                        "color": "#2563eb",
+                        "sortOrder": 0,
+                        "isVisible": true,
+                        "isDefault": false,
+                        "timeZone": "Europe/Berlin",
+                        "role": "account",
+                        "isSynced": false,
+                        "myRights": {
+                            "mayReadItems": true,
+                            "mayAddItems": true,
+                            "mayUpdateAll": true,
+                            "mayRemoveItems": true,
+                            "mayDelete": false
+                        }
+                    }
+                ],
+                "notFound": []
+            },
+            "c0"
+        ]
+    ],
+    "sessionState": "fedd99d33dd77929"
+}

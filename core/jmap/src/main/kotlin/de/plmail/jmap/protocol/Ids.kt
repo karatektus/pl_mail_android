@@ -66,6 +66,27 @@ value class IdentityId(val value: String) {
     override fun toString(): String = value
 }
 
+@JvmInline
+@Serializable
+value class CalendarId(val value: String) {
+    override fun toString(): String = value
+}
+
+/**
+ * An event **series** id, which is what `CalendarEvent/query` returns and `CalendarEvent/get`
+ * takes.
+ *
+ * Not an occurrence. A weekly standup is one id however many times it appears in a month, and the
+ * per-occurrence exceptions live inside it as `recurrenceOverrides` keyed by start time. Anything
+ * addressing a single occurrence has to carry the series id *and* the recurrence id; there is no id
+ * space for one on its own.
+ */
+@JvmInline
+@Serializable
+value class CalendarEventId(val value: String) {
+    override fun toString(): String = value
+}
+
 /**
  * An opaque, namespaced blob reference: `m-<id>` for a message's RFC822 source, `p-<id>` for an
  * attachment part, `u-<id>` for a staged upload.

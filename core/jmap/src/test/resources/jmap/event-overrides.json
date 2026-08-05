@@ -1,0 +1,77 @@
+{
+    "methodResponses": [
+        [
+            "CalendarEvent/set",
+            {
+                "accountId": "1",
+                "oldState": "fixed",
+                "newState": "fixed",
+                "created": {},
+                "notCreated": {},
+                "updated": {
+                    "10867": null
+                },
+                "notUpdated": {},
+                "destroyed": [],
+                "notDestroyed": {}
+            },
+            "ov"
+        ],
+        [
+            "CalendarEvent/get",
+            {
+                "accountId": "1",
+                "state": "fixed",
+                "list": [
+                    {
+                        "@type": "Event",
+                        "uid": "df7a06897f850359167280505e68e0ef@plmail",
+                        "title": "Team-Standup",
+                        "start": "2026-08-03T10:00:00",
+                        "duration": "PT15M",
+                        "status": "confirmed",
+                        "privacy": "public",
+                        "timeZone": "Europe/Berlin",
+                        "recurrenceRules": [
+                            {
+                                "@type": "RecurrenceRule",
+                                "byDay": [
+                                    {
+                                        "day": "mo",
+                                        "@type": "NDay"
+                                    },
+                                    {
+                                        "day": "we",
+                                        "@type": "NDay"
+                                    },
+                                    {
+                                        "day": "fr",
+                                        "@type": "NDay"
+                                    }
+                                ],
+                                "frequency": "weekly"
+                            }
+                        ],
+                        "recurrenceOverrides": {
+                            "2026-08-07T10:00:00": {
+                                "title": "Standup (Retro-Woche)",
+                                "start": "2026-08-07T11:00:00"
+                            }
+                        },
+                        "id": "10867",
+                        "calendarId": "10542",
+                        "sequence": 0,
+                        "created": "2026-08-05T21:10:21Z",
+                        "updated": "2026-08-05T21:11:21Z",
+                        "isRecurring": true,
+                        "kind": null,
+                        "source": "manual"
+                    }
+                ],
+                "notFound": []
+            },
+            "g1"
+        ]
+    ],
+    "sessionState": "fedd99d33dd77929"
+}

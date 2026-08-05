@@ -1,0 +1,133 @@
+{
+    "methodResponses": [
+        [
+            "CalendarEvent/query",
+            {
+                "accountId": "1",
+                "queryState": "fixed",
+                "canCalculateChanges": false,
+                "position": 0,
+                "ids": [
+                    "10867",
+                    "10865",
+                    "10868",
+                    "10866"
+                ],
+                "total": 4,
+                "limit": 500
+            },
+            "q0"
+        ],
+        [
+            "CalendarEvent/get",
+            {
+                "accountId": "1",
+                "state": "fixed",
+                "list": [
+                    {
+                        "uid": "df7a06897f850359167280505e68e0ef@plmail",
+                        "@type": "Event",
+                        "start": "2026-08-03T10:00:00",
+                        "title": "Team-Standup",
+                        "status": "confirmed",
+                        "privacy": "public",
+                        "duration": "PT15M",
+                        "timeZone": "Europe/Berlin",
+                        "recurrenceRules": [
+                            {
+                                "@type": "RecurrenceRule",
+                                "byDay": [
+                                    {
+                                        "day": "mo",
+                                        "@type": "NDay"
+                                    },
+                                    {
+                                        "day": "we",
+                                        "@type": "NDay"
+                                    },
+                                    {
+                                        "day": "fr",
+                                        "@type": "NDay"
+                                    }
+                                ],
+                                "frequency": "weekly"
+                            }
+                        ],
+                        "id": "10867",
+                        "calendarId": "10542",
+                        "sequence": 0,
+                        "created": "2026-08-05T21:10:21Z",
+                        "updated": "2026-08-05T21:10:21Z",
+                        "isRecurring": true,
+                        "kind": null,
+                        "source": "manual"
+                    },
+                    {
+                        "uid": "a2b69d2799e0d4e3bbcf91cf88f18bb1@plmail",
+                        "@type": "Event",
+                        "start": "2026-08-06T09:30:00",
+                        "title": "Zahnarzt",
+                        "status": "confirmed",
+                        "privacy": "public",
+                        "duration": "PT45M",
+                        "timeZone": "Europe/Berlin",
+                        "locations": {
+                            "1": {
+                                "name": "Praxis Dr. Weber",
+                                "@type": "Location"
+                            }
+                        },
+                        "description": "Kontrolle",
+                        "id": "10865",
+                        "calendarId": "10542",
+                        "sequence": 0,
+                        "created": "2026-08-05T21:10:21Z",
+                        "updated": "2026-08-05T21:10:21Z",
+                        "isRecurring": false,
+                        "kind": null,
+                        "source": "manual"
+                    },
+                    {
+                        "uid": "37921445755695f4f58b031553d09bbd@plmail",
+                        "@type": "Event",
+                        "start": "2026-08-07T19:00:00",
+                        "title": "Tentative dinner",
+                        "status": "tentative",
+                        "privacy": "public",
+                        "duration": "PT2H",
+                        "timeZone": "Europe/Berlin",
+                        "id": "10868",
+                        "calendarId": "10543",
+                        "sequence": 0,
+                        "created": "2026-08-05T21:10:21Z",
+                        "updated": "2026-08-05T21:10:21Z",
+                        "isRecurring": false,
+                        "kind": null,
+                        "source": "manual"
+                    },
+                    {
+                        "uid": "5f471c1d3b569b7c7d4861711ce2d8bf@plmail",
+                        "@type": "Event",
+                        "start": "2026-08-08T00:00:00",
+                        "title": "Sommerfest",
+                        "status": "confirmed",
+                        "privacy": "public",
+                        "duration": "P1D",
+                        "showWithoutTime": true,
+                        "id": "10866",
+                        "calendarId": "10542",
+                        "sequence": 0,
+                        "created": "2026-08-05T21:10:21Z",
+                        "updated": "2026-08-05T21:10:21Z",
+                        "isRecurring": false,
+                        "kind": null,
+                        "source": "manual"
+                    }
+                ],
+                "notFound": []
+            },
+            "g0"
+        ]
+    ],
+    "sessionState": "fedd99d33dd77929"
+}

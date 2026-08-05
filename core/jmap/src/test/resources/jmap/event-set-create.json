@@ -1,0 +1,55 @@
+{
+    "methodResponses": [
+        [
+            "CalendarEvent/set",
+            {
+                "accountId": "1",
+                "oldState": "fixed",
+                "newState": "fixed",
+                "created": {
+                    "e1": {
+                        "id": "10865",
+                        "uid": "a2b69d2799e0d4e3bbcf91cf88f18bb1@plmail",
+                        "calendarId": "10542",
+                        "isRecurring": false,
+                        "sequence": 0
+                    },
+                    "e2": {
+                        "id": "10866",
+                        "uid": "5f471c1d3b569b7c7d4861711ce2d8bf@plmail",
+                        "calendarId": "10542",
+                        "isRecurring": false,
+                        "sequence": 0
+                    },
+                    "e3": {
+                        "id": "10867",
+                        "uid": "df7a06897f850359167280505e68e0ef@plmail",
+                        "calendarId": "10542",
+                        "isRecurring": true,
+                        "sequence": 0
+                    },
+                    "e4": {
+                        "id": "10868",
+                        "uid": "37921445755695f4f58b031553d09bbd@plmail",
+                        "calendarId": "10543",
+                        "isRecurring": false,
+                        "sequence": 0
+                    }
+                },
+                "notCreated": {},
+                "updated": {},
+                "notUpdated": {},
+                "destroyed": [],
+                "notDestroyed": {}
+            },
+            "s0"
+        ]
+    ],
+    "sessionState": "fedd99d33dd77929",
+    "createdIds": {
+        "e1": "10865",
+        "e2": "10866",
+        "e3": "10867",
+        "e4": "10868"
+    }
+}

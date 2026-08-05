@@ -58,6 +58,35 @@ data class Session(
      */
     val primaryMailAccount: AccountId?
         get() = primaryAccounts[Capability.MAIL]?.let(::AccountId)
+
+    /**
+     * The one account that serves calendars, or null on an instance without the extension.
+     *
+     * Unlike mail, this really is the whole surface rather than a default view: **every other
+     * account answers a calendar method with `accountNotSupportedByMethod`**, and an unknown id
+     * with `accountNotFound`. Calendars are user-scoped in plMail while JMAP accounts are per
+     * connected mailbox, so fanning a calendar request out the way the unified inbox fans out
+     * `Email/query` fails on every account but one.
+     *
+     * Read from `primaryAccounts` under the calendars URN rather than reused from
+     * [primaryMailAccount]. The two agree on this server, which is exactly what would let a wrong
+     * assumption go unnoticed until an instance disagreed.
+     */
+    val primaryCalendarAccount: AccountId?
+        get() = primaryAccounts[Capability.CALENDARS]?.let(::AccountId)
+
+    /**
+     * The calendar limits for one account, or null when that account serves no calendars.
+     *
+     * Absence is the signal — the second account in a multi-mailbox login publishes no calendars
+     * capability at all — so this doubles as the check for whether calendars may be asked of it.
+     */
+    fun calendars(id: AccountId): CalendarsCapability? =
+        account(id)?.accountCapabilities?.get(Capability.CALENDARS)?.let(CalendarsCapability::from)
+
+    /** Whether this server exposes calendars at all. */
+    val supportsCalendars: Boolean
+        get() = capabilities.containsKey(Capability.CALENDARS)
 }
 
 @Serializable
@@ -106,5 +135,60 @@ data class CoreCapability(
         }
     }
 }
+
+/**
+ * The per-account `urn:plmail:params:jmap:calendars` limits.
+ *
+ * [maxEventsInGet] is **not** core's `maxObjectsInGet`, and the gap is the point: the server allows
+ * 500 objects in a general get and 100 events, because expanding a recurring series is far more
+ * work than reading a row. A client that chunked its hydration by the core limit would have every
+ * calendar request refused.
+ */
+data class CalendarsCapability(
+    val maxEventsInGet: Int = 100,
+    val maxEventsInSet: Int = 500,
+    /** False on every account today — the server owns which calendars exist. */
+    val mayCreateCalendar: Boolean = false,
+    val materialisedHorizon: MaterialisedHorizon = MaterialisedHorizon(),
+) {
+    companion object {
+        fun from(json: JsonObject): CalendarsCapability {
+            val defaults = CalendarsCapability()
+
+            fun int(key: String, fallback: Int) =
+                (json[key] as? JsonPrimitive)?.content?.toIntOrNull() ?: fallback
+
+            val horizon = json["materialisedHorizon"] as? JsonObject
+
+            return CalendarsCapability(
+                maxEventsInGet = int("maxEventsInGet", defaults.maxEventsInGet),
+                maxEventsInSet = int("maxEventsInSet", defaults.maxEventsInSet),
+                mayCreateCalendar =
+                    (json["mayCreateCalendar"] as? JsonPrimitive)?.content?.toBoolean()
+                        ?: defaults.mayCreateCalendar,
+                materialisedHorizon =
+                    MaterialisedHorizon(
+                        past =
+                            (horizon?.get("past") as? JsonPrimitive)?.content
+                                ?: defaults.materialisedHorizon.past,
+                        future =
+                            (horizon?.get("future") as? JsonPrimitive)?.content
+                                ?: defaults.materialisedHorizon.future,
+                    ),
+            )
+        }
+    }
+}
+
+/**
+ * How far either side of today the server has actually expanded recurring events.
+ *
+ * Both values are **opaque**: they are PHP relative-date expressions (`-1 year`, `+2 years`), not
+ * ISO 8601 durations, and nothing in the client may parse them. They exist so a query outside the
+ * window can be explained to the user — outside it the server answers from a partial index and
+ * quietly returns less than it holds, which is indistinguishable from an empty month unless the
+ * client says so.
+ */
+data class MaterialisedHorizon(val past: String = "", val future: String = "")
 
 private fun JsonPrimitive.contentOrNullIfBlank(): String? = content.takeIf { it.isNotBlank() }

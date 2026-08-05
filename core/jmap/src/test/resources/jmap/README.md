@@ -27,6 +27,50 @@ something into a test that asserts a fiction. Re-capture rather than edit.
 | `error-unsupported-anchor.json` | `anchor` paging is refused — **same `unsupportedFilter` type** as the filter case, so the two are indistinguishable by type alone. |
 | `error-not-request.json` | Well-formed JSON that is not a JMAP request: HTTP **400**, `urn:ietf:params:jmap:error:notRequest`. Note the different status from the method-level errors above. |
 
+## Calendars (`urn:plmail:params:jmap:calendars`)
+
+Captured on 2026-08-05 against the same stack, after seeding four events onto the calendars the
+mail seed had already created.
+
+| File | Pins down |
+|---|---|
+| `session-calendars.json` | The vendor calendar capability, at session level *and* per account — and that a **two-account** login carries it on one account only. `primaryAccounts` has its own key for the calendars URN; it happens to equal the mail primary, which is what would let a client reusing `primaryMailAccount` go unnoticed. Note the VAPID key differs from `session.json`: this is a later seed, and that is why it is a second file rather than a replacement. |
+| `calendar-get.json` | Calendar as the whole surface — there is no query, changes or set. `state: "fixed"`, a **hex** `color` (not the label token vocabulary), plMail's `role` (`default`, `account`) and `isSynced` extensions, and `myRights` with its own shape (`mayUpdateAll`, no keyword rights). No calendar may be deleted. |
+| `event-query-get.json` | A query paired with a back-referenced get. Ids are **series** ids ordered by first occurrence in the window, not by id. Also the all-day event: `showWithoutTime: true` and **no `timeZone` key at all**. |
+| `event-overrides.json` | `recurrenceOverrides` keyed by the occurrence's original start, with a `start` inside that moved it. `isRecurring` is true beside a rule the client did not derive it from. |
+| `event-set-create.json` | The create response: `oldState`/`newState` both `"fixed"`, and `created` echoing only what the server decided (`id`, `uid`, `calendarId`, `isRecurring`, `sequence`). Top-level `createdIds` too. |
+| `event-errors-update-destroy.json` | Five failures and two successes in one batch. A missing query window is a bare `invalidArguments` with **no description saying which end**; `sort` is `unsupportedSort`; a second account is `accountNotSupportedByMethod`; a refused property is a *per-object* `invalidProperties` carrying a `properties` array. Plus a successful update (value `null`) and destroy, and a get with a `notFound`. |
+
+### Calendar behaviours that are not in a fixture
+
+Established live and encoded as code rather than as JSON, because each is about what the client
+*sends*:
+
+- **`ifInState` is refused** with `invalidArguments`. The state is the constant `"fixed"`, so a
+  guard on it can never fail. `CalendarEventSet` has no parameter for one.
+- **Patch paths are refused**: `{"title/x": …}` answers `invalidPatch`, "Patch paths are not
+  supported; send the whole "title" property." `Email/set` accepts the same shape, so this is the
+  one place the two write surfaces genuinely disagree.
+- **`privacy` is published and not settable** — `invalidProperties`, same as `participants` and
+  `alerts`.
+- **`CalendarEvent/get` preserves the requested order**, unlike `Email/get` and `Thread/get`.
+  `ordered()` exists anyway; do not build on it.
+- **A `properties` filter really does drop `@type`, `uid` and `calendarId`**, which is why every
+  property but `id` is nullable.
+- **`{"excluded": true}` in an override round-trips**, and is the only way to cancel one occurrence
+  of a series — there is no id for a single occurrence.
+
+### What this seed CANNOT cover for calendars
+
+- **No read-only calendar.** Every calendar reports `mayAddItems: true`, so the `forbidden` a
+  destroy on a read-only one raises is unexercised.
+- **No `isSynced: true` calendar** and no `source` other than `"manual"`; `kind` is null everywhere.
+- **Nothing outside the materialised horizon.** The partial-index answer a query beyond `-1 year` /
+  `+2 years` gets is not observable here.
+- **One rule shape only** — a weekly `byDay`. No `until`, `count`, `interval` or `byMonthDay`, and
+  no unconvertible imported rule, which is the case where `isRecurring` and `recurrenceRules`
+  disagree.
+
 ## What this seed CANNOT cover
 
 Known gaps, so nobody mistakes their absence for evidence:
