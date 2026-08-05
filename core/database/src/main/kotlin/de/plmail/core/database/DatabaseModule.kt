@@ -35,4 +35,9 @@ object DatabaseModule {
     @Provides fun feed(database: PlMailDatabase): FeedDao = database.feed()
 
     @Provides fun identities(database: PlMailDatabase): IdentityDao = database.identities()
+
+    @Provides fun calendars(database: PlMailDatabase): CalendarDao = database.calendars()
+
+    @Provides
+    fun calendarEvents(database: PlMailDatabase): CalendarEventDao = database.calendarEvents()
 }

@@ -31,6 +31,16 @@ object StoreKey {
     fun account(server: String, accountId: String): String = "$server/$accountId"
 
     fun objectKey(accountKey: String, id: String): String = "$accountKey#$id"
+
+    /**
+     * One day of one event series.
+     *
+     * `@` rather than a second `#`, because [objectKey] has already spent that character and a key
+     * reading `.../13#10867#2026-08-07` cannot be split back apart by anything that does not
+     * already know how many parts to expect. Nothing parses these — the separator is chosen so that
+     * a human reading a row in a database browser can see where the series id ends.
+     */
+    fun occurrence(eventKey: String, date: String): String = "$eventKey@$date"
 }
 
 @Entity(tableName = "accounts")
@@ -264,6 +274,180 @@ data class FeedCursorEntity(
      */
     val boundaryIds: String = "",
     val isExhausted: Boolean = false,
+)
+
+/**
+ * One calendar, from plMail's vendor calendar surface.
+ *
+ * Keyed like every other row even though calendars come from exactly **one** account — the server
+ * answers `accountNotSupportedByMethod` on any other. The composite key is kept anyway because the
+ * account it comes from is discovered from the session's own `primaryAccounts` and an instance is
+ * free to nominate a different one than it nominates for mail; a table keyed on the calendar id
+ * alone would silently merge two servers' calendars the day this app holds two connections.
+ */
+@Entity(tableName = "calendars", indices = [Index("accountKey")])
+data class CalendarEntity(
+    @PrimaryKey val uid: String,
+    val accountKey: String,
+    val calendarId: String,
+    val name: String = "",
+    /**
+     * A literal `#rrggbb`, and deliberately **not** the token vocabulary [MailboxEntity.color]
+     * carries.
+     *
+     * The two surfaces genuinely disagree: a label's colour is a token that resolves per theme, a
+     * calendar's is a hex value the user picked in the web UI. Normalising one into the other here
+     * would mean choosing which of the two products' answers is the real one.
+     */
+    val color: String? = null,
+    val sortOrder: Int = 0,
+    /**
+     * The web sidebar's tick, and a display preference rather than a filter.
+     *
+     * `CalendarEvent/query` returns events from invisible calendars just the same, so the rows are
+     * cached either way and this is what the UI honours when it draws them. Filtering at sync time
+     * would mean a calendar ticked back on showing nothing until the next refresh.
+     */
+    val isVisible: Boolean = true,
+    val isDefault: Boolean = false,
+    /** An IANA zone. Events carrying no zone of their own are read in this one. */
+    val timeZone: String? = null,
+    val role: String? = null,
+    val isSynced: Boolean = false,
+    // myRights, flattened. The only thing that decides whether this calendar is
+    // writable -- not isDefault, not role. A picker that guessed from either
+    // offers a create the server then refuses with `forbidden`, after the user
+    // has typed the whole event.
+    val mayReadItems: Boolean = true,
+    val mayAddItems: Boolean = false,
+    val mayUpdateAll: Boolean = false,
+    val mayRemoveItems: Boolean = false,
+)
+
+/**
+ * One event **series**, projected to what a calendar draws.
+ *
+ * A series, not an occurrence: a weekly standup is one row here however many times it appears in a
+ * month. Which days it lands on is [CalendarOccurrenceEntity], because the server is the only thing
+ * allowed to answer that question — expanding a recurrence rule on the device is what makes a phone
+ * and the web UI disagree at a DST boundary.
+ *
+ * A deliberate subset of what the server stores. Events carry arbitrary JSCalendar and this keeps
+ * the fields a list and a detail sheet render; nothing here may be written back as though it were
+ * the whole object.
+ */
+@Entity(tableName = "calendar_events", indices = [Index("accountKey"), Index("calendarKey")])
+data class CalendarEventEntity(
+    @PrimaryKey val uid: String,
+    val accountKey: String,
+    val eventId: String,
+    /** The `calendars` row this belongs to, as its uid — what the agenda joins on for a colour. */
+    val calendarKey: String,
+    val calendarId: String,
+    /**
+     * JMAP's own `uid`, which is stable across servers where the id is not.
+     *
+     * Named `eventUid` rather than `uid` because that name is already the primary key here; the two
+     * are different identities and a row carrying both under one name would be unreadable.
+     */
+    val eventUid: String? = null,
+    val title: String = "",
+    val description: String? = null,
+    /**
+     * A JSCalendar **LocalDateTime** — `2026-08-03T10:00:00`, no offset and no trailing `Z`.
+     *
+     * Stored as the server spells it rather than as an epoch, because it is not an instant: it
+     * means "10:00 in [timeZone]", and converting it to a millisecond at sync time bakes in
+     * whichever zone the device was in when it synced.
+     */
+    val start: String? = null,
+    /** ISO 8601, e.g. `PT15M`, `P1D`. */
+    val duration: String? = null,
+    /**
+     * The event's own zone, or null.
+     *
+     * Null here means *either* "inherits the calendar's zone" *or* "floating" — the wire
+     * distinguishes an absent key from an explicit JSON null and a `CalendarEvent/get` collapses
+     * both to nothing, so the distinction does not survive a read and cannot be stored. It survives
+     * on the write path, where `EventTimeZone` has both cases. Placement therefore falls back to
+     * the calendar's zone and then to the device's, which is right for the common case and is the
+     * reason a genuinely floating event is not yet distinguishable here.
+     */
+    val timeZone: String? = null,
+    /** The wire's `showWithoutTime`. An all-day event carries no zone at all. */
+    val isAllDay: Boolean = false,
+    /**
+     * A place, as a plain label.
+     *
+     * One string rather than a map: the server keeps only `@type` and `name` from a Location, and
+     * the key it files it under is its own choice on the way back.
+     */
+    val location: String? = null,
+    val status: String? = null,
+    /**
+     * Derived server-side, and **not** `recurrenceRules != null`.
+     *
+     * An imported rule plMail cannot convert is stored verbatim and expands to a single occurrence,
+     * so an event can carry a rule and still not recur. This is what decides whether the refresh
+     * spends a day-probe batch on it.
+     */
+    val isRecurring: Boolean = false,
+    val sequence: Int = 0,
+    /**
+     * `recurrenceOverrides` as the raw JSON object the server sent, or null.
+     *
+     * Kept whole rather than decoded for the same reason `:core:jmap` keeps it whole: an override
+     * is a patch that may name any writable property, and a fixed shape would silently drop
+     * whatever this build has not heard of. It is read at refresh time to answer "what time is this
+     * occurrence, and is it cancelled" — which is reading published data, not re-deriving
+     * recurrence.
+     */
+    val recurrenceOverrides: String? = null,
+)
+
+/**
+ * That an event is on a day, and when on that day it is.
+ *
+ * The whole reason this table exists is that the client is forbidden from expanding recurrence
+ * rules: day membership is learned from the server, one windowed query per day, and cached here.
+ * Pure derived data — dropping it costs one refresh, which is what keeps it inside the schema's
+ * "everything is a cache" rule.
+ *
+ * Local wall-clock times rather than instants, deliberately. An event with no zone is meant to
+ * happen at the same clock time wherever the reader is, so resolving it to an instant at sync time
+ * and storing that is precisely the bug that makes a birthday move when the user travels — and a
+ * day view places occurrences by local time anyway, which is why [startLocal] is also the sort key.
+ */
+@Entity(
+    tableName = "calendar_occurrences",
+    indices = [Index("date"), Index("eventKey"), Index("accountKey")],
+)
+data class CalendarOccurrenceEntity(
+    @PrimaryKey val uid: String,
+    /** The [CalendarEventEntity] uid this is an occurrence of. */
+    val eventKey: String,
+    val accountKey: String,
+    val calendarKey: String,
+    /** ISO local date, `2026-08-07`. Sorts correctly as a string, which is why it is one. */
+    val date: String,
+    /** LocalDateTime, as the wire spells it. The occurrence's own start, after any override. */
+    val startLocal: String? = null,
+    /** [startLocal] plus the occurrence's duration, or null when the duration was unreadable. */
+    val endLocal: String? = null,
+    /**
+     * The zone [startLocal] is read in — the event's, else the calendar's — or null for an event
+     * that resolves against the device.
+     */
+    val zoneId: String? = null,
+    val isAllDay: Boolean = false,
+    /**
+     * The title this one occurrence carries, when an override renamed it.
+     *
+     * Null means "the series' title", which is the ordinary case. Stored rather than resolved at
+     * draw time because the override that carries it is keyed by the occurrence's original start,
+     * and a list would otherwise have to parse the series' whole override map per row.
+     */
+    val titleOverride: String? = null,
 )
 
 @Entity(tableName = "identities", indices = [Index("accountKey")])

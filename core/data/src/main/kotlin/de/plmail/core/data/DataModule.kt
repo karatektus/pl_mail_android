@@ -9,6 +9,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.Multibinds
+import java.time.Clock
 import javax.inject.Qualifier
 import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
@@ -90,6 +91,16 @@ abstract class DataModule {
         @ApplicationScope
         fun applicationScope(): CoroutineScope =
             CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+        /**
+         * What "today" is, injected rather than read from the static clock.
+         *
+         * [CalendarRepository] compares the window being refreshed against today to decide whether
+         * the server may have answered it from a partial index. A test pinning that with
+         * `LocalDate.now()` underneath would pass when it was written and start failing on a date
+         * nobody can predict, which is the shape of flake that gets a whole assertion deleted.
+         */
+        @Provides @Singleton fun clock(): Clock = Clock.systemDefaultZone()
 
         /** `DevicePairingController` truncates at 100; sending more would be silently cut. */
         private const val MAX_DEVICE_NAME = 100

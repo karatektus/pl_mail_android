@@ -224,6 +224,53 @@ until then, advertising a non-zero `maxDelayedSend`. The messenger bus already h
 phone were awake, unblocked by Doze and still holding a valid credential, so a scheduled mail would
 sometimes simply not go, with no way for the user to tell in advance.
 
+### `CalendarEvent/query` returns series, so placing a recurring event costs a query per day
+
+**What the client wants to do.** Draw a month of the calendar. That means knowing, for every event,
+which days it appears on and at what time — which for a recurring series is a different question
+from what the series says about itself.
+
+**What it can do today.** It works, and it costs up to 31 method calls per visible month.
+`CalendarEvent/query` takes a mandatory `after`/`before` window and answers with **series** ids
+ordered by first occurrence in the window; nothing in the answer says which days inside the window
+each series actually landed on. A one-off is placeable from its own `start` and `duration`, so it
+costs nothing extra. A recurring one is not, and the client is explicitly forbidden from expanding
+the rule itself (`CLIENT_DEVELOPMENT.md`) — rightly, because the phone and the web UI would then
+disagree at a DST boundary about the same event. So the Android client asks the server instead: one
+`CalendarEvent/query` per day of the window, batched into requests of 31 (`maxCallsInRequest` is
+32), issued only when the window's events actually include a recurring one. A month with no
+recurring events costs one round trip; a month with any costs two.
+
+**What was checked.** Probed 2026-08-05 against the running 8002 stack, on the seeded calendar.
+Event `10867` is a weekly Mon/Wed/Fri standup starting `2026-08-03T10:00:00`. A one-day window for
+the Friday (`after: 2026-08-07T00:00:00`, `before: 2026-08-08T00:00:00`) returns `["10867"]`; the
+Monday window returns it too; the **Thursday** window does not return it. So day membership is
+answerable, one day at a time, and that is the mechanism the client now uses. A single request
+carrying 31 one-day queries (`2026-08-01` through `2026-08-31`) was accepted and answered in full —
+31 responses, `10867` in exactly the Mondays, Wednesdays and Fridays — which is what makes the
+workaround one round trip per month rather than 31. `recurrenceOverrides`
+is published on the object and keyed by the occurrence's original start, which is what supplies the
+time when an occurrence has been moved and the `{"excluded": true}` that cancels one — those are
+read rather than derived. Also confirmed: `queryState` is the constant `"fixed"`,
+`canCalculateChanges` is `false`, and there is no `CalendarEvent/queryChanges`, so there is no
+cheaper way to re-ask either.
+
+**Smallest change that would unblock it.** An `expandRecurrences: true` argument on
+`CalendarEvent/query`, as the IETF JMAP-calendars draft defines it: return occurrence identifiers —
+each series id paired with the occurrence's start — instead of one id per series. One query would
+then replace up to 31 per visible month, and the client would place every occurrence from the
+answer with no probing and no local expansion. The server already materialises occurrences within
+`materialisedHorizon` (`-1 year` / `+2 years`), so the data being asked for is data it already
+holds; this is a projection of the index rather than new computation.
+
+**Client-side workaround.** In place, and it is honest — no rule is expanded on the device, and
+every day an event is drawn on came from the server saying so. What it costs is round trips, on
+exactly the hardware this product targets: a Raspberry Pi with a single PHP worker pool and an
+advertised `maxConcurrentRequests` of 4. The client keeps that bounded (probes only when a window
+holds a recurring event, never on a timer, only while the calendar is on screen), but a user
+flicking through months is issuing a batch of 31 queries per month either way, and the honest
+version of this feature is the one where they issue one.
+
 ---
 
 ## Landed

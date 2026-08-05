@@ -347,6 +347,161 @@ interface FeedDao {
 }
 
 @Dao
+interface CalendarDao {
+    /**
+     * Every calendar, in the server's own order.
+     *
+     * Invisible ones included: `isVisible` is a display preference the server does not act on, so
+     * whether to draw one is a question for whatever is drawing, and a DAO that filtered would make
+     * a calendar ticked back on look empty until the next refresh.
+     */
+    @Query("SELECT * FROM calendars ORDER BY sortOrder, name")
+    fun observeAll(): Flow<List<CalendarEntity>>
+
+    @Query("SELECT * FROM calendars WHERE accountKey = :accountKey")
+    suspend fun forAccount(accountKey: String): List<CalendarEntity>
+
+    @Query("SELECT * FROM calendars WHERE uid = :uid")
+    suspend fun byUid(uid: String): CalendarEntity?
+
+    @Upsert suspend fun upsert(calendars: List<CalendarEntity>)
+
+    @Query("DELETE FROM calendars WHERE uid IN (:uids)") suspend fun delete(uids: List<String>)
+}
+
+@Dao
+interface CalendarEventDao {
+    /**
+     * The agenda: every occurrence from a date onwards, earliest first.
+     *
+     * One join rather than three reads, for the same reason the feed denormalises: a list draws
+     * fifty of these and resolving each row's series and calendar separately is a query per row.
+     *
+     * `isAllDay DESC` puts the all-day rows at the top of their day, which is where every calendar
+     * on every platform puts them — they have no time to sort by, and interleaving them with timed
+     * events by a start of 00:00 puts "Sommerfest" above an 08:00 meeting for a reason that reads
+     * as a bug.
+     */
+    @Query(
+        """
+        SELECT o.date AS date, o.startLocal AS startLocal, o.endLocal AS endLocal,
+               o.zoneId AS zoneId, o.isAllDay AS isAllDay, o.eventKey AS eventKey,
+               e.eventId AS eventId, COALESCE(o.titleOverride, e.title) AS title,
+               e.location AS location, e.description AS description, e.status AS status,
+               e.isRecurring AS isRecurring, e.calendarKey AS calendarKey,
+               c.name AS calendarName, c.color AS calendarColor, c.isVisible AS calendarIsVisible
+        FROM calendar_occurrences o
+        JOIN calendar_events e ON e.uid = o.eventKey
+        LEFT JOIN calendars c ON c.uid = o.calendarKey
+        WHERE o.date >= :from
+        ORDER BY o.date, o.isAllDay DESC, o.startLocal
+        LIMIT :limit
+        """
+    )
+    fun observeAgenda(from: String, limit: Int): Flow<List<AgendaRow>>
+
+    /** The same rows bounded at both ends, for a month grid or a week. [to] is exclusive. */
+    @Query(
+        """
+        SELECT o.date AS date, o.startLocal AS startLocal, o.endLocal AS endLocal,
+               o.zoneId AS zoneId, o.isAllDay AS isAllDay, o.eventKey AS eventKey,
+               e.eventId AS eventId, COALESCE(o.titleOverride, e.title) AS title,
+               e.location AS location, e.description AS description, e.status AS status,
+               e.isRecurring AS isRecurring, e.calendarKey AS calendarKey,
+               c.name AS calendarName, c.color AS calendarColor, c.isVisible AS calendarIsVisible
+        FROM calendar_occurrences o
+        JOIN calendar_events e ON e.uid = o.eventKey
+        LEFT JOIN calendars c ON c.uid = o.calendarKey
+        WHERE o.date >= :from AND o.date < :to
+        ORDER BY o.date, o.isAllDay DESC, o.startLocal
+        """
+    )
+    fun observeBetween(from: String, to: String): Flow<List<AgendaRow>>
+
+    @Query("SELECT * FROM calendar_events WHERE uid = :uid")
+    suspend fun byUid(uid: String): CalendarEventEntity?
+
+    @Upsert suspend fun upsertEvents(events: List<CalendarEventEntity>)
+
+    @Upsert suspend fun upsertOccurrences(occurrences: List<CalendarOccurrenceEntity>)
+
+    @Query(
+        "SELECT * FROM calendar_occurrences WHERE date >= :from AND date < :to " +
+            "ORDER BY date, isAllDay DESC, startLocal"
+    )
+    suspend fun occurrencesBetween(from: String, to: String): List<CalendarOccurrenceEntity>
+
+    /**
+     * Empties one window before the refresh writes it again.
+     *
+     * The whole reconcile, in one statement. There is no `CalendarEvent/changes` and no delta on
+     * this surface — the state is the constant `"fixed"` — so a refresh cannot be told what left;
+     * it can only be told what is there now. Deleting the window and writing the answer is
+     * therefore the *only* way an occurrence that has been moved, excluded or deleted stops being
+     * drawn, and it is safe because these rows are derived from a query that has just been re-run.
+     *
+     * Deliberately not a `NOT IN (:keep)`: a month of a busy calendar is easily past SQLite's
+     * 999-variable ceiling, and a delete that silently applies to the first 999 is worse than no
+     * delete at all.
+     */
+    @Query("DELETE FROM calendar_occurrences WHERE date >= :from AND date < :to")
+    suspend fun clearOccurrencesBetween(from: String, to: String)
+
+    /**
+     * One series' days, as they stand.
+     *
+     * Read before a local write so the write can be taken back if the server refuses it — this
+     * surface has no `ifInState`, so a rejection is the only conflict signal there is.
+     */
+    @Query("SELECT * FROM calendar_occurrences WHERE eventKey = :eventKey ORDER BY date")
+    suspend fun occurrencesOf(eventKey: String): List<CalendarOccurrenceEntity>
+
+    @Query("DELETE FROM calendar_occurrences WHERE eventKey = :eventKey")
+    suspend fun clearOccurrencesOf(eventKey: String)
+
+    @Query("DELETE FROM calendar_events WHERE uid = :uid") suspend fun deleteEvent(uid: String)
+
+    /**
+     * Drops series rows nothing places any more.
+     *
+     * This is where "left the window" and "was deleted on the server" are deliberately *not*
+     * distinguished, because a windowed query cannot tell them apart and the day view is not asking
+     * which it was: both mean the event is not on the days that were just refreshed. A series with
+     * occurrences in some other cached window keeps its row; one with none left is unreachable —
+     * nothing joins to it and nothing can ever delete it later.
+     */
+    @Query(
+        "DELETE FROM calendar_events WHERE uid NOT IN (SELECT eventKey FROM calendar_occurrences)"
+    )
+    suspend fun deleteUnplacedEvents()
+}
+
+/**
+ * One occurrence as a list draws it: the day, the time, and the series and calendar it came from.
+ *
+ * A projection rather than a relation, so a row costs one object and no lazy loads.
+ */
+data class AgendaRow(
+    val date: String,
+    val startLocal: String?,
+    val endLocal: String?,
+    val zoneId: String?,
+    val isAllDay: Boolean,
+    val eventKey: String,
+    val eventId: String,
+    val title: String,
+    val location: String?,
+    val description: String?,
+    val status: String?,
+    val isRecurring: Boolean,
+    val calendarKey: String,
+    /** Null only if the calendar row is missing, which a refresh repairs. */
+    val calendarName: String?,
+    val calendarColor: String?,
+    val calendarIsVisible: Boolean?,
+)
+
+@Dao
 interface IdentityDao {
     @Query("SELECT * FROM identities WHERE accountKey = :accountKey ORDER BY sortIndex")
     suspend fun forAccount(accountKey: String): List<IdentityEntity>
