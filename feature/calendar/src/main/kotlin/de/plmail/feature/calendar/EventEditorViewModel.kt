@@ -3,7 +3,7 @@ package de.plmail.feature.calendar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import de.plmail.core.data.CalendarRepository
+import de.plmail.core.data.EventEditing
 import java.time.Clock
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,13 +16,15 @@ data class EditorState(
     /** Null until the event has been read; immediately present for a new one. */
     val form: EventFormState? = null,
     /**
-     * Which request [form] belongs to.
+     * Which *opening* of the editor [form] belongs to.
      *
-     * Held because this ViewModel is scoped to the activity and therefore outlives the screen: two
-     * editors opened in a row are the same instance, and without this the second would open on the
-     * first one's fields.
+     * Held because this ViewModel is scoped to the activity and therefore outlives the screen: a
+     * recomposition must not throw away edits in progress, so the form is only rebuilt when this
+     * changes. The opening rather than the [EditorRequest] because those are not the same question
+     * — see [EditorSession]: two New editors in a row are two openings and one equal request, and
+     * comparing the request left the second one holding the event the first had just saved.
      */
-    val loadedFor: EditorRequest? = null,
+    val loadedFor: EditorSession? = null,
     /**
      * Whether this event recurs, as the server derived it.
      *
@@ -46,43 +48,56 @@ data class EditorState(
 @HiltViewModel
 class EventEditorViewModel
 @Inject
-constructor(private val calendar: CalendarRepository, private val clock: Clock) : ViewModel() {
+constructor(private val calendar: EventEditing, private val clock: Clock) : ViewModel() {
 
     private val _state = MutableStateFlow(EditorState())
 
     val state: StateFlow<EditorState> = _state.asStateFlow()
 
     /**
-     * Opens the form on [request].
+     * Opens the form for [session].
      *
      * An existing event is read from the **series** row rather than from the agenda row that was
      * tapped — see `EventFormState.of`. [defaultCalendarKey] is consulted only for a new event: the
      * calendar an existing event is on is the event's own, and defaulting it would silently propose
      * moving somebody's meeting.
+     *
+     * The guard is on the session rather than on what it is for, which is the difference between
+     * "this editor is being recomposed" and "another editor is being opened". Recomposition happens
+     * constantly — every keystroke re-runs the effect that calls this — and rebuilding the form on
+     * one would delete what is being typed; a second opening has to start from nothing, or a create
+     * that has already been saved is offered back for saving again.
      */
-    fun open(request: EditorRequest, defaultCalendarKey: String?) {
-        if (_state.value.loadedFor == request) return
+    fun open(session: EditorSession, defaultCalendarKey: String?) {
+        if (_state.value.loadedFor == session) return
 
-        when (request) {
+        when (val request = session.request) {
             EditorRequest.New ->
                 _state.value =
                     EditorState(
                         form =
                             EventFormState.forNewEvent(clock)
                                 .copy(calendarKey = defaultCalendarKey),
-                        loadedFor = request,
+                        loadedFor = session,
                     )
             is EditorRequest.Edit -> {
-                _state.value = EditorState(loadedFor = request)
+                _state.value = EditorState(loadedFor = session)
 
                 viewModelScope.launch {
                     val event = calendar.event(request.eventKey) ?: return@launch
 
                     _state.update {
-                        it.copy(
-                            form = EventFormState.of(event, clock),
-                            isRecurring = event.isRecurring,
-                        )
+                        // Only when this is still the editor that asked. The read
+                        // is a round trip to the database and the user can have
+                        // opened another event -- or a new one -- in the meantime,
+                        // and answering into that form would replace it with the
+                        // event they navigated away from.
+                        if (it.loadedFor != session) it
+                        else
+                            it.copy(
+                                form = EventFormState.of(event, clock),
+                                isRecurring = event.isRecurring,
+                            )
                     }
                 }
             }
@@ -97,7 +112,7 @@ constructor(private val calendar: CalendarRepository, private val clock: Clock) 
     fun save(untitled: String) {
         val form = _state.value.form ?: return
         val calendarKey = form.calendarKey ?: return
-        val request = _state.value.loadedFor ?: return
+        val request = _state.value.loadedFor?.request ?: return
 
         if (form.endsBeforeStart || _state.value.isSaving) return
 

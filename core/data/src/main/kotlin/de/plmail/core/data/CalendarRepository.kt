@@ -36,13 +36,18 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -68,13 +73,24 @@ data class CalendarWindow(val from: LocalDate, val to: LocalDate) {
     val days: List<LocalDate>
         get() = generateSequence(from) { it.plusDays(1) }.takeWhile { it < to }.toList()
 
-    /** The wire's inclusive lower bound: a LocalDateTime, no offset and no trailing `Z`. */
-    internal val after: String
-        get() = from.atStartOfDay().toWire()
+    /**
+     * The wire's inclusive lower bound for *fetching* this window, in UTC — see [startOfDayUtc].
+     *
+     * Deliberately the **earlier** of the two readings of "the first moment of [from]", and the
+     * upper bound is the later of the two: an event the server holds as an instant is bounded by
+     * the UTC-converted local midnight, and one it holds as a wall clock — every all-day event, and
+     * anything imported with an explicit null zone — by the naive one. A single query has to reach
+     * both, and the two disagree by the device's offset, so the fetch takes their union and lets
+     * placement decide which local day each event is actually on. The cost is at most a day's
+     * events at each edge, which `placeSeries` drops; the alternative is a floating event at 23:00
+     * on the window's last day never being asked for at all.
+     */
+    internal fun fetchAfter(zone: ZoneId): String =
+        minOf(from.startOfDayUtc(zone), from.atStartOfDay()).toWire()
 
-    /** The wire's exclusive upper bound. */
-    internal val before: String
-        get() = to.atStartOfDay().toWire()
+    /** The wire's exclusive upper bound. See [fetchAfter] for why it is a union. */
+    internal fun fetchBefore(zone: ZoneId): String =
+        maxOf(to.startOfDayUtc(zone), to.atStartOfDay()).toWire()
 
     companion object {
         /**
@@ -193,6 +209,25 @@ data class EventDraft(
 )
 
 /**
+ * The calendar as the event editor uses it: one event out, three ways in.
+ *
+ * A seam rather than [CalendarRepository] itself, for the reason [KnownLabels] is one: the
+ * repository reaches Room, DataStore and OkHttp, so an editor holding it cannot be exercised
+ * anywhere those are not — and the questions worth asking of that screen are about which form is on
+ * it, which is a question a database has no part in.
+ */
+interface EventEditing {
+
+    suspend fun event(eventKey: String): CalendarEventEntity?
+
+    suspend fun create(calendarKey: String, draft: EventDraft): CalendarWriteResult
+
+    suspend fun update(eventKey: String, draft: EventDraft): CalendarWriteResult
+
+    suspend fun delete(eventKey: String): CalendarWriteResult
+}
+
+/**
  * The calendar, cached and refreshed on demand.
  *
  * **This surface has no delta and no push, and everything here follows from that.** The state is
@@ -221,7 +256,7 @@ constructor(
     private val clients: AccountClients,
     private val credentials: CredentialStore,
     private val clock: Clock,
-) {
+) : EventEditing {
 
     /**
      * The window most recently refreshed.
@@ -231,6 +266,16 @@ constructor(
      * from a rule is the one thing this class may not do.
      */
     @Volatile private var lastRefreshed: CalendarWindow? = null
+
+    /**
+     * The zone every query window is converted out of.
+     *
+     * The device's, from the injected [Clock], because a window is "the days this person is looking
+     * at" and that is a wall clock rather than a location. Injected so a test can be a phone in
+     * Berlin without the machine running it having to be one.
+     */
+    private val zone: ZoneId
+        get() = clock.zone
 
     /** Every calendar, invisible ones included — see `CalendarDao.observeAll`. */
     fun calendars(): Flow<List<CalendarEntity>> = database.calendars().observeAll()
@@ -250,15 +295,44 @@ constructor(
      * on it is a navigation row that is either there or not.
      */
     fun isAvailable(): Flow<Boolean> =
-        combine(
-            calendars(),
-            flow {
-                emit(false)
-                emit(hasCalendarAccount())
-            },
-        ) { cached, published ->
-            cached.isNotEmpty() || published
-        }
+        combine(calendars(), publishesCalendars()) { cached, published ->
+                cached.isNotEmpty() || published
+            }
+            // Two sources feeding one boolean, so most of what arrives here says
+            // the same thing twice -- every refresh rewrites the calendar rows,
+            // and the answer to "is there a calendar" was already yes.
+            .distinctUntilChanged()
+
+    /**
+     * Whether the session nominates a calendar account, re-asked when the answer could have
+     * changed.
+     *
+     * **Asked once per collection was a bug, seen on a fresh install on 2026-08-06**: the drawer
+     * collects this before pairing has stored a credential, the probe answers false with nothing to
+     * ask, and nothing ever asked again — so the Calendar row only appeared after the process was
+     * killed and relaunched. The cache leg could not rescue it either, because the cache only gains
+     * calendars from a refresh and the only way to a refresh was the row that was not there.
+     *
+     * Re-asked on a *change in the world*, never on a timer: the stored connection, which is what
+     * pairing writes, and the account rows, which is what a sync that fetched a session writes.
+     * Both are the flows the rest of the app already treats as "the accounts changed" — see
+     * `AccountsRepository`. Reduced to the parts a probe's answer can depend on before
+     * [distinctUntilChanged], because `dataStore.data` and Room's invalidation tracker both re-emit
+     * for writes that changed nothing this cares about, and a probe per push timestamp is polling
+     * with extra steps.
+     *
+     * [transformLatest] rather than a plain map, so a probe still waiting on a server that has gone
+     * away is abandoned when a newer answer is available — and [onStart] keeps the emit-false-first
+     * property that stops a hanging probe holding up the drawer.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun publishesCalendars(): Flow<Boolean> =
+        combine(credentials.connection, database.accounts().observeAll()) { connection, accounts ->
+                connection?.address?.discoveryUrl to accounts.map { it.uid }
+            }
+            .distinctUntilChanged()
+            .transformLatest { emit(hasCalendarAccount()) }
+            .onStart { emit(false) }
 
     /**
      * One event **series** as the cache holds it, for an editor to open on.
@@ -268,7 +342,7 @@ constructor(
      * weekly standup would send that occurrence's date as the series' start and drag the entire
      * series onto the day the user happened to be looking at.
      */
-    suspend fun event(eventKey: String): CalendarEventEntity? =
+    override suspend fun event(eventKey: String): CalendarEventEntity? =
         database.calendarEvents().byUid(eventKey)
 
     /** Everything from [from] onwards, earliest first. The agenda. */
@@ -326,9 +400,23 @@ constructor(
 
         var requests = 0
 
+        // Read once, so a window and the day probes that place events inside it
+        // cannot be built against two different zones if the device's changes
+        // mid-refresh -- which is a flight landing, not a hypothetical.
+        val deviceZone = zone
+
         val first = request(session)
         val calendarsHandle = first.add(CalendarGet(accountId))
-        val queryHandle = first.add(query(accountId, window.after, window.before, 0, pageSize))
+        val queryHandle =
+            first.add(
+                query(
+                    accountId,
+                    window.fetchAfter(deviceZone),
+                    window.fetchBefore(deviceZone),
+                    0,
+                    pageSize,
+                )
+            )
         val eventsHandle = first.add(hydrate(accountId, queryHandle.reference("/ids")))
 
         val answers = client.send(first).also { requests++ }
@@ -346,7 +434,15 @@ constructor(
         while (position < total) {
             val page = request(session)
             val pageQuery =
-                page.add(query(accountId, window.after, window.before, position, pageSize))
+                page.add(
+                    query(
+                        accountId,
+                        window.fetchAfter(deviceZone),
+                        window.fetchBefore(deviceZone),
+                        position,
+                        pageSize,
+                    )
+                )
             val pageGet = page.add(hydrate(accountId, pageQuery.reference("/ids")))
 
             val paged = client.send(page).also { requests++ }
@@ -363,10 +459,23 @@ constructor(
         // appointments has to cost the one request above and no more; spending
         // thirty-one queries to learn what `start` already said would be the
         // whole cost of this design with none of its reason.
-        val recurring = events.filter { it.isRecurring }.map { it.id }.toSet()
+        val recurring = events.filter { it.isRecurring }
         val membership =
             if (recurring.isEmpty()) emptyMap()
-            else probeDays(client, session, accountId, window, recurring) { requests++ }
+            else
+                probeDays(
+                    client = client,
+                    session = session,
+                    accountId = accountId,
+                    window = window,
+                    zone = deviceZone,
+                    // Split by how the server is holding the event's start,
+                    // because that decides which window finds it. See
+                    // `probeDays`.
+                    zoned = recurring.filterNot { it.isFloating }.map { it.id }.toSet(),
+                    floating = recurring.filter { it.isFloating }.map { it.id }.toSet(),
+                    onRequest = { requests++ },
+                )
 
         val calendarRows = calendars.map { it.toEntity(accountKey) }
         val zones = calendars.associate { it.id.value to it.timeZone }
@@ -431,27 +540,66 @@ constructor(
      * spare slot is not politeness: a request sitting on the ceiling is refused *entirely* the day
      * anything else has to travel with it, and the refusal is of the whole batch rather than of the
      * one extra call.
+     *
+     * **A day is asked about in the terms the event is stored in**, which is why [zoned] and
+     * [floating] are separate sets rather than one. A zoned event is an instant, so its day is the
+     * local day converted to UTC; a floating one — every all-day event, since the server nulls the
+     * zone of one, plus anything imported with an explicit null — is a wall clock the server wrote
+     * into a UTC column, so the window that means "this day" for it is the naive local one. Asking
+     * about a floating event with a UTC-converted window returns it for two days running and would
+     * draw every all-day event twice, on its own day and the day after; asking about a zoned event
+     * with a naive window is the defect this whole conversion exists for. Both kinds share the
+     * batch, so a week with one of each still travels in a single request.
      */
     private suspend fun probeDays(
         client: JmapClient,
         session: Session,
         accountId: AccountId,
         window: CalendarWindow,
-        wanted: Set<CalendarEventId>,
+        zone: ZoneId,
+        zoned: Set<CalendarEventId>,
+        floating: Set<CalendarEventId>,
         onRequest: () -> Unit,
     ): Map<CalendarEventId, Set<LocalDate>> {
         val perRequest = (session.core.maxCallsInRequest - 1).coerceAtLeast(1)
         val membership = mutableMapOf<CalendarEventId, MutableSet<LocalDate>>()
 
-        window.days.chunked(perRequest).forEach { chunk ->
+        val probes =
+            window.days.flatMap { day ->
+                buildList {
+                    if (zoned.isNotEmpty()) {
+                        add(
+                            DayProbe(
+                                day = day,
+                                wanted = zoned,
+                                after = day.startOfDayUtc(zone),
+                                before = day.plusDays(1).startOfDayUtc(zone),
+                            )
+                        )
+                    }
+
+                    if (floating.isNotEmpty()) {
+                        add(
+                            DayProbe(
+                                day = day,
+                                wanted = floating,
+                                after = day.atStartOfDay(),
+                                before = day.plusDays(1).atStartOfDay(),
+                            )
+                        )
+                    }
+                }
+            }
+
+        probes.chunked(perRequest).forEach { chunk ->
             val batch = request(session)
-            val handles = chunk.map { day ->
-                day to
+            val handles = chunk.map { probe ->
+                probe to
                     batch.add(
                         query(
                             accountId = accountId,
-                            after = day.atStartOfDay().toWire(),
-                            before = day.plusDays(1).atStartOfDay().toWire(),
+                            after = probe.after.toWire(),
+                            before = probe.before.toWire(),
                         )
                     )
             }
@@ -460,15 +608,23 @@ constructor(
 
             onRequest()
 
-            handles.forEach { (day, handle) ->
+            handles.forEach { (probe, handle) ->
                 answers.result(handle).ids.forEach { id ->
-                    if (id in wanted) membership.getOrPut(id) { mutableSetOf() } += day
+                    if (id in probe.wanted) membership.getOrPut(id) { mutableSetOf() } += probe.day
                 }
             }
         }
 
         return membership
     }
+
+    /** One day, the window that means that day for a kind of event, and who the answer is about. */
+    private data class DayProbe(
+        val day: LocalDate,
+        val wanted: Set<CalendarEventId>,
+        val after: LocalDateTime,
+        val before: LocalDateTime,
+    )
 
     /**
      * Creates an event and writes what the server made of it.
@@ -479,7 +635,7 @@ constructor(
      * the answer *is* optimistic: the row and, for a one-off, its days are written from the draft
      * rather than by re-reading the event back.
      */
-    suspend fun create(calendarKey: String, draft: EventDraft): CalendarWriteResult {
+    override suspend fun create(calendarKey: String, draft: EventDraft): CalendarWriteResult {
         val calendar =
             database.calendars().byUid(calendarKey)
                 ?: return CalendarWriteResult.Rejected(
@@ -563,7 +719,7 @@ constructor(
      * would mean the phone showing something that is never going to become true, with nothing on
      * screen able to put it right.
      */
-    suspend fun update(eventKey: String, draft: EventDraft): CalendarWriteResult {
+    override suspend fun update(eventKey: String, draft: EventDraft): CalendarWriteResult {
         val existing =
             database.calendarEvents().byUid(eventKey)
                 ?: return CalendarWriteResult.Rejected(
@@ -644,7 +800,7 @@ constructor(
      * borrowing mail's undo. Cancelling a single occurrence is a different operation entirely: an
      * `excluded` override on the series, because there is no id for one occurrence.
      */
-    suspend fun delete(eventKey: String): CalendarWriteResult {
+    override suspend fun delete(eventKey: String): CalendarWriteResult {
         val existing =
             database.calendarEvents().byUid(eventKey)
                 ?: return CalendarWriteResult.Rejected(
@@ -748,6 +904,12 @@ constructor(
      * [days] is null for a one-off — its days come from its own `start` and `duration`, which is
      * reading published data rather than expanding anything — and is the server's answer for a
      * recurring series.
+     *
+     * Either way the day an occurrence lands on is the event's **own wall clock**, never the device
+     * offset the window was converted by: a one-off is placed from its `start` here, and a
+     * recurring series' probe windows are built in the terms it is stored in so that its answer
+     * *is* a wall clock day — see `probeDays`. An all-day event dated the eighth belongs to the
+     * eighth in every zone, which is the whole reason all-day events exist.
      */
     private fun placeSeries(
         event: CalendarEvent,
@@ -981,6 +1143,28 @@ private val WIRE_LOCAL_DATE_TIME: DateTimeFormatter =
 
 internal fun LocalDateTime.toWire(): String = format(WIRE_LOCAL_DATE_TIME)
 
+/**
+ * A local day's first moment, as the **UTC** wall clock a `CalendarEvent/query` window is read in.
+ *
+ * **JMAP calendar query windows are UTC on the wire.** `after` and `before` are JSCalendar
+ * LocalDateTimes with no offset and no `Z`, which looks like an invitation to send the device's own
+ * wall clock — and the server's parse is the authority on what they mean:
+ * `App\Jmap\Query\CalendarEventQueryRunner::run()` puts each through `utcDate()`, which reads the
+ * string and then `setTimezone('UTC')`, and matches it against occurrence spans stored as UTC
+ * instants. So a naive local window is a window shifted by the device's offset.
+ *
+ * Found on a device rather than in a test, on 2026-08-06: an event created at 01:00 Europe/Berlin
+ * is stored at 23:00Z the day before, the agenda then asked for `after: 2026-08-06T00:00:00`, the
+ * server honestly answered that nothing was on that day, and the refresh's reconcile swept the
+ * just-saved event out of the cache. Every event between midnight and the offset vanished from the
+ * app moments after being created while remaining on the server.
+ *
+ * From the *zoned* boundary rather than by adding twenty-four hours: a local day is 23 or 25 hours
+ * long twice a year, and a fixed-duration edge puts the evening of a DST Sunday on the Monday.
+ */
+internal fun LocalDate.startOfDayUtc(zone: ZoneId): LocalDateTime =
+    atStartOfDay(zone).withZoneSameInstant(ZoneOffset.UTC).toLocalDateTime()
+
 /** Tolerant on the way in: the server writes seconds, but nothing here depends on it doing so. */
 private fun String.asLocalDateTime(): LocalDateTime? = runCatching {
     LocalDateTime.parse(this)
@@ -1017,6 +1201,22 @@ private fun daysSpanned(start: LocalDateTime, duration: String?): List<LocalDate
 }
 
 private operator fun CalendarWindow.contains(day: LocalDate): Boolean = day >= from && day < to
+
+/**
+ * Whether the server is holding this event's start as a wall clock rather than as an instant.
+ *
+ * A `CalendarEvent/get` with no `timeZone` is exactly that and is not the ambiguity it looks like:
+ * `CalendarEventWriter` publishes the property only when the stored zone is non-null, nulls the
+ * zone of every all-day event, and resolves a null one against UTC — so an event that comes back
+ * without a zone was stored as its own wall clock, whatever the calendar's zone is. (What *display*
+ * does with an absent zone is a different question, and `CalendarEventEntity.timeZone` answers it
+ * the other way round on purpose.)
+ *
+ * `showWithoutTime` is checked as well rather than trusted to imply it, because the one thing that
+ * must never happen here is an all-day event being asked about in a converted window.
+ */
+private val CalendarEvent.isFloating: Boolean
+    get() = timeZone == null || showWithoutTime
 
 private fun Calendar.toEntity(accountKey: String) =
     CalendarEntity(

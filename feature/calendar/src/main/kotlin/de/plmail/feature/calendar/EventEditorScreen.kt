@@ -88,13 +88,14 @@ import java.time.temporal.ChronoUnit
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun EventEditorScreen(
-    request: EditorRequest,
+    session: EditorSession,
     calendars: List<CalendarEntity>,
     onClose: () -> Unit,
     viewModel: EventEditorViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val untitled = stringResource(R.string.calendar_untitled)
+    val request = session.request
 
     // Only calendars that accept new events. `myRights` is the one thing that
     // decides -- not isDefault, not the role -- and a picker that guessed would
@@ -102,9 +103,9 @@ internal fun EventEditorScreen(
     // event has been typed.
     val writable = remember(calendars) { calendars.filter { it.mayAddItems } }
 
-    LaunchedEffect(request, writable) {
+    LaunchedEffect(session, writable) {
         viewModel.open(
-            request = request,
+            session = session,
             defaultCalendarKey =
                 writable.firstOrNull { it.isDefault }?.uid ?: writable.firstOrNull()?.uid,
         )
@@ -118,7 +119,7 @@ internal fun EventEditorScreen(
     }
 
     val form = state.form
-    var confirmingDelete by remember(request) { mutableStateOf(false) }
+    var confirmingDelete by remember(session) { mutableStateOf(false) }
 
     if (confirmingDelete) {
         DeleteConfirmation(

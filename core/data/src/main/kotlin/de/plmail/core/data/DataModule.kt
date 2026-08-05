@@ -50,6 +50,15 @@ abstract class DataModule {
      */
     @Binds @Singleton abstract fun reachableAccounts(real: FeedRepository): ReachableAccounts
 
+    /**
+     * The event editor's view of the calendar.
+     *
+     * Bound rather than injected directly, for the reason the two above are: the editor needs four
+     * methods, and holding the whole repository would put Room, DataStore and OkHttp behind a
+     * screen whose interesting behaviour is which form is on it.
+     */
+    @Binds @Singleton abstract fun eventEditing(real: CalendarRepository): EventEditing
+
     companion object {
 
         /**
@@ -93,12 +102,17 @@ abstract class DataModule {
             CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
         /**
-         * What "today" is, injected rather than read from the static clock.
+         * What "today" is — and, since it carries a zone, *where* the device is.
          *
          * [CalendarRepository] compares the window being refreshed against today to decide whether
          * the server may have answered it from a partial index. A test pinning that with
          * `LocalDate.now()` underneath would pass when it was written and start failing on a date
          * nobody can predict, which is the shape of flake that gets a whole assertion deleted.
+         *
+         * The **zone** is load-bearing as well: `CalendarEvent/query` windows go on the wire in
+         * UTC, so every window is converted out of this clock's zone. `systemDefaultZone` rather
+         * than `systemUTC` for that reason, and a test in Europe/Berlin is a phone in
+         * Europe/Berlin.
          */
         @Provides @Singleton fun clock(): Clock = Clock.systemDefaultZone()
 

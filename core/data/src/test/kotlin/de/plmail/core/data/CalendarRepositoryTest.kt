@@ -1,5 +1,6 @@
 package de.plmail.core.data
 
+import app.cash.turbine.test
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
 import de.plmail.jmap.client.HttpRequest
@@ -10,6 +11,7 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.LocalDateTime
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -568,6 +570,239 @@ class CalendarRepositoryTest {
             sommerfest.single().zoneId,
             "the all-day event carries no zone at all, and inherits none",
         )
+    }
+
+    /**
+     * The one o'clock event, which is the defect this whole conversion exists for.
+     *
+     * Watched on a device on 2026-08-06: the editor created an event at 01:00 Europe/Berlin, the
+     * server stored it correctly at 23:00Z the day before, and the refresh that followed asked for
+     * `after: 2026-08-06T00:00:00` — which the server reads as UTC, so the answer was honestly a
+     * day with nothing on it, and the reconcile swept the event the user had just saved. It stayed
+     * on the server and vanished off the phone, which is the worst shape a bug can have: the app
+     * was wrong and looked right.
+     *
+     * The create is what the fake reports afterwards, rather than a fixture put there in advance,
+     * so this is the same sequence in the same order rather than a re-statement of it.
+     *
+     * The clock is 01:30 in Berlin, because the agenda's window starts at **today** — and the
+     * defect lives on that edge: a whole week either side of the event hides it, since a window
+     * shifted by two hours still contains an event in the middle of it. What made this vanish on a
+     * device is that the event and the window's own lower bound were the same night.
+     */
+    @Test
+    fun `an event created at one in the morning survives the refresh that follows it`() = runTest {
+        val server = FakeCalendarServer(events = mutableListOf())
+        val repository =
+            calendarStack(
+                database,
+                calendarTransport(server),
+                clock = berlinClock("2026-08-05T23:30:00Z"),
+            )
+        val agendaFromToday =
+            CalendarWindow(LocalDate.of(2026, 8, 6), LocalDate.of(2026, 8, 6).plusDays(30))
+
+        server.onSet = {
+            server.events += oneOff("10999", "Vom Handy erstellt", "2026-08-06T01:00:00")
+
+            createdEvent(id = "10999")
+        }
+
+        repository.refresh(agendaFromToday)
+
+        val created =
+            repository.create(
+                calendarKey = testCalendarKey,
+                draft =
+                    EventDraft(
+                        title = "Vom Handy erstellt",
+                        start = LocalDateTime.of(2026, 8, 6, 1, 0),
+                        duration = Duration.ofHours(1),
+                    ),
+            )
+
+        assertTrue(created is CalendarWriteResult.Applied, "got $created")
+
+        repository.refresh(agendaFromToday)
+
+        assertEquals(
+            listOf("2026-08-06 Vom Handy erstellt"),
+            agenda(),
+            "the refresh asked the server about the right instants, so its answer kept the event",
+        )
+    }
+
+    /**
+     * The window on the wire is UTC, and this is the assertion that says so in so many words.
+     *
+     * Pinned as instants rather than left implicit in a placement, because every other test here
+     * would still pass if the conversion were dropped and the fake's semantics went back with it.
+     * `2026-08-03T00:00` in Berlin is `2026-08-02T22:00Z`, and the lower bound is the earlier of
+     * the two readings — see `CalendarWindow.fetchAfter`.
+     */
+    @Test
+    fun `the window a refresh asks about is in UTC`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        assertEquals(
+            LocalDateTime.of(2026, 8, 2, 22, 0) to LocalDateTime.of(2026, 8, 10, 0, 0),
+            server.windows.first(),
+        )
+        assertEquals(
+            LocalDateTime.of(2026, 8, 5, 22, 0) to LocalDateTime.of(2026, 8, 6, 22, 0),
+            server.windows.first { (from, _) -> from == LocalDateTime.of(2026, 8, 5, 22, 0) },
+            "and so is each day probe: Thursday the sixth in Berlin is 22:00Z on the fifth",
+        )
+    }
+
+    /**
+     * An all-day event is on its own date, on a device two hours ahead of UTC.
+     *
+     * The Sommerfest is the eighth wherever it is read, which is the entire reason all-day events
+     * exist — so it is placed from the wall clock the server published and never from which
+     * converted window returned it. That distinction is not academic here: an all-day event's
+     * midnight-to-midnight span overlaps *two* of the UTC-converted day windows on this device, so
+     * a client trusting a converted probe would draw the party twice, on the day it is on and the
+     * day after.
+     */
+    @Test
+    fun `an all-day event lands on its own date on a device two hours ahead of UTC`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        assertEquals(
+            listOf("2026-08-08"),
+            database
+                .calendarEvents()
+                .occurrencesOf(StoreKey.objectKey(testAccountKey, "10866"))
+                .map { it.date },
+        )
+    }
+
+    /**
+     * And a *recurring* all-day series is asked about in its own wall clock.
+     *
+     * A floating event — every all-day one, since the server nulls the zone of one — is stored as
+     * the wall clock it was given, in a column read as UTC. So the window that means "the eleventh"
+     * for it is the naive one, and a converted window would report it on the eleventh *and* the
+     * twelfth. Two rows, one holiday, and the phone disagreeing with the web about which day the
+     * office is shut.
+     */
+    @Test
+    fun `a recurring all-day series is probed in its own wall clock`() = runTest {
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        recurring(
+                            id = "10870",
+                            title = "Feiertag",
+                            start = "2026-08-04T00:00:00",
+                            days = setOf(LocalDate.of(2026, 8, 4), LocalDate.of(2026, 8, 8)),
+                            duration = "P1D",
+                            timeZone = null,
+                            showWithoutTime = true,
+                        )
+                    )
+            )
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        assertEquals(
+            listOf("2026-08-04", "2026-08-08"),
+            database
+                .calendarEvents()
+                .occurrencesOf(StoreKey.objectKey(testAccountKey, "10870"))
+                .map { it.date },
+            "the days the server reports it on, and not the mornings after them",
+        )
+    }
+
+    /**
+     * The Sunday the clocks go back is twenty-five hours long, and the window says so.
+     *
+     * Derived from `ZonedDateTime` day boundaries rather than by adding a day at a time, which is
+     * the difference this pins: an event at 23:30 on 2026-10-25 is 22:30Z, *past* the point a
+     * twenty-four-hour arithmetic would have closed the Sunday at — so the standup would be drawn
+     * on the Monday, an hour into a day it is not on. The client is forbidden from expanding a
+     * recurrence rule for exactly this reason; getting the window wrong reintroduces the same
+     * disagreement from the other end.
+     */
+    @Test
+    fun `a local day across the autumn clock change is twenty-five hours long`() = runTest {
+        val saturday = LocalDate.of(2026, 10, 24)
+        val sunday = LocalDate.of(2026, 10, 25)
+        val monday = LocalDate.of(2026, 10, 26)
+
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        recurring(
+                            id = "10871",
+                            title = "Nachtschicht",
+                            start = "2026-10-24T23:30:00",
+                            days = setOf(saturday, sunday, monday),
+                        )
+                    )
+            )
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(CalendarWindow(saturday, monday.plusDays(1)))
+
+        assertEquals(
+            listOf("2026-10-24", "2026-10-25", "2026-10-26"),
+            database
+                .calendarEvents()
+                .occurrencesOf(StoreKey.objectKey(testAccountKey, "10871"))
+                .map { it.date },
+            "the 23:30 of the long Sunday belongs to the Sunday",
+        )
+        assertEquals(
+            LocalDateTime.of(2026, 10, 24, 22, 0) to LocalDateTime.of(2026, 10, 25, 23, 0),
+            server.windows.first { (from, _) -> from == LocalDateTime.of(2026, 10, 24, 22, 0) },
+        )
+    }
+
+    /**
+     * The drawer's calendar row appears when a credential does, without being collected again.
+     *
+     * Seen on a freshly installed device on 2026-08-06: paired, mail syncing, and no Calendar row
+     * until the process was force-stopped and relaunched. The session probe ran once per
+     * collection, `MainViewModel` collects it before pairing has written anything, and nothing ever
+     * asked again — while the cache leg could not answer either, because the cache only gains
+     * calendars from a refresh and the only way to a refresh was the row that was not there.
+     *
+     * Collected once and never re-subscribed here, deliberately: re-collecting is what a process
+     * restart does, and it is the workaround this test exists to make unnecessary.
+     */
+    @Test
+    fun `availability turns true when a credential appears, on the same collection`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val credentials = calendarCredentials()
+        val repository =
+            calendarStack(
+                database = database,
+                transport = calendarTransport(server),
+                credentials = credentials,
+                paired = false,
+            )
+
+        repository.isAvailable().test {
+            assertFalse(awaitItem(), "nothing is paired, so there is nothing to offer")
+
+            credentials.pairWithTestServer()
+
+            assertTrue(awaitItem(), "the session was re-asked because the connection changed")
+
+            cancelAndIgnoreRemainingEvents()
+        }
     }
 
     /** Monday, Wednesday and Friday standup; a dentist on the Thursday; an all-day Saturday. */

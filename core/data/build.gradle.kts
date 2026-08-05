@@ -43,6 +43,10 @@ dependencies {
     // with this artifact and is pure Kotlin, so the fake runs on the JVM with
     // the rest of the suite.
     testImplementation(libs.androidx.datastore.preferences)
+    // Availability is a flow that has to change *without* being collected again,
+    // which is a statement about a sequence of emissions rather than about a
+    // value -- and `first()` cannot make it.
+    testImplementation(libs.turbine)
     testImplementation(testFixtures(projects.core.jmap))
     testRuntimeOnly(libs.junit.platform.launcher)
 

@@ -29,6 +29,22 @@ sealed interface EditorRequest {
 }
 
 /**
+ * One *opening* of the editor: what it is for, and the fact that it is a new one.
+ *
+ * [serial] is the whole point and it is not decoration. `EventEditorViewModel` is scoped to the
+ * activity, so it outlives the screen, and it guards against reloading the form on every
+ * recomposition by comparing what it was opened for — which works for editing two different events
+ * and fails for creating two events in a row, because [EditorRequest.New] equals itself. Watched on
+ * a device on 2026-08-06: type a title, save, tap New again, and the form comes back holding the
+ * event that was just created, a single tap away from being created twice.
+ *
+ * A counter rather than a reset on close, because the editor can leave the screen in ways it never
+ * hears about — the system back gesture is handled by [CalendarScreen], not by the editor — and a
+ * reset that the commonest exit route skips is the same bug with a longer path to it.
+ */
+data class EditorSession(val serial: Int, val request: EditorRequest)
+
+/**
  * The calendar, and everything reachable from it.
  *
  * Three screens swapped by state rather than pushed onto a back stack, which is the same shape
@@ -45,7 +61,13 @@ fun CalendarScreen(onBack: () -> Unit, viewModel: CalendarViewModel = hiltViewMo
     val state by viewModel.state.collectAsStateWithLifecycle()
 
     var open by rememberSaveable(stateSaver = OccurrenceKeySaver) { mutableStateOf(null) }
-    var editing by rememberSaveable(stateSaver = EditorRequestSaver) { mutableStateOf(null) }
+    var editing by rememberSaveable(stateSaver = EditorSessionSaver) { mutableStateOf(null) }
+
+    // Saved beside the session rather than derived from it: it has to keep
+    // counting across the editor being closed, which is precisely when the
+    // session is null, and it has to survive a rotation or the second New after
+    // one would be the first again.
+    var openings by rememberSaveable { mutableStateOf(0) }
 
     val screen =
         when {
@@ -75,10 +97,15 @@ fun CalendarScreen(onBack: () -> Unit, viewModel: CalendarViewModel = hiltViewMo
             ?.firstOrNull { it.eventKey == key.eventKey }
     }
 
+    fun openEditor(request: EditorRequest) {
+        openings += 1
+        editing = EditorSession(openings, request)
+    }
+
     when (screen) {
         CalendarPage.EDITOR ->
             EventEditorScreen(
-                request = editing ?: EditorRequest.New,
+                session = editing ?: EditorSession(openings, EditorRequest.New),
                 calendars = state.calendars,
                 onClose = { editing = null },
             )
@@ -101,7 +128,7 @@ fun CalendarScreen(onBack: () -> Unit, viewModel: CalendarViewModel = hiltViewMo
                     onBack = { open = null },
                     onEdit = {
                         open = null
-                        editing = EditorRequest.Edit(showing.eventKey)
+                        openEditor(EditorRequest.Edit(showing.eventKey))
                     },
                 )
             }
@@ -111,7 +138,7 @@ fun CalendarScreen(onBack: () -> Unit, viewModel: CalendarViewModel = hiltViewMo
                 onBack = onBack,
                 onRefresh = viewModel::refresh,
                 onOpen = { row -> open = OccurrenceKey(row.eventKey, row.date) },
-                onNew = { editing = EditorRequest.New },
+                onNew = { openEditor(EditorRequest.New) },
             )
     }
 }
@@ -132,19 +159,22 @@ private val OccurrenceKeySaver: Saver<OccurrenceKey?, Any> =
         },
     )
 
-private val EditorRequestSaver: Saver<EditorRequest?, Any> =
-    listSaver<EditorRequest?, String>(
+private val EditorSessionSaver: Saver<EditorSession?, Any> =
+    listSaver<EditorSession?, String>(
         save = {
-            when (it) {
+            when (val request = it?.request) {
                 null -> emptyList()
-                EditorRequest.New -> listOf("new")
-                is EditorRequest.Edit -> listOf("edit", it.eventKey)
+                EditorRequest.New -> listOf(it.serial.toString(), "new")
+                is EditorRequest.Edit -> listOf(it.serial.toString(), "edit", request.eventKey)
             }
         },
         restore = {
-            when (it.getOrNull(0)) {
-                "new" -> EditorRequest.New
-                "edit" -> EditorRequest.Edit(it[1])
+            val serial = it.getOrNull(0)?.toIntOrNull()
+
+            when {
+                serial == null -> null
+                it.getOrNull(1) == "new" -> EditorSession(serial, EditorRequest.New)
+                it.getOrNull(1) == "edit" -> EditorSession(serial, EditorRequest.Edit(it[2]))
                 else -> null
             }
         },

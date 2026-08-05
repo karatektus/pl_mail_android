@@ -3,7 +3,9 @@
 Written 2026-08-01, at the end of the session that landed the accounts screen, the narrow-screen
 row fixes and the offline queue. Revised 2026-08-02, at the end of the session that made the app
 notice a change on the server — which is also the session that found this file's own M6 row saying
-"done" about something that was not, and its central open question already answered. `docs/PLAN.md`
+"done" about something that was not, and its central open question already answered. Revised again
+2026-08-06, after the calendar was verified **on a device against the live stack** and gave up three
+defects that every test in the repo had agreed was fine — see M12. `docs/PLAN.md`
 carries the architecture, the decisions and the milestone history; **this file is the honest status
 and the to-do list**, and it exists because a milestone marked "done" that is not is worse than one
 marked partial.
@@ -30,7 +32,7 @@ Read this first, then `PLAN.md` for why anything is the way it is.
 | Design system | **done** | six themes, two layouts, three densities |
 | **M10 Appearance and settings** | **done** | see below |
 | **M11 Polish and ship-readiness** | **partial — roughly a third** | see below |
-| M12 Calendar (protocol, cache, UI) | **done for what it claims** | the cuts are listed below and are deliberate |
+| M12 Calendar (protocol, cache, UI) | **done for what it claims**, and three on-device defects fixed 2026-08-06 | the cuts are listed below and are deliberate; the defects were not |
 
 ### M6 — marked done long ago, and only true as of 2026-08-02
 
@@ -192,6 +194,46 @@ Not watched on a device by the session that wrote it: end-to-end verification is
 The parts most worth looking at are the German agenda at 320dp, where "Ganztägig" has to fit a fixed
 72dp time column, and a read-only calendar, where Edit and Delete are drawn disabled with their
 reason in the content description.
+
+#### Three defects, found on a device against the live stack on 2026-08-06
+
+None of them was visible from the suite, and the first was invisible *because* of the suite — the
+fake server compared query windows the same wrong way the client built them, so the tests agreed
+with the bug. All three are fixed and each now has a test that fails without its fix.
+
+1. **JMAP calendar query windows are UTC on the wire, and the app was sending device-local wall
+   clock.** `after` and `before` are JSCalendar LocalDateTimes, no offset and no `Z`, which reads
+   like an invitation to send the local clock; **the server's parse is the authority**, and
+   `App\Jmap\Query\CalendarEventQueryRunner::run()` puts each through `utcDate()` — read the string,
+   then `setTimezone('UTC')` — against occurrence spans stored as UTC instants. So every window was
+   shifted by the device's offset. On a UTC+2 phone an event created at 01:00 was stored correctly
+   at 23:00Z, the agenda then asked about `2026-08-06T00:00:00` onwards, the server honestly
+   answered that the day was empty, and the reconcile swept the just-saved event out of the cache:
+   gone from the phone, still on the server. `CalendarRepository` now converts the main window and
+   every one-day probe out of the injected `Clock`'s zone, from `ZonedDateTime` day boundaries so a
+   23- or 25-hour day is that long. Two consequences worth keeping in mind before touching that
+   code: the fetch window is the **union** of the converted and naive bounds, because a floating
+   event at the edge is only reachable by the latter; and floating or all-day events — every all-day
+   one, since the server nulls the zone of an all-day event — are probed with **naive** windows,
+   because that is the wall clock the server stored them as. A converted probe returns an all-day
+   event for two days running.
+2. **The drawer's Calendar row needed a process restart after pairing.** `isAvailable()` probed the
+   session once per collection; the drawer collects before pairing has written a credential, and
+   nothing re-asked. It now re-probes on the stored connection and on the account rows changing —
+   the same two flows the rest of the app treats as "the accounts changed" — with no timer and no
+   polling, and it still emits false first so a hanging probe cannot hold up a navigation row.
+3. **The New-event editor reopened on the previous draft.** `EventEditorViewModel` is
+   activity-scoped and guarded on the `EditorRequest`, which stops a recomposition wiping out
+   half-typed edits and does nothing at all for two New editors in a row, because `New` equals
+   itself: after a save, the next New opened pre-filled with the event that had just been created, a
+   tap from a duplicate. Openings now carry a serial from `CalendarScreen` — a counter rather than a
+   reset on close, because the editor can leave the screen without being told (the system back
+   gesture is `CalendarScreen`'s), and a reset the commonest exit route skips is the same bug with a
+   longer path to it.
+
+The editor also gained a seam it did not have: `EventEditing` in `:core:data`, bound to
+`CalendarRepository`, so which form is on the screen can be tested without standing up Room,
+DataStore and OkHttp. Same pattern and same reason as `KnownLabels` and `ReachableAccounts`.
 
 ---
 

@@ -350,6 +350,13 @@ encoded as tests; do not re-derive them:
 8. `Email.size` is `0` on seeded data. `mailboxIds`/`keywords` are objects (`{}` not `[]`).
 9. **`in:archive` means "carries no Inbox label"** — archiving removes Inbox and adds nothing. The
    Archive label is IMAP folder bookkeeping.
+10. **`CalendarEvent/query`'s `after` and `before` are UTC**, despite being JSCalendar
+    LocalDateTimes with no offset and no `Z`. `CalendarEventQueryRunner::run()` parses each and then
+    `setTimezone('UTC')`, and matches against occurrence spans stored as UTC instants — so a window
+    built from the device's wall clock is a window shifted by its offset, and an event in the first
+    hours of a local day falls outside the day it is on. Found on a device, not in a test: the fake
+    server compared the same naive strings the client sent. See `CalendarRepository.startOfDayUtc`
+    and REMAINING.md's M12 section.
 
 ### M2 · Persistence, credentials, onboarding — **in progress**
 `:core:database` currently has the 9-table Room schema, DAOs and the exported schema JSON, and

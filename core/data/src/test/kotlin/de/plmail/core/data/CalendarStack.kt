@@ -12,9 +12,11 @@ import de.plmail.jmap.client.ServerAddress
 import de.plmail.jmap.client.StreamingTransport
 import de.plmail.jmap.testing.RecordingTransport
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -25,6 +27,9 @@ import kotlinx.serialization.json.jsonPrimitive
 /** The calendar the fake server serves, and the one every fixture below files events into. */
 internal const val TEST_CALENDAR_ID = "10542"
 
+/** The seeded calendar's zone, the fixtures' zone, and the test device's. */
+internal val BERLIN: ZoneId = ZoneId.of("Europe/Berlin")
+
 internal val testCalendarKey: String = "$testAccountKey#$TEST_CALENDAR_ID"
 
 /**
@@ -33,8 +38,18 @@ internal val testCalendarKey: String = "$testAccountKey#$TEST_CALENDAR_ID"
  * Fixed rather than `LocalDate.now()`: the repository compares the refreshed window against today
  * to decide whether the server may have answered part of it from a partial index, and a suite that
  * took the real date would start saying something different on a day nobody chose.
+ *
+ * **In Europe/Berlin rather than UTC**, and that is load-bearing rather than local colour: the
+ * repository converts every query window out of the clock's zone, so a suite running at UTC would
+ * be a suite in which the conversion is the identity — which is exactly the machine on which the
+ * defect these tests exist for cannot be reproduced. The seeded events are a German user's, and so
+ * is the device holding them.
  */
-internal val testClock: Clock = Clock.fixed(Instant.parse("2026-08-05T12:00:00Z"), ZoneOffset.UTC)
+internal val testClock: Clock = Clock.fixed(Instant.parse("2026-08-05T12:00:00Z"), BERLIN)
+
+/** A phone in the seeded week's own zone, at [instant]. */
+internal fun berlinClock(instant: String = "2026-08-05T12:00:00Z"): Clock =
+    Clock.fixed(Instant.parse(instant), BERLIN)
 
 /**
  * A calendar server that answers from day membership rather than from a script.
@@ -42,9 +57,21 @@ internal val testClock: Clock = Clock.fixed(Instant.parse("2026-08-05T12:00:00Z"
  * The one thing the repository is *about* is asking the server which days a recurring series falls
  * on, so a transport keyed on call order — or one returning a canned month — would answer the
  * question the code is supposed to be asking. This one holds the truth as a set of days per event
- * and derives both answers from it: a windowed query returns every series with a day inside the
- * window, and a one-day query returns every series with that day. Which is exactly what the real
- * server does, and it means a test can move a day and watch the placement follow.
+ * and derives both answers from it: a windowed query returns every series with an occurrence
+ * overlapping the window. Which is exactly what the real server does, and it means a test can move
+ * a day and watch the placement follow.
+ *
+ * **It compares in UTC, because the real server does.** `CalendarEventQueryRunner::run()` puts
+ * `after` and `before` through `utcDate()` — parse, then `setTimezone('UTC')` — and matches them
+ * against `calendar_event_occurrence.span`, which holds UTC instants, with Postgres' half-open
+ * `tsrange` overlap. So each fixture day here is turned into the instant the server would have
+ * stored for it: through the event's own zone where it has one, and as a bare wall clock where it
+ * does not, which is what the server writes for a floating or all-day event.
+ *
+ * This mattered more than any assertion in the suite. The fake previously compared the naive
+ * LocalDateTime strings, which mirrored the client's own mistake back at it: every test passed
+ * while an event at 01:00 Berlin disappeared off a real phone. A fake that shares the client's
+ * misunderstanding cannot fail for it.
  */
 internal class FakeCalendarServer(
     /** Null publishes no calendars capability at all, which is the no-calendar-account case. */
@@ -53,12 +80,30 @@ internal class FakeCalendarServer(
     /** The `CalendarEvent/set` result arguments, when a test exercises a write. */
     var onSet: ((JsonObject) -> String)? = null,
 ) {
-    /** Every window a `CalendarEvent/query` asked about, in order. Half the value of the fake. */
-    val windows = mutableListOf<Pair<LocalDate, LocalDate>>()
+    /**
+     * Every window a `CalendarEvent/query` asked about, in order, **as it arrived on the wire**.
+     *
+     * In UTC, therefore, rather than in the local days the caller was thinking in — which is the
+     * point: this is the record of what the server was actually asked, and a test that wants to pin
+     * a boundary has to say which instant it means.
+     */
+    val windows = mutableListOf<Pair<LocalDateTime, LocalDateTime>>()
 
-    /** How many one-day windows were asked about, which is what batching is measured in. */
+    /**
+     * How many one-day windows were asked about, which is what batching is measured in.
+     *
+     * By duration rather than by `from.plusDays(1) == to`, because a local day converted to UTC is
+     * 23 hours long on one Sunday a year and 25 on another — and a probe for the day the clocks go
+     * back is still one probe.
+     */
     val dayProbes: Int
-        get() = windows.count { (from, to) -> from.plusDays(1) == to }
+        get() = windows.count { (from, to) ->
+            Duration.between(from, to) <= Duration.ofHours(MAX_LOCAL_DAY_HOURS)
+        }
+
+    private companion object {
+        const val MAX_LOCAL_DAY_HOURS = 25L
+    }
 }
 
 /** One event, and the days the server would report it on. */
@@ -103,6 +148,8 @@ internal fun recurring(
     days: Set<LocalDate>,
     duration: String = "PT15M",
     overrides: String? = null,
+    timeZone: String? = "Europe/Berlin",
+    showWithoutTime: Boolean = false,
 ): FakeEvent =
     FakeEvent(
         id = id,
@@ -112,6 +159,8 @@ internal fun recurring(
         duration = duration,
         isRecurring = true,
         overrides = overrides,
+        timeZone = timeZone,
+        showWithoutTime = showWithoutTime,
     )
 
 /**
@@ -151,16 +200,18 @@ private fun answer(server: FakeCalendarServer, requestBody: String): String {
 
             "CalendarEvent/query" -> {
                 val filter = arguments["filter"]!!.jsonObject
-                val from =
-                    LocalDateTime.parse(filter["after"]!!.jsonPrimitive.content).toLocalDate()
-                val to = LocalDateTime.parse(filter["before"]!!.jsonPrimitive.content).toLocalDate()
+                val from = LocalDateTime.parse(filter["after"]!!.jsonPrimitive.content)
+                val to = LocalDateTime.parse(filter["before"]!!.jsonPrimitive.content)
 
                 server.windows += from to to
 
                 val matched =
                     server.events
-                        .filter { event -> event.days.any { it >= from && it < to } }
-                        .sortedBy { event -> event.days.filter { it >= from && it < to }.min() }
+                        .filter { event -> event.spansIn(from, to).isNotEmpty() }
+                        // By the first overlapping occurrence's start, as the
+                        // server orders: a series met in a month-long window is
+                        // placed where a client would meet it.
+                        .sortedBy { event -> event.spansIn(from, to).min() }
 
                 lastQueried = matched.map { it.id }
 
@@ -195,6 +246,33 @@ private fun answer(server: FakeCalendarServer, requestBody: String): String {
     }
 
     return """{"sessionState":"fixed","methodResponses":[${responses.joinToString(",")}]}"""
+}
+
+/**
+ * The starts of this event's occurrences that overlap `[from, to)`, in UTC.
+ *
+ * The conversion the server performs when it writes an occurrence: an event with a zone is an
+ * instant, so its wall clock goes through that zone; one without is a wall clock the server stores
+ * verbatim in a UTC column. Half-open at both ends, as Postgres' `tsrange(..., '[)')` is, which is
+ * what makes an all-day event's midnight-to-midnight span one day rather than two.
+ */
+private fun FakeEvent.spansIn(from: LocalDateTime, to: LocalDateTime): List<LocalDateTime> {
+    val time = LocalDateTime.parse(start).toLocalTime()
+    val length = Duration.parse(duration)
+
+    return days
+        .map { day ->
+            val local = LocalDateTime.of(day, time)
+
+            if (timeZone == null) local
+            else
+                local
+                    .atZone(ZoneId.of(timeZone))
+                    .withZoneSameInstant(ZoneOffset.UTC)
+                    .toLocalDateTime()
+        }
+        .filter { starts -> starts < to && starts.plus(length) > from }
+        .sorted()
 }
 
 private fun FakeEvent.toJson(): String = buildString {
@@ -334,17 +412,16 @@ internal suspend fun calendarStack(
     database: PlMailDatabase,
     transport: JmapTransport,
     clock: Clock = testClock,
+    credentials: CredentialStore = calendarCredentials(),
+    /**
+     * Whether the credential is already stored.
+     *
+     * False is a freshly installed, unpaired app — the state the drawer's calendar row was decided
+     * in on a real device, and the only one in which "is there a calendar" can be watched change.
+     */
+    paired: Boolean = true,
 ): CalendarRepository {
-    val preferences = InMemoryPreferences()
-    val credentials = CredentialStore(preferences, PlainCipher)
-
-    credentials.save(
-        ServerConnection(
-            address = (ServerAddress.parse(TEST_SERVER) as ParsedAddress.Valid).address,
-            credential = Credential.AppPassword("plmail_" + "a".repeat(64)),
-            username = "someone@example.com",
-        )
-    )
+    if (paired) credentials.pairWithTestServer()
 
     val transports =
         object : TransportFactory {
@@ -362,5 +439,20 @@ internal suspend fun calendarStack(
         clients = AccountClients(credentials, transports),
         credentials = credentials,
         clock = clock,
+    )
+}
+
+/** An empty credential store, so a test can watch one gain a connection. */
+internal fun calendarCredentials(): CredentialStore =
+    CredentialStore(InMemoryPreferences(), PlainCipher)
+
+/** What pairing writes: the address, the minted app password and the username it belongs to. */
+internal suspend fun CredentialStore.pairWithTestServer() {
+    save(
+        ServerConnection(
+            address = (ServerAddress.parse(TEST_SERVER) as ParsedAddress.Valid).address,
+            credential = Credential.AppPassword("plmail_" + "a".repeat(64)),
+            username = "someone@example.com",
+        )
     )
 }
