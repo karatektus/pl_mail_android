@@ -190,10 +190,23 @@ which answers whether to draw the drawer entry from the cache *or* the session (
 wrong — the cache is empty before the first refresh and the session needs a network); and
 `event(eventKey)`, which is what lets the editor open on the series rather than on an occurrence.
 
-Not watched on a device by the session that wrote it: end-to-end verification is the supervisor's.
-The parts most worth looking at are the German agenda at 320dp, where "Ganztägig" has to fit a fixed
-72dp time column, and a read-only calendar, where Edit and Delete are drawn disabled with their
-reason in the content description.
+**Watched working on the device on 2026-08-06**, against the live 8002 stack, on a fresh install
+paired in the same process: the drawer entry appearing right after pairing; the agenda placing a
+Mon/We/Fr weekly series on exactly those days with empty days skipped; a recurrence override drawn
+with its own title *and* its moved time while the base occurrences kept theirs; an all-day event
+heading its day; event detail with duration, location, calendar and description; a create at
+**01:00 local** — the exact window defect 1 used to eat — surviving both the post-save refresh and
+an explicit pull-to-refresh, confirmed present on the server by id; a second New editor opening
+empty after the save; and delete via the confirmation dialog, confirmed gone from the server
+(`notFound` on re-get). The rows' TalkBack sentences were read out of the accessibility tree and are
+complete ("11:00 AM, Zahnarzt (verschoben), at Praxis Dr. Weber, on Personal").
+
+Still not watched: the German agenda at 320dp, where "Ganztägig" has to fit a fixed 72dp time
+column; a read-only calendar, where Edit and Delete are drawn disabled with their reason in the
+content description (no read-only calendar can be seeded without a connected remote); the horizon
+footer against a live window (the 30-day agenda cannot reach it); a floating recurring series; a
+window holding more than 100 events, which is where the `maxEventsInGet` chunking first matters;
+dark and the four non-default themes on the calendar screens; and the tablet.
 
 #### Three defects, found on a device against the live stack on 2026-08-06
 
@@ -234,6 +247,23 @@ with the bug. All three are fixed and each now has a test that fails without its
 The editor also gained a seam it did not have: `EventEditing` in `:core:data`, bound to
 `CalendarRepository`, so which form is on the screen can be tested without standing up Room,
 DataStore and OkHttp. Same pattern and same reason as `KnownLabels` and `ReachableAccounts`.
+
+#### Considered for the same parity pass and deliberately deferred, 2026-08-06
+
+With the calendar landed, the JMAP surface the client does not touch is down to two methods, and
+both were looked at rather than forgotten:
+
+- **`Identity/set`** (alias management — create and delete custom aliases, rename; the primary is
+  not removable and provider-discovered ones come back on the next sync). Deferred because the one
+  thing a phone user would manage aliases *for* — sending as one — is still blocked on the server:
+  `EmailSubmission/set` ignores `identityId` (the open ask in SERVER_REQUESTS.md), which is exactly
+  why the From picker deliberately offers one entry per account. A management screen whose product
+  effect cannot be exercised yet is furniture; build it together with the From picker the day the
+  submission honours the identity.
+- **`EmailSubmission/get` / `EmailSubmission/changes`**. A submission's id is the Email id and its
+  `undoStatus` is `pending` the moment it is queued; the test stack cannot even complete a send
+  (in-memory transport, no consumer). Nothing user-visible exists to draw from it that the Sent
+  label does not already say. Skipped until something needs it.
 
 ---
 

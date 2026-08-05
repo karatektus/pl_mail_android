@@ -840,6 +840,35 @@ where "the other accounts are still up to date" is false. One known defect remai
 up in REMAINING.md: the failure banner is **sticky**, because `_failures` is only rewritten by a
 page load, so it survives the network coming back until something re-pages.
 
+### M12 · The calendar — **done, verified on device 2026-08-06**
+
+plMail serves a vendor JMAP calendar surface (`urn:plmail:params:jmap:calendars`: `Calendar/get`,
+`CalendarEvent/get`, `CalendarEvent/query`, `CalendarEvent/set`) and until this milestone the app
+had no calendar at all — it was the last whole feature area the server had and the client did not.
+Landed as four commits, each a layer:
+
+- `b520532` — `:core:jmap`: the wire surface, pure JVM, pinned by fixtures captured from the live
+  stack. The decisions that matter: the capability URN goes in `using` (unlike push); calendars are
+  served from exactly one account, read from `primaryAccounts` under the calendars URN, not the
+  mail one; `CalendarEvent/get` chunks by the account's `maxEventsInGet` (100), not core's 500; the
+  state token is the literal `"fixed"` and is treated as opaque.
+- `a3b17d9` — `:core:database`/`:core:data` (schema 3 → 4, destructive fall-through): cache and
+  `CalendarRepository`. There is no `/changes` for calendars — the state cannot move — so staying
+  current is re-running the windowed query on open, on pull-to-refresh and nothing else. Recurring
+  placement never expands rules client-side (forbidden by CLIENT_DEVELOPMENT.md): day membership
+  comes from batched one-day probe queries, ≤31 per request under `maxCallsInRequest`, and
+  time-of-day from the base start plus the published `recurrenceOverrides`. The occurrence-
+  expansion ask that would collapse that to one call is filed in SERVER_REQUESTS.md with the probe
+  evidence.
+- `616f30c` — `:feature:calendar`: agenda, detail, editor, drawer entry gated on the server
+  publishing a calendar account. The deliberate cuts (agenda only, series-level edits, one calendar
+  per event, no reminders field — `alerts` is not writable) are argued in REMAINING.md.
+- `155da63` — the three defects on-device verification found, none visible to the suite: query
+  windows are **UTC on the wire** despite being zoneless LocalDateTimes (the fake server had
+  mirrored the client's wrong assumption, so the tests agreed with the bug); availability never
+  re-probed after pairing; the New editor kept the previous draft. Wire-behaviour item 10 below and
+  REMAINING.md's M12 section carry the detail.
+
 ---
 
 ## Non-negotiables
