@@ -3,8 +3,11 @@ package de.plmail.jmap.protocol
 import de.plmail.jmap.Fixture
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
 
 class SessionTest {
 
@@ -36,6 +39,94 @@ class SessionTest {
         assertNull(withoutPush.vapidPublicKey, "no key means do not offer Web Push")
     }
 
+    /**
+     * The fixture is a real plMail that predates the FCM work, and that is the point of this test.
+     *
+     * A server saying nothing about Firebase and one saying `"fcm": false` are different situations
+     * with opposite fixes — upgrade the server, versus switch it on in the server's admin page —
+     * and the session publishes `fcm` even when false precisely so a client can tell them apart.
+     * Collapsing them into `fcm == true` loses that, and the sentence the app shows sends somebody
+     * to a settings page their build does not have.
+     */
+    @Test
+    fun `a server that says nothing about fcm is not the same as one that says no`() {
+        val silent = session.push
+
+        assertNotNull(silent)
+        assertFalse(silent.knowsFcm, "this server predates FCM")
+        assertFalse(silent.fcm)
+        assertNull(silent.fcmConfig)
+    }
+
+    @Test
+    fun `reads the firebase project the server publishes for this install`() {
+        val withFcm =
+            LENIENT_JSON.decodeFromString(
+                Session.serializer(),
+                """
+                {
+                  "apiUrl": "https://mail.example.com/jmap/api",
+                  "downloadUrl": "https://mail.example.com/jmap/download",
+                  "uploadUrl": "https://mail.example.com/jmap/upload",
+                  "capabilities": {
+                    "urn:plmail:params:jmap:push": {
+                      "vapidPublicKey": "BN",
+                      "fcm": true,
+                      "fcmConfig": {
+                        "projectId": "plmail-abc123",
+                        "applicationId": "1:1234567890:android:0123456789abcdef",
+                        "apiKey": "AIza",
+                        "senderId": "1234567890"
+                      }
+                    }
+                  }
+                }
+                """
+                    .trimIndent(),
+            )
+
+        val push = withFcm.push
+
+        assertNotNull(push)
+        assertTrue(push.knowsFcm)
+        assertTrue(push.fcm)
+        assertEquals("plmail-abc123", push.fcmConfig?.projectId)
+        assertEquals("1234567890", push.fcmConfig?.senderId)
+        assertTrue(push.fcmConfig?.isComplete == true)
+    }
+
+    /**
+     * `fcm: false` publishes no `fcmConfig` **key at all**, which is the opposite rule to `fcm`'s
+     * and is deliberate: a null object invites a client to read `.projectId` off it and get null,
+     * and an absent key cannot be dereferenced.
+     */
+    @Test
+    fun `an instance with firebase switched off publishes no project`() {
+        val off =
+            LENIENT_JSON.decodeFromString(
+                Session.serializer(),
+                """
+                {
+                  "apiUrl": "https://mail.example.com/jmap/api",
+                  "downloadUrl": "https://mail.example.com/jmap/download",
+                  "uploadUrl": "https://mail.example.com/jmap/upload",
+                  "capabilities": {
+                    "urn:plmail:params:jmap:push": { "vapidPublicKey": "", "fcm": false }
+                  }
+                }
+                """
+                    .trimIndent(),
+            )
+
+        val push = off.push
+
+        assertNotNull(push)
+        assertTrue(push.knowsFcm, "the server answered the question")
+        assertFalse(push.fcm)
+        assertNull(push.fcmConfig)
+        assertNull(off.vapidPublicKey, "an empty key means Web Push is unconfigured too")
+    }
+
     @Test
     fun `exposes one account per connected mailbox`() {
         assertEquals(listOf(AccountId("1")), session.accountIds)
@@ -62,3 +153,6 @@ class SessionTest {
         assertTrue(bare.core.maxSizeUpload > 0)
     }
 }
+
+/** One lenient codec: the compiler rejects a `Json { }` built per call site. */
+private val LENIENT_JSON = Json { ignoreUnknownKeys = true }

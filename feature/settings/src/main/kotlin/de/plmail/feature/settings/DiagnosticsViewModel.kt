@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.Diagnostics
 import de.plmail.core.data.DiagnosticsReport
+import de.plmail.core.data.RemoteSubscription
 import de.plmail.core.datastore.PushState
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,7 +19,7 @@ import kotlinx.coroutines.launch
 /** What pressing "check now" left behind, held separately from the report it decorates. */
 private data class CheckState(
     val isChecking: Boolean = false,
-    val pushVerified: Boolean? = null,
+    val subscription: RemoteSubscription? = null,
     val repaged: List<String> = emptyList(),
     val error: String? = null,
 )
@@ -32,7 +33,7 @@ class DiagnosticsViewModel @Inject constructor(private val diagnostics: Diagnost
         combine(diagnostics.report, check) { report, checked ->
                 report.copy(
                     isChecking = checked.isChecking,
-                    pushVerified = checked.pushVerified,
+                    subscriptionOnServer = checked.subscription,
                     checkError = checked.error,
                     repagedAccounts = checked.repaged,
                 )
@@ -68,7 +69,7 @@ class DiagnosticsViewModel @Inject constructor(private val diagnostics: Diagnost
             check.update {
                 CheckState(
                     isChecking = false,
-                    pushVerified = outcome.getOrNull()?.pushVerified,
+                    subscription = outcome.getOrNull()?.subscription,
                     // Not folded into `error`: an account that has to re-page is
                     // not a failure and must not be drawn as one. It is the
                     // answer to "why is this list stale", which is a different

@@ -12,6 +12,7 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
@@ -373,7 +374,7 @@ class WriteMethodsTest {
     @Test
     fun `push subscription sends keys the way RFC 8291 names them`() {
         val subscription =
-            NewPushSubscription(
+            NewPushSubscription.WebPush(
                 deviceClientId = "android-1",
                 url = "https://ntfy.example/abc",
                 p256dh = "BPubKey",
@@ -384,6 +385,91 @@ class WriteMethodsTest {
 
         assertEquals("BPubKey", keys?.get("p256dh")?.jsonPrimitive?.content)
         assertEquals("AuthSecret", keys?.get("auth")?.jsonPrimitive?.content)
+    }
+
+    /**
+     * The two create shapes are exclusive, and the server refuses one carrying both.
+     *
+     * Pinned as a statement about the *wire* rather than about the Kotlin types, because the types
+     * are what make it unrepresentable and a future refactor back to one class with nullable fields
+     * would keep compiling. An FCM create that also carried `url` is refused with
+     * `invalidProperties`, so a client that sent one would register nothing and be told why in a
+     * field it was not reading.
+     */
+    @Test
+    fun `an fcm create carries a token and neither a url nor keys`() {
+        val subscription =
+            NewPushSubscription.Fcm(deviceClientId = "android-1", fcmToken = "cX9:APA91b")
+
+        val json = subscription.toJson()
+
+        assertEquals("cX9:APA91b", json["fcmToken"]?.jsonPrimitive?.content)
+        assertEquals(setOf("deviceClientId", "fcmToken", "types"), json.keys)
+    }
+
+    @Test
+    fun `a web push create carries a url and no token`() {
+        val json =
+            NewPushSubscription.WebPush(
+                    deviceClientId = "android-1",
+                    url = "https://ntfy.example/abc",
+                    p256dh = "BPubKey",
+                    auth = "AuthSecret",
+                )
+                .toJson()
+
+        assertEquals(setOf("deviceClientId", "url", "keys", "types"), json.keys)
+    }
+
+    /**
+     * Rotation is an update, and the one address property an update may change.
+     *
+     * `url` and `keys` stay create-only — repointing a verified subscription would carry the
+     * verification to an address that proved nothing — but Android reissues tokens on its own
+     * schedule, so refusing rotation would mean a device going permanently silent for doing
+     * something normal.
+     */
+    @Test
+    fun `rotating the fcm token is an update naming only that property`() {
+        val patch = PushSubscriptionPatch.fcmToken("cX9:new").toJson()
+
+        assertEquals(setOf("fcmToken"), patch.keys)
+        assertEquals("cX9:new", patch["fcmToken"]?.jsonPrimitive?.content)
+    }
+
+    /**
+     * `PushSubscription/get` reports the transport and never the address.
+     *
+     * Both halves matter. The transport is what tells a device which of the two kinds it ended up
+     * with, since `deviceClientId` is stable and a create *replaces* the row. The absence of
+     * `verificationCode` is why the app records the handshake locally instead of asking: the server
+     * returns it to nobody, so a client deriving "verified" from a null one would always say yes.
+     */
+    @Test
+    fun `a get reports the transport and never the address or the code`() {
+        val payload =
+            """{"list":[{"id":"7","deviceClientId":"plmail-ab12","transport":"fcm","url":null}]}"""
+
+        val decoded =
+            LENIENT_JSON.decodeFromString(PushSubscriptionGetResult.serializer(), payload)
+                .list
+                .single()
+
+        assertEquals(PushSubscriptionTransport.FCM, decoded.transportKind)
+        assertNull(decoded.url, "an FCM subscription has no URL to POST to")
+    }
+
+    /** An instance predating the extension names no transport, and only ever had one. */
+    @Test
+    fun `an unnamed transport reads as web push`() {
+        val payload = """{"list":[{"id":"7","url":"https://ntfy.example/abc"}]}"""
+
+        val decoded =
+            LENIENT_JSON.decodeFromString(PushSubscriptionGetResult.serializer(), payload)
+                .list
+                .single()
+
+        assertEquals(PushSubscriptionTransport.WEB_PUSH, decoded.transportKind)
     }
 }
 
@@ -439,3 +525,11 @@ class SubmissionCapabilityTest {
         assertFalse(second.supportsScheduledSend)
     }
 }
+
+/**
+ * One lenient codec for the tests that decode a raw response.
+ *
+ * Shared rather than built per test: `Json { }` compiles a descriptor cache on construction, and
+ * the compiler rejects a per-call one outright.
+ */
+private val LENIENT_JSON = Json { ignoreUnknownKeys = true }

@@ -33,6 +33,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.plmail.core.data.AccountHealth
 import de.plmail.core.data.DiagnosticsReport
+import de.plmail.core.data.PushChoice
 import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailPane
 import de.plmail.core.designsystem.PlMailTheme
@@ -191,18 +192,40 @@ private fun Accounts(accounts: List<AccountHealth>, repaged: List<String>) {
 @Composable
 private fun Push(report: DiagnosticsReport, onRetry: () -> Unit) {
     val push = report.push
+    val transport = PushChoice.of(push.transport)
 
     Section(stringResource(R.string.diagnostics_push)) {
+        // First, because every line under it means something different
+        // depending on the answer: a distributor is irrelevant on Firebase and
+        // a Firebase token is irrelevant on Web Push.
         Fact(
-            label = stringResource(R.string.diagnostics_distributor),
-            // The package name, not a friendly label. `io.heckel.ntfy` is what
-            // the user will see in Android's own app settings and what they can
-            // search for; a prettified name is a second vocabulary.
-            value = report.distributor ?: stringResource(R.string.diagnostics_none),
-            isMonospace = report.distributor != null,
+            label = stringResource(R.string.diagnostics_transport),
+            value =
+                when (transport) {
+                    PushChoice.WEB_PUSH -> stringResource(R.string.push_transport_webpush)
+                    PushChoice.FCM -> stringResource(R.string.push_transport_fcm)
+                    PushChoice.PULL -> stringResource(R.string.push_transport_pull)
+                    null -> stringResource(R.string.diagnostics_none)
+                },
         )
 
-        if (report.installedDistributors.isEmpty()) {
+        if (transport != PushChoice.FCM) {
+            Fact(
+                label = stringResource(R.string.diagnostics_distributor),
+                // The package name, not a friendly label. `io.heckel.ntfy` is
+                // what the user will see in Android's own app settings and what
+                // they can search for; a prettified name is a second
+                // vocabulary.
+                value = report.distributor ?: stringResource(R.string.diagnostics_none),
+                isMonospace = report.distributor != null,
+            )
+        }
+
+        if (transport == PushChoice.FCM) {
+            // Nothing about distributors below applies, and drawing "no
+            // distributor is installed" as a warning beside a working Firebase
+            // subscription is how a diagnostics screen loses its reader.
+        } else if (report.installedDistributors.isEmpty()) {
             Note(
                 text = stringResource(R.string.diagnostics_no_distributor),
                 tone = PaneTone.WARNING,
@@ -232,25 +255,48 @@ private fun Push(report: DiagnosticsReport, onRetry: () -> Unit) {
         // The most valuable line here, because it is the only one that is
         // evidence rather than belief: a push physically arrived on this
         // device. Everything above it is the app describing its own intentions.
+        // Which way in it came is part of the evidence -- "the last thing that
+        // arrived came down a stream while the app was open" is a completely
+        // different fact from "the last thing that arrived was a push".
         Fact(
             label = stringResource(R.string.diagnostics_last_push),
             value =
-                push.lastMessageAt?.let { asAbsoluteTime(it) }
-                    ?: stringResource(R.string.diagnostics_never),
+                push.lastMessageAt?.let { at ->
+                    val via = push.lastMessageTransport
+
+                    if (via == null) asAbsoluteTime(at)
+                    else stringResource(R.string.diagnostics_last_push_via, asAbsoluteTime(at), via)
+                } ?: stringResource(R.string.diagnostics_never),
         )
 
-        when (report.pushVerified) {
-            // Null is "not asked", which the button below fixes -- and it must
-            // not be drawn as "no", because an unverified subscription and an
-            // unasked question look nothing alike to whoever is debugging.
-            null -> Unit
-            true ->
-                Note(text = stringResource(R.string.diagnostics_verified), tone = PaneTone.SUNKEN)
-            false ->
+        // Read from this device rather than asked of the server, and that is a
+        // correction rather than a shortcut: `PushSubscription/get` never
+        // returns `verificationCode` to anybody, so the old check -- "is the
+        // code we got back null?" -- was structurally incapable of answering
+        // no. The handshake is recorded here at the moment this device echoed
+        // the code, which is the only place the fact exists.
+        if (push.isAwaitingVerification) {
+            Note(text = stringResource(R.string.diagnostics_unverified), tone = PaneTone.DANGER)
+        } else if (push.isLive) {
+            Note(text = stringResource(R.string.diagnostics_verified), tone = PaneTone.SUNKEN)
+        }
+
+        report.subscriptionOnServer?.let { remote ->
+            if (remote.exists) {
                 Note(
-                    text = stringResource(R.string.diagnostics_unverified),
+                    text = stringResource(R.string.diagnostics_subscription_present),
+                    tone = PaneTone.SUNKEN,
+                )
+            } else {
+                // The one failure a device cannot notice on its own. An FCM
+                // token Google reports as UNREGISTERED, or an endpoint that
+                // 410s, destroys the row server-side -- and this app goes on
+                // believing it is registered because nothing told it otherwise.
+                Note(
+                    text = stringResource(R.string.diagnostics_subscription_gone),
                     tone = PaneTone.DANGER,
                 )
+            }
         }
 
         push.lastError?.let { error ->
@@ -261,7 +307,7 @@ private fun Push(report: DiagnosticsReport, onRetry: () -> Unit) {
             )
         }
 
-        if (!push.isRegistered) {
+        if (!push.isRegistered && transport != PushChoice.PULL) {
             TextButton(onClick = onRetry) { Text(stringResource(R.string.diagnostics_enable_push)) }
         }
     }
@@ -326,7 +372,7 @@ internal fun Section(title: String, content: @Composable () -> Unit) {
  * the same shape in the one place that matters.
  */
 @Composable
-private fun Fact(label: String, value: String, isMonospace: Boolean = false) {
+internal fun Fact(label: String, value: String, isMonospace: Boolean = false) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = label,
@@ -344,7 +390,7 @@ private fun Fact(label: String, value: String, isMonospace: Boolean = false) {
 
 /** A short block of prose that carries a tone — something is wrong, or worth knowing. */
 @Composable
-private fun Note(text: String, tone: PaneTone, isMonospace: Boolean = false) {
+internal fun Note(text: String, tone: PaneTone, isMonospace: Boolean = false) {
     PlMailPane(modifier = Modifier.fillMaxWidth(), tone = tone) {
         Text(
             text = text,

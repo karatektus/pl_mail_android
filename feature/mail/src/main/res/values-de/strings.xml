@@ -56,6 +56,7 @@
     <string name="labels_loading">Labels werden geladen…</string>
     <string name="label_new">Neues Label</string>
     <string name="calendar">Kalender</string>
+    <string name="push">Push</string>
     <string name="diagnostics">Diagnose</string>
     <string name="accounts">Konten</string>
     <string name="label_new_title">Neues Label</string>

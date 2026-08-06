@@ -42,6 +42,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun MailShell(
     onSearch: () -> Unit,
+    onPush: () -> Unit,
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
     onAccounts: () -> Unit,
@@ -89,6 +90,10 @@ fun MailShell(
                 onCreate = {
                     editing = LabelEditorRequest.New
                     scope.launch { drawer.close() }
+                },
+                onPush = {
+                    scope.launch { drawer.close() }
+                    onPush()
                 },
                 onDiagnostics = {
                     // Closed first, so returning from diagnostics does not come

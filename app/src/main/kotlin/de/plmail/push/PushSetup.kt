@@ -13,8 +13,15 @@ import org.unifiedpush.android.connector.UnifiedPush
  */
 object PushSetup {
 
-    /** One instance per app; a second would register a second endpoint for the same mailbox. */
-    private const val INSTANCE = "plmail"
+    /**
+     * One instance per app; a second would register a second endpoint for the same mailbox.
+     *
+     * Not the same thing as the `deviceClientId` sent to the server, which it used to double as —
+     * see `AppPushTransport.deviceClientId` for why that conflation cost two phones on one account
+     * their push. This names the registration *inside the connector*; the id the server keys on is
+     * derived once, in one place, and shared with Firebase.
+     */
+    const val INSTANCE = "plmail"
 
     /**
      * Whether anything on this device can deliver a push.

@@ -39,6 +39,8 @@ import de.plmail.feature.settings.AccountsScreen
 import de.plmail.feature.settings.AppearanceScreen
 import de.plmail.feature.settings.AppearanceViewModel
 import de.plmail.feature.settings.DiagnosticsScreen
+import de.plmail.feature.settings.PushLogScreen
+import de.plmail.feature.settings.PushScreen
 import de.plmail.notifications.NotificationRequest
 import de.plmail.notifications.RequestNotificationPermission
 import de.plmail.notifications.notificationRequest
@@ -127,6 +129,11 @@ private fun PlMailApp(
     // exactly that. :app is the one place allowed to know about all three.
     var isSearching by rememberSaveable { mutableStateOf(false) }
     var isDiagnosing by rememberSaveable { mutableStateOf(false) }
+    var isChoosingPush by rememberSaveable { mutableStateOf(false) }
+    // Reached from the push screen rather than the drawer: the log is
+    // evidence about a registration, and reading it without the registration
+    // above it is reading a column of timestamps.
+    var isReadingPushLog by rememberSaveable { mutableStateOf(false) }
     var isAdjustingAppearance by rememberSaveable { mutableStateOf(false) }
     var isManagingAccounts by rememberSaveable { mutableStateOf(false) }
     var isCalendaring by rememberSaveable { mutableStateOf(false) }
@@ -217,6 +224,8 @@ private fun PlMailApp(
                             isManagingAccounts -> Screen.ACCOUNTS
                             isCalendaring -> Screen.CALENDAR
                             isAdjustingAppearance -> Screen.APPEARANCE
+                            isReadingPushLog -> Screen.PUSH_LOG
+                            isChoosingPush -> Screen.PUSH
                             isDiagnosing -> Screen.DIAGNOSTICS
                             isSearching -> Screen.SEARCH
                             else -> Screen.MAIL
@@ -233,6 +242,12 @@ private fun PlMailApp(
                             Screen.ACCOUNTS -> isManagingAccounts = false
                             Screen.CALENDAR -> isCalendaring = false
                             Screen.APPEARANCE -> isAdjustingAppearance = false
+                            // The log closes back onto the push screen it was
+                            // opened from, rather than all the way to mail:
+                            // somebody who just compared a log against their
+                            // server is one tap from switching transport.
+                            Screen.PUSH_LOG -> isReadingPushLog = false
+                            Screen.PUSH -> isChoosingPush = false
                             Screen.DIAGNOSTICS -> isDiagnosing = false
                             Screen.SEARCH -> isSearching = false
                             Screen.MAIL -> Unit
@@ -249,6 +264,13 @@ private fun PlMailApp(
                         CalendarScreen(onBack = { isCalendaring = false })
                     } else if (screen == Screen.APPEARANCE) {
                         AppearanceScreen(onBack = { isAdjustingAppearance = false })
+                    } else if (screen == Screen.PUSH_LOG) {
+                        PushLogScreen(onBack = { isReadingPushLog = false })
+                    } else if (screen == Screen.PUSH) {
+                        PushScreen(
+                            onBack = { isChoosingPush = false },
+                            onLog = { isReadingPushLog = true },
+                        )
                     } else if (screen == Screen.DIAGNOSTICS) {
                         // Above search in this chain rather than beside it,
                         // because a notification tap has to win over both: mail
@@ -267,6 +289,7 @@ private fun PlMailApp(
                     } else {
                         MailShell(
                             onSearch = { isSearching = true },
+                            onPush = { isChoosingPush = true },
                             onDiagnostics = { isDiagnosing = true },
                             onAppearance = { isAdjustingAppearance = true },
                             onAccounts = { isManagingAccounts = true },
@@ -338,6 +361,8 @@ private enum class Screen {
     CALENDAR,
     SEARCH,
     DIAGNOSTICS,
+    PUSH,
+    PUSH_LOG,
     APPEARANCE,
     ACCOUNTS,
 }

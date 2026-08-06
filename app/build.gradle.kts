@@ -40,6 +40,21 @@ android {
             buildConfigField("boolean", "HAS_GOOGLE_PUSH", "true")
         }
     }
+
+    /**
+     * No `google-services` plugin, and no `google-services.json`.
+     *
+     * That plugin's whole job is to bake one Firebase project into the APK at build time, which is
+     * exactly what cannot happen here: **one Play Store APK serves every self-hosted plMail**, and
+     * every installation has its own Firebase project belonging to whoever runs the server. The
+     * four public values come out of the session capability instead and `FirebaseOptions` is built
+     * from them at runtime — see `GoogleFcmSupport`. Adding the plugin later would make the build
+     * fail for want of a file that must never exist in this repository.
+     *
+     * The flavour source sets themselves need no declaration: `src/foss/kotlin`,
+     * `src/google/kotlin` and `src/google/AndroidManifest.xml` are conventional locations AGP
+     * already reads, and the manifest is merged into the main one for that flavour only.
+     */
 }
 
 dependencies {
@@ -75,6 +90,23 @@ dependencies {
     // aes128gcm, which is exactly what WebPushSender emits, so it needs no
     // server change.
     implementation(libs.unifiedpush.connector)
+
+    // Firebase in the `google` flavour and NOWHERE else.
+    //
+    // `googleImplementation` rather than `implementation` is the mechanism that
+    // makes "without Google" true rather than merely configurable: the artifact
+    // is on one flavour's compile and runtime classpath and absent from the
+    // other's, so the foss APK contains no gms bytecode to be found by anyone
+    // who goes looking -- which is the condition F-Droid inclusion turns on and
+    // the reason this app's own audience picked it.
+    //
+    // The corollary is that every Firebase *call site* has to live under
+    // app/src/google/, behind the FcmSupport interface in :core:data. A single
+    // import of com.google.firebase from app/src/main would break the foss
+    // build, which is the check working rather than an inconvenience.
+    "googleImplementation"(platform(libs.firebase.bom))
+    "googleImplementation"(libs.firebase.messaging)
+    "googleImplementation"(libs.play.services.base)
 
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)

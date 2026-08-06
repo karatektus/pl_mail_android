@@ -34,6 +34,13 @@ kotlinxSerialization = "1.11.0"
 kotlinxCoroutines = "1.11.0"
 kotlinxDatetime = "0.8.0"
 unifiedpush = "3.3.3"
+# Firebase, google flavour only. The BOM is what keeps firebase-messaging and
+# everything it drags in on one consistent set of versions, exactly as the
+# Compose BOM does — and unlike the Compose case there is no google-services
+# plugin here to align them instead, because this app has no
+# google-services.json to feed one.
+firebaseBom = "34.17.0"
+playServicesBase = "18.10.0"
 richEditor = "1.0.0"
 
 # Testing
@@ -113,6 +120,16 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlinx-datetime = { group = "org.jetbrains.kotlinx", name = "kotlinx-datetime", version.ref = "kotlinxDatetime" }
 
 unifiedpush-connector = { group = "org.unifiedpush.android", name = "connector", version.ref = "unifiedpush" }
+
+# Firebase Cloud Messaging. Declared here like everything else, but it may only
+# ever be added to the `google` flavour's configuration — see app/build.gradle.kts.
+# A plain `implementation` would put Google's bytecode in the foss APK and break
+# the one promise that build exists to make.
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
+# GoogleApiAvailability, which is how the app finds out that a de-Googled ROM
+# cannot run Firebase *before* trying and reporting the failure as a fault.
+play-services-base = { group = "com.google.android.gms", name = "play-services-base", version.ref = "playServicesBase" }
 
 # The rich-text editor for the composer. Compose has none, and plMail stores
 # HTML bodies -- this is the only maintained option that already speaks HTML in

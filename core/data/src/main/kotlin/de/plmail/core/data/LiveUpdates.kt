@@ -22,13 +22,18 @@ import kotlinx.coroutines.launch
  * whatever was on disk when they last put the phone down. It costs one `Email/changes` per account
  * and it runs on every device, whatever the gate below decides.
  *
- * **An EventSource stream, only where Web Push is not already doing the job.** A device with a
- * working distributor receives pushes in the foreground exactly as it does in the background — the
- * receiver is a `BroadcastReceiver` and has no opinion about what is on screen — so a stream there
- * buys nothing at all and costs what [EventSourceClient]'s own documentation warns about: the
- * server is frequently a home NAS, every open stream occupies a FrankenPHP worker for its entire
- * life, and once they are all taken the machine stops answering ordinary requests, including the
- * web UI its owner would use to work out why.
+ * **An EventSource stream, only where a push subscription is not already doing the job.** A device
+ * with a working subscription receives pushes in the foreground exactly as it does in the
+ * background — the UnifiedPush receiver is a `BroadcastReceiver` and the Firebase service a
+ * `Service`, and neither has an opinion about what is on screen — so a stream there buys nothing at
+ * all and costs what [EventSourceClient]'s own documentation warns about: the server is frequently
+ * a home NAS, every open stream occupies a FrankenPHP worker for its entire life, and once they are
+ * all taken the machine stops answering ordinary requests, including the web UI its owner would use
+ * to work out why.
+ *
+ * A device on [PushChoice.PULL] streams while it is visible, and that is the whole shape of that
+ * option: no subscription, no third party told when mail arrives, and instant delivery for as long
+ * as somebody is actually looking.
  *
  * **One stream, not one per account.** `StateChange.changed` is keyed by account id, so a single
  * connection on a single credential already reports every mailbox behind it.
@@ -41,7 +46,8 @@ constructor(
     private val credentials: CredentialStore,
     private val transports: TransportFactory,
     private val deltaSync: DeltaSync,
-    private val changes: StateChangeApplier,
+    /** Every delivery goes through here, whichever way in it came. See [stream]. */
+    private val pushes: PushRepository,
     private val pushState: PushStateStore,
     private val push: PushTransport,
     /**
@@ -77,7 +83,7 @@ constructor(
                 // never worth delaying the list that is on screen.
                 appearance.refresh()
 
-                if (webPushIsSilent()) stream()
+                if (pushIsSilent()) stream()
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (_: Throwable) {
@@ -99,21 +105,36 @@ constructor(
     }
 
     /**
-     * Whether Web Push is *not* a working channel on this device.
+     * Whether no push subscription is currently a working channel on this device.
      *
-     * Both halves are needed and neither implies the other. A subscription id with no distributor
-     * behind it is what a device is left holding after the distributor app is uninstalled — the
-     * registration looks fine and nothing will ever be delivered again. A distributor with no
-     * subscription is a device that has one installed and has not registered, or whose registration
-     * was refused.
+     * **Verification is part of the question now, and it was not before.** A subscription that has
+     * never been past the handshake receives nothing — silently, forever — so a device holding one
+     * and no stream is a device that finds out about mail every fifteen minutes while believing it
+     * is on push. That is exactly the failure the app used to be unable to see, and it is free to
+     * check here: the handshake is recorded locally, at the moment this device echoed the code, so
+     * asking costs no round trip.
      *
-     * Registration is deliberately not confirmed against the server here. `PushRepository.isLive`
-     * can tell whether a subscription was ever verified, and an unverified one delivers nothing
-     * forever — but asking costs a round trip on every foreground, and being wrong in this
-     * direction only means one redundant channel rather than none.
+     * For Web Push the distributor is asked as well, and neither half implies the other. A
+     * subscription with no distributor behind it is what a device is left holding after the
+     * distributor app is uninstalled — the registration looks fine and nothing will ever be
+     * delivered again. Firebase has no local counterpart to check: the service is part of this
+     * build, and whether Google can reach the device is not a question the device can answer.
      */
-    private suspend fun webPushIsSilent(): Boolean =
-        !pushState.state.first().isRegistered || push.distributor() == null
+    private suspend fun pushIsSilent(): Boolean {
+        val state = pushState.state.first()
+
+        if (!state.isLive) return true
+
+        return when (PushChoice.of(state.transport)) {
+            PushChoice.FCM -> false
+            // Null is a subscription of unknown kind, which on a server
+            // predating the transport field means Web Push -- the same default
+            // PushSubscriptionTransport takes, and for the same reason.
+            PushChoice.WEB_PUSH,
+            null -> push.distributor() == null
+            PushChoice.PULL -> true
+        }
+    }
 
     private suspend fun stream() {
         val stored = credentials.connection.first() ?: return
@@ -133,6 +154,13 @@ constructor(
                 credential = stored.credential,
             )
             .events()
-            .collect { changes.apply(it.changed) }
+            // Through the same door every push comes through, rather than
+            // straight into the applier. Two reasons, and the second is the
+            // load-bearing one: the delivery is recorded in the received-push
+            // log, so a user comparing what the server sent against what the
+            // phone got can see that this one arrived down an open stream and
+            // not through their subscription -- which is the difference between
+            // "push works" and "push works while I am looking at it".
+            .collect { pushes.delivered(it.changed, PushDelivery.STREAM) }
     }
 }

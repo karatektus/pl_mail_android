@@ -6,7 +6,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * The Session object (RFC 8620 §2), and the root of everything.
@@ -33,6 +32,15 @@ data class Session(
         get() = capabilities[Capability.CORE]?.let(CoreCapability::from) ?: CoreCapability()
 
     /**
+     * Which push transports this instance can actually deliver over.
+     *
+     * Null means the instance publishes no push capability at all, which is a *third* state and not
+     * the same as one that publishes it with nothing configured — see [PushCapability].
+     */
+    val push: PushCapability?
+        get() = capabilities[Capability.PUSH]?.let(PushCapability::from)
+
+    /**
      * The VAPID key needed before a Web Push subscription can be created.
      *
      * Null *or blank* means Web Push is unconfigured on this instance — the server publishes the
@@ -40,11 +48,7 @@ data class Session(
      * Don't offer push when it is absent.
      */
     val vapidPublicKey: String?
-        get() =
-            capabilities[Capability.PUSH]
-                ?.get("vapidPublicKey")
-                ?.jsonPrimitive
-                ?.contentOrNullIfBlank()
+        get() = push?.vapidPublicKey
 
     /** Accounts, in a stable order, keyed by their id. */
     val accountIds: List<AccountId>
@@ -453,6 +457,89 @@ data class SyncWindow(
                     (json["backfillPending"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
                         ?: false,
             )
+    }
+}
+
+/**
+ * The `urn:plmail:params:jmap:push` vendor extension: which transports this instance can deliver
+ * over.
+ *
+ * RFC 8620 defines no standard place for any of this, so a strict parser sees none of it.
+ *
+ * **The three fields take three different rules for absence, and each one is deliberate.**
+ * - [vapidPublicKey] is blank when Web Push is unconfigured. Blank rather than missing, so it is
+ *   always safe to read.
+ * - [knowsFcm] distinguishes an instance that says `"fcm": false` from one that predates FCM and
+ *   says nothing. Both mean "do not offer Firebase" and the *reason* differs: the first is an
+ *   administrator who has not pasted a Firebase project in yet, the second is a server that has to
+ *   be upgraded first. Telling a self-hoster to upgrade a server that is already current, or to
+ *   configure a page that does not exist, are equally useless instructions.
+ * - [fcmConfig] is absent — not null — when FCM is off, because a null object invites a caller to
+ *   read `.projectId` off it and get null. Check [fcm] first; this is a value that either exists or
+ *   does not.
+ */
+data class PushCapability(
+    val vapidPublicKey: String? = null,
+    /** Whether Firebase is configured *and* switched on. */
+    val fcm: Boolean = false,
+    /** Whether the server answered the FCM question at all. False on an instance predating FCM. */
+    val knowsFcm: Boolean = false,
+    val fcmConfig: FcmConfig? = null,
+) {
+    /** Whether a Web Push (or UnifiedPush) subscription may be created against this instance. */
+    val webPush: Boolean
+        get() = vapidPublicKey != null
+
+    companion object {
+        fun from(json: JsonObject): PushCapability {
+            val fcm = json["fcm"] as? JsonPrimitive
+
+            return PushCapability(
+                vapidPublicKey = (json["vapidPublicKey"] as? JsonPrimitive)?.contentOrNullIfBlank(),
+                fcm = fcm?.content?.toBooleanStrictOrNull() ?: false,
+                knowsFcm = fcm != null,
+                fcmConfig = (json["fcmConfig"] as? JsonObject)?.let(FcmConfig::from),
+            )
+        }
+    }
+}
+
+/**
+ * The four public values Android's `FirebaseOptions.Builder` needs, published by the server.
+ *
+ * The normal Android arrangement — a `google-services.json` processed at build time — cannot work
+ * for plMail: one APK serves every installation and every installation has its own Firebase
+ * project. So the server publishes these and the client builds `FirebaseOptions` at runtime,
+ * against whatever instance this install is signed into.
+ *
+ * All four ship inside every Firebase app's APK and are public by nature. The service-account key
+ * that can actually *send* never leaves the server.
+ */
+data class FcmConfig(
+    val projectId: String,
+    val applicationId: String,
+    val apiKey: String,
+    val senderId: String,
+) {
+    /** Whether all four values are present. A partial config cannot initialise Firebase. */
+    val isComplete: Boolean
+        get() =
+            projectId.isNotBlank() &&
+                applicationId.isNotBlank() &&
+                apiKey.isNotBlank() &&
+                senderId.isNotBlank()
+
+    companion object {
+        fun from(json: JsonObject): FcmConfig {
+            fun value(key: String) = (json[key] as? JsonPrimitive)?.content.orEmpty()
+
+            return FcmConfig(
+                projectId = value("projectId"),
+                applicationId = value("applicationId"),
+                apiKey = value("apiKey"),
+                senderId = value("senderId"),
+            )
+        }
     }
 }
 

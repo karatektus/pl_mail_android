@@ -6,8 +6,10 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
+import de.plmail.core.data.PushDelivery
 import de.plmail.core.data.PushRegistration
 import de.plmail.core.data.PushRepository
+import de.plmail.core.data.PushTransportManager
 import de.plmail.core.datastore.PushStateStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,8 @@ class PlMailPushReceiver : MessagingReceiver() {
     interface Dependencies {
         fun push(): PushRepository
 
+        fun transports(): PushTransportManager
+
         fun pushState(): PushStateStore
     }
 
@@ -46,6 +50,12 @@ class PlMailPushReceiver : MessagingReceiver() {
      * Registered with the server every time it arrives, not only the first: a distributor may
      * re-issue an endpoint after its own server changes, and a subscription pointing at the old one
      * fails silently forever.
+     *
+     * The `instance` the connector passes back is deliberately **not** used as the `deviceClientId`
+     * any more. It is the connector's own name for this registration and it is a constant, so using
+     * it meant two phones on one account sent the server the same device id and replaced each
+     * other's subscription. The id now comes from [PushTransportManager], which is also what lets
+     * Firebase replace *this* row rather than adding a second one.
      */
     override fun onNewEndpoint(context: Context, endpoint: PushEndpoint, instance: String) {
         val keys = endpoint.pubKeySet
@@ -56,52 +66,34 @@ class PlMailPushReceiver : MessagingReceiver() {
             // loud: a distributor that negotiates no encryption is a
             // configuration problem, not a silent no-op.
             Log.w(TAG, "Distributor returned an endpoint with no keys; push cannot be encrypted.")
-            launch(context) { _, state -> state.failed(NO_KEYS) }
+            launch(context) { dependencies -> dependencies.pushState().failed(NO_KEYS) }
             return
         }
 
-        launch(context) { push, state ->
-            val subscriptionId =
-                push.subscribe(
-                    registration =
-                        PushRegistration(
-                            endpoint = endpoint.url,
-                            p256dh = keys.pubKey,
-                            auth = keys.auth,
-                        ),
-                    deviceClientId = instance,
+        launch(context) { dependencies ->
+            dependencies
+                .transports()
+                .endpointArrived(
+                    PushRegistration(
+                        endpoint = endpoint.url,
+                        p256dh = keys.pubKey,
+                        auth = keys.auth,
+                    )
                 )
-
-            // Kept, rather than discarded as it was. The id is the only way to
-            // ask the server whether this subscription was ever *verified*, and
-            // an unverified subscription is registered, reported as fine by
-            // every other signal, and delivers nothing for ever. Without the id
-            // stored, the check written for exactly that failure could not be
-            // run at all.
-            if (subscriptionId == null) {
-                state.failed(NO_SERVER)
-            } else {
-                state.registered(subscriptionId, endpoint.url, System.currentTimeMillis())
-            }
         }
     }
 
     /**
      * A delivered message: either the verification handshake or a state change.
      *
-     * Both are handled by [PushRepository], which tells them apart by shape. The first one is
-     * load-bearing — until the verification code is echoed back, nothing else is ever delivered.
+     * Both are handled by [PushRepository], which tells them apart by shape, records the delivery
+     * in the received-push log and hands a state change to the one applier every channel shares.
+     * The first message is load-bearing — until the verification code is echoed back, nothing else
+     * is ever delivered.
      */
     override fun onMessage(context: Context, message: PushMessage, instance: String) {
-        launch(context) { push, state ->
-            // Recorded before the payload is looked at, and recorded whatever
-            // it turns out to say. This is the one line on the diagnostics
-            // screen that is evidence rather than belief: something the server
-            // sent actually arrived on this device. A payload the client cannot
-            // parse still proves the chain works, so counting only the ones it
-            // understood would hide a client bug behind "push is not working".
-            state.received(System.currentTimeMillis())
-            push.handle(message.content)
+        launch(context) { dependencies ->
+            dependencies.push().deliver(message.content, PushDelivery.UNIFIEDPUSH)
         }
     }
 
@@ -117,7 +109,7 @@ class PlMailPushReceiver : MessagingReceiver() {
         // receive on. Cleared rather than kept, so the diagnostics screen says
         // "not registered" -- which is true, and actionable -- instead of
         // "registered" beside a last-push time from last Tuesday.
-        launch(context) { _, state -> state.cleared() }
+        launch(context) { dependencies -> dependencies.pushState().cleared() }
     }
 
     override fun onRegistrationFailed(
@@ -126,7 +118,7 @@ class PlMailPushReceiver : MessagingReceiver() {
         instance: String,
     ) {
         Log.w(TAG, "Distributor refused to register: $reason")
-        launch(context) { _, state -> state.failed(reason.name) }
+        launch(context) { dependencies -> dependencies.pushState().failed(reason.name) }
     }
 
     private companion object {
@@ -137,13 +129,9 @@ class PlMailPushReceiver : MessagingReceiver() {
          * beside a log they will grep, and a translated string is one they cannot search for.
          */
         const val NO_KEYS = "The distributor returned an endpoint with no encryption keys."
-        const val NO_SERVER = "No server is connected, so the endpoint was not registered."
     }
 
-    private fun launch(
-        context: Context,
-        block: suspend (PushRepository, PushStateStore) -> Unit,
-    ) {
+    private fun launch(context: Context, block: suspend (Dependencies) -> Unit) {
         Log.d(TAG, "push event")
         val dependencies =
             EntryPointAccessors.fromApplication(
@@ -158,8 +146,7 @@ class PlMailPushReceiver : MessagingReceiver() {
             // Logged rather than swallowed. A push path that fails quietly is
             // indistinguishable from one that was never triggered, and this
             // runs where no user is watching.
-            runCatching { block(dependencies.push(), dependencies.pushState()) }
-                .onFailure { Log.w(TAG, "Push handling failed", it) }
+            runCatching { block(dependencies) }.onFailure { Log.w(TAG, "Push handling failed", it) }
         }
     }
 }

@@ -27,6 +27,56 @@
     <string name="diagnostics_unverified">Diese Registrierung wurde nie verifiziert, deshalb liefert der Server nichts aus. Aktivieren Sie Push erneut, um die Bestätigung zu wiederholen.</string>
     <string name="diagnostics_push_error">Letztes Push-Problem: %1$s</string>
     <string name="diagnostics_enable_push">Push aktivieren</string>
+    <string name="diagnostics_transport">Übertragungsweg</string>
+    <string name="diagnostics_last_push_via">%1$s (%2$s)</string>
+    <string name="diagnostics_subscription_present">Der Server hat die Registrierung dieses Geräts weiterhin gespeichert.</string>
+    <string name="diagnostics_subscription_gone">Der Server hat für dieses Gerät keine Registrierung mehr. Sie wurde höchstwahrscheinlich entfernt, nachdem eine Zustellung fehlgeschlagen ist. Wählen Sie unter „Push“ erneut einen Übertragungsweg, um sich neu zu registrieren.</string>
+
+    <string name="push">Push</string>
+    <string name="push_title">Push</string>
+    <string name="push_transport">Wie neue E-Mails auf dieses Gerät kommen</string>
+    <string name="push_transport_explains">Angeboten wird nur, was dieses Telefon und dieser Server tatsächlich zustellen können. Bei allem anderen steht, woran es liegt.</string>
+
+    <string name="push_transport_webpush">Web Push (UnifiedPush)</string>
+    <string name="push_transport_webpush_explains">Eine Verteiler-App, die Sie installieren, hält die Verbindung. plMail verschlüsselt jede Nachricht für dieses Gerät; der Verteiler erfährt also, wann eine E-Mail ankommt, aber nie, was darin steht. Ohne Google.</string>
+
+    <string name="push_transport_fcm">Firebase (Google)</string>
+    <string name="push_transport_fcm_explains">Nichts zu installieren. Ihr Server braucht ein Firebase-Projekt, und Google erfährt, dass und wann eine Nachricht angekommen ist – nie, was darin steht.</string>
+
+    <string name="push_transport_pull">Nur abrufen</string>
+    <string name="push_transport_pull_explains">Nirgends registriert. plMail sieht alle 15 Minuten nach und immer, wenn Sie die App öffnen, und bleibt aktuell, solange die App geöffnet ist. Außer Ihrem Server erfährt niemand, wann E-Mails ankommen.</string>
+
+    <string name="push_reason_server_too_old">Dieser Server kennt Firebase noch nicht. Nach einem Update von plMail auf dem Server steht die Option zur Verfügung.</string>
+    <string name="push_reason_server_disabled">Firebase ist auf diesem Server ausgeschaltet. In den Administrationseinstellungen des Servers lässt es sich unter „Push“ einschalten.</string>
+    <string name="push_reason_server_config">Die Firebase-Konfiguration dieses Servers ist unvollständig und kann deshalb nicht gestartet werden.</string>
+    <string name="push_reason_not_in_build">Dies ist die Google-freie Variante; sie enthält überhaupt keinen Firebase-Code. Das ist Absicht.</string>
+    <string name="push_reason_no_play_services">Auf diesem Gerät sind keine nutzbaren Google-Play-Dienste vorhanden.</string>
+    <string name="push_reason_init_failed">Firebase ließ sich mit der Konfiguration dieses Servers nicht starten.</string>
+    <string name="push_reason_no_vapid">Web Push ist auf diesem Server nicht eingerichtet; er kann also nichts verschlüsselt versenden.</string>
+    <string name="push_reason_no_distributor">Es ist kein Push-Verteiler installiert. Mit ntfy oder einem anderen UnifiedPush-Verteiler wird diese Option verfügbar.</string>
+
+    <string name="push_switching">Wird umgestellt …</string>
+
+    <string name="push_status">Aktueller Stand</string>
+    <string name="push_status_active">Registrierter Übertragungsweg</string>
+    <string name="push_status_none">Keiner</string>
+    <string name="push_status_awaiting">Registriert. Es fehlt noch die Bestätigungsnachricht des Servers: Bis sie ankommt und beantwortet ist, liefert diese Registrierung nichts aus. Das dauert normalerweise wenige Sekunden.</string>
+    <string name="push_status_awaiting_short">Wartet auf Bestätigung</string>
+    <string name="push_status_live">Bestätigt. Der Server liefert an dieses Gerät aus.</string>
+    <string name="push_status_not_registered">Nicht beim Server registriert.</string>
+    <string name="push_status_pull">Es besteht wie gewünscht keine Registrierung. E-Mails kommen beim 15-Minuten-Abruf an, beim Öffnen der App und laufend, solange die App geöffnet ist.</string>
+    <string name="push_status_last">Letzte Zustellung</string>
+    <string name="push_last_error">Letztes Problem: %1$s</string>
+    <string name="push_fell_back">Dieses Gerät ist auf Firebase eingestellt, der Server bietet es aber nicht mehr an: %1$s E-Mails kommen bis zur Wahl eines anderen Übertragungswegs über den 15-Minuten-Abruf.</string>
+
+    <string name="push_log_open">Empfangene Pushes</string>
+    <string name="push_log_explains">Jede Zustellung, die dieses Gerät empfangen hat, mit dem Weg, über den sie kam. Vergleichen Sie sie mit dem Zustellprotokoll Ihres Servers, um zu sehen, wo eine Nachricht steckengeblieben ist.</string>
+    <string name="push_log_title">Empfangene Pushes</string>
+    <string name="push_log_clear">Leeren</string>
+    <string name="push_log_empty">Noch nichts empfangen. Schicken Sie sich selbst eine Nachricht, um zu sehen, ob sie hier ankommt.</string>
+    <string name="push_log_verified">Bestätigt</string>
+    <string name="push_log_not_applicable">Nicht zutreffend</string>
+    <string name="push_log_changed">Konto %1$s: %2$s</string>
 
     <string name="diagnostics_check">Jetzt prüfen</string>
     <string name="diagnostics_check_explains">Synchronisiert alle Konten und fragt den Server, ob Push verifiziert ist. Nur das kontaktiert von dieser Seite aus Ihren Server.</string>

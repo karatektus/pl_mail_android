@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.material.icons.outlined.MonitorHeart
+import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.Person
@@ -99,6 +100,7 @@ fun LabelSidebar(
      * boundary exists to prevent.
      */
     onCalendar: (() -> Unit)?,
+    onPush: () -> Unit,
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
     onAccounts: () -> Unit,
@@ -249,6 +251,28 @@ fun LabelSidebar(
                 onClick = onAppearance,
                 icon = { Icon(imageVector = Icons.Outlined.Palette, contentDescription = null) },
                 label = { Text(stringResource(R.string.appearance)) },
+                colors =
+                    NavigationDrawerItemDefaults.colors(
+                        unselectedIconColor = theme.colors.inkMuted,
+                        unselectedTextColor = theme.colors.inkSoft,
+                        unselectedContainerColor = theme.colors.surface,
+                    ),
+            )
+
+            // Above diagnostics and below appearance: it is a setting people go
+            // looking for -- "why is my phone not ringing" is answered by
+            // choosing a transport, not by reading a report -- while
+            // diagnostics is the screen they need once that has not worked.
+            NavigationDrawerItem(
+                selected = false,
+                onClick = onPush,
+                icon = {
+                    Icon(
+                        imageVector = Icons.Outlined.NotificationsActive,
+                        contentDescription = null,
+                    )
+                },
+                label = { Text(stringResource(R.string.push)) },
                 colors =
                     NavigationDrawerItemDefaults.colors(
                         unselectedIconColor = theme.colors.inkMuted,

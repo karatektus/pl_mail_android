@@ -11,12 +11,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 /**
- * What the transport carrying pushes can say about itself.
+ * What the Web Push transport carrying pushes can say about itself.
  *
  * Implemented in `:app`, because that is where UnifiedPush lives and only that module knows which
  * distributors are installed. The seam runs this way round for the same reason `MailDestinations`
  * does: a build with a different push transport — or none — swaps the implementation and nothing
- * here changes.
+ * here changes. [FcmSupport] is its Firebase counterpart and is a separate interface rather than
+ * more methods here, because the `foss` flavour has to be able to implement one of them and answer
+ * "not in this build" for the other without linking anything.
  */
 interface PushTransport {
     /** The distributor app currently carrying pushes, or null when none has been chosen. */
@@ -27,6 +29,15 @@ interface PushTransport {
 
     /** Tries to register again. False when there is nothing on the device that could deliver. */
     fun register(): Boolean
+
+    /**
+     * Hands the endpoint back to the distributor.
+     *
+     * Needed by the transport picker rather than only by sign-out: a device moving to Firebase that
+     * left its distributor registered would go on receiving Web Push broadcasts the server is no
+     * longer sending to, and would hold an endpoint nothing points at.
+     */
+    fun unregister()
 }
 
 /** One account, and whether it is actually working. */
@@ -57,13 +68,18 @@ data class DiagnosticsReport(
     val distributor: String?,
     val installedDistributors: List<String>,
     /**
-     * Whether the server agrees the subscription is verified, once it has been asked.
+     * What the server still holds for this device's subscription, once it has been asked.
      *
      * Null until somebody presses the button, and that is deliberate: answering it costs a round
      * trip, and a diagnostics screen that quietly makes requests every time it is opened is one
      * more thing hitting a server somebody is already worried about.
+     *
+     * It deliberately does **not** report verification. No `/get` can: `verificationCode` is
+     * write-only, because echoing it would hand the handshake to whoever could read one response.
+     * Whether the handshake completed is recorded on this device, at the moment it echoed the code,
+     * and is already in [push].
      */
-    val pushVerified: Boolean? = null,
+    val subscriptionOnServer: RemoteSubscription? = null,
     /** What went wrong the last time the checks were run, if anything. */
     val checkError: String? = null,
     /**
@@ -77,6 +93,16 @@ data class DiagnosticsReport(
     val repagedAccounts: List<String> = emptyList(),
     val isChecking: Boolean = false,
 )
+
+/**
+ * What the server says it still holds for this device.
+ *
+ * [exists] false is a real and useful answer rather than an error: a token Firebase reports as
+ * `UNREGISTERED`, or an endpoint that 410s, **destroys** the subscription server-side. The device
+ * goes on believing it is registered, because nothing told it otherwise, and this is the only way
+ * to find out.
+ */
+data class RemoteSubscription(val exists: Boolean, val transport: String? = null)
 
 /**
  * The state of the app's own machinery, assembled for someone who has to fix it.
@@ -150,8 +176,13 @@ constructor(
         // which.
         val results = accountsRepository.all().map { it.uid to deltaSync.sync(it.uid) }
 
-        val verified =
-            pushState.state.first().subscriptionId?.let { id -> runCatching { push.isLive(id) } }
+        val subscription =
+            pushState.state.first().subscriptionId?.let { id ->
+                runCatching {
+                    push.describe(id)?.let { RemoteSubscription(true, it.transportKind.wire) }
+                        ?: RemoteSubscription(false)
+                }
+            }
 
         return CheckOutcome(
             // A sync that says "re-page" is not a failure, and neither is one
@@ -167,8 +198,8 @@ constructor(
                 results.mapNotNull { (accountKey, result) ->
                     accountKey.takeIf { result is SyncResult.NeedsRepage }
                 },
-            pushVerified = verified?.getOrNull(),
-            pushCheckError = verified?.exceptionOrNull()?.message,
+            subscription = subscription?.getOrNull(),
+            pushCheckError = subscription?.exceptionOrNull()?.message,
         )
     }
 
@@ -181,7 +212,7 @@ constructor(
         val failures: List<Throwable>,
         /** Accounts, by key, that the check found have to be paged again rather than synced. */
         val repaged: List<String>,
-        val pushVerified: Boolean?,
+        val subscription: RemoteSubscription?,
         val pushCheckError: String?,
     )
 }

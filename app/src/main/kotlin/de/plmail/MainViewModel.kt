@@ -6,14 +6,15 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.data.CalendarRepository
+import de.plmail.core.data.PushTransportManager
 import de.plmail.core.data.SyncWorker
 import de.plmail.core.datastore.CredentialStore
-import de.plmail.push.PushSetup
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 /**
  * Whether the app has a server to talk to.
@@ -36,6 +37,7 @@ class MainViewModel
 constructor(
     credentials: CredentialStore,
     calendar: CalendarRepository,
+    private val pushTransports: PushTransportManager,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -66,16 +68,29 @@ constructor(
                 // change in the store rather than a screen anyone visits.
                 if (stored == null) {
                     SyncWorker.cancel(context)
-                    PushSetup.disable(context)
+
+                    // Both transports released, and the local registration
+                    // forgotten. Routed through the manager rather than
+                    // unregistering the distributor here, because there are two
+                    // of them now and a sign-out that tidied up one would leave
+                    // a phone holding a Firebase token for a mailbox it is no
+                    // longer signed into.
+                    tidyPush { pushTransports.signedOut() }
+
                     ConnectionState.None
                 } else {
                     SyncWorker.schedule(context)
 
-                    // Push is an upgrade, never a requirement. Enabling it is
-                    // attempted and allowed to fail: a device with no
-                    // distributor keeps the fifteen-minute sync, which is why
-                    // that sync is scheduled first and unconditionally.
-                    PushSetup.enable(context)
+                    // Push is an upgrade, never a requirement. Re-applying the
+                    // user's stored choice is attempted and allowed to fail: a
+                    // device with no distributor and no Play services keeps the
+                    // fifteen-minute sync, which is why that sync is scheduled
+                    // first and unconditionally.
+                    //
+                    // Idempotent by design -- this flow re-emits -- so a device
+                    // already registered and verified on the transport it chose
+                    // is left alone rather than re-registered on every launch.
+                    tidyPush { pushTransports.reapply() }
 
                     ConnectionState.Connected(stored.username)
                 }
@@ -88,6 +103,24 @@ constructor(
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
                 initialValue = ConnectionState.Unknown,
             )
+
+    /**
+     * Runs a push-registration change **beside** the connection state rather than in front of it.
+     *
+     * Load-bearing, and the reason this is not just a call in the `map` above. Registering talks to
+     * the server: a create, and possibly a Firebase round trip before it. Awaiting that inside the
+     * transform would hold [connection] on `Unknown` for its whole duration — so a cold launch
+     * would show the splash until a NAS that is still waking up answered, and a launch with no
+     * network would show it until the request timed out. The old code got away with a call here
+     * because enabling UnifiedPush was a local, instant operation; this one is not.
+     *
+     * Failures are swallowed on purpose. Nothing here is something the user asked for, the
+     * fifteen-minute sync is already scheduled, and the settings screen states the registration's
+     * real condition rather than inferring it from whether this happened to work.
+     */
+    private fun tidyPush(block: suspend () -> Unit) {
+        viewModelScope.launch { runCatching { block() } }
+    }
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L

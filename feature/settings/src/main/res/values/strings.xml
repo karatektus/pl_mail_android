@@ -44,6 +44,63 @@
     <string name="diagnostics_unverified">This subscription was never verified, so the server will not deliver to it. Enable push again to redo the handshake.</string>
     <string name="diagnostics_push_error">Last push problem: %1$s</string>
     <string name="diagnostics_enable_push">Enable push</string>
+    <string name="diagnostics_transport">Transport</string>
+    <!-- The route matters as much as the time: "arrived at 10:14 down a stream while the app was open" is a different fact from "arrived at 10:14 as a push". -->
+    <string name="diagnostics_last_push_via">%1$s (%2$s)</string>
+    <string name="diagnostics_subscription_present">The server still holds this device\'s subscription.</string>
+    <!-- An unregistered FCM token, or an endpoint that 410s, destroys the subscription server-side. The device goes on believing it is registered because nothing told it otherwise. -->
+    <string name="diagnostics_subscription_gone">The server no longer holds a subscription for this device. It was most likely removed after a delivery failed. Choose a transport again under Push to re-register.</string>
+
+    <!-- The transport picker. -->
+    <string name="push">Push</string>
+    <string name="push_title">Push</string>
+    <string name="push_transport">How new mail reaches this device</string>
+    <string name="push_transport_explains">Only the options this phone and this server can actually deliver over are offered. The rest say why not.</string>
+
+    <string name="push_transport_webpush">Web Push (UnifiedPush)</string>
+    <string name="push_transport_webpush_explains">A distributor app you install holds the connection. plMail encrypts every payload to this device, so the distributor learns when mail arrives but never what it says. No Google.</string>
+
+    <string name="push_transport_fcm">Firebase (Google)</string>
+    <string name="push_transport_fcm_explains">Nothing to install. Your server needs a Firebase project, and Google learns that a message arrived and when — never what it contains.</string>
+
+    <string name="push_transport_pull">Pull only</string>
+    <string name="push_transport_pull_explains">No registration anywhere. plMail checks every 15 minutes and whenever you open the app, and stays live while the app is on screen. Nobody outside your server learns when mail arrives.</string>
+
+    <string name="push_reason_server_too_old">This server does not know about Firebase yet. Updating plMail on the server adds the option.</string>
+    <string name="push_reason_server_disabled">Firebase is switched off on this server. Turn it on under Push in the server\'s admin settings.</string>
+    <string name="push_reason_server_config">This server\'s Firebase configuration is incomplete, so it cannot be started.</string>
+    <string name="push_reason_not_in_build">This is the Google-free build, which contains no Firebase code at all. That is deliberate.</string>
+    <string name="push_reason_no_play_services">This device has no usable Google Play services.</string>
+    <string name="push_reason_init_failed">Firebase could not be started with this server\'s configuration.</string>
+    <string name="push_reason_no_vapid">Web Push is not configured on this server, so it can encrypt nothing to send.</string>
+    <string name="push_reason_no_distributor">No push distributor is installed. Installing ntfy, or another UnifiedPush distributor, makes this available.</string>
+
+    <string name="push_switching">Switching…</string>
+
+    <string name="push_status">Current state</string>
+    <string name="push_status_active">Registered transport</string>
+    <string name="push_status_none">None</string>
+    <!-- Registered and silent, legitimately, for a few seconds - and the same state a broken transport sits in forever. -->
+    <string name="push_status_awaiting">Registered. Waiting for the server\'s confirmation message: until it arrives and is answered, this subscription delivers nothing. It normally takes a few seconds.</string>
+    <string name="push_status_awaiting_short">Waiting for confirmation</string>
+    <string name="push_status_live">Confirmed. The server is delivering to this device.</string>
+    <string name="push_status_not_registered">Not registered with the server.</string>
+    <string name="push_status_pull">No subscription exists, as chosen. Mail arrives on the 15-minute check, when you open the app, and live while the app is on screen.</string>
+    <string name="push_status_last">Last delivery</string>
+    <string name="push_last_error">Last problem: %1$s</string>
+    <!-- The one failure that happens to a device doing nothing at all. Falling back silently would be a phone that quietly stops ringing. -->
+    <string name="push_fell_back">This device is set to Firebase, but the server no longer offers it: %1$s Mail is arriving on the 15-minute check until you pick another transport.</string>
+
+    <!-- The received-push log. -->
+    <string name="push_log_open">Received pushes</string>
+    <string name="push_log_explains">Every delivery this device received, with the route it came in by. Compare it against your server\'s own delivery log to find out where a message stopped.</string>
+    <string name="push_log_title">Received pushes</string>
+    <string name="push_log_clear">Clear</string>
+    <string name="push_log_empty">Nothing received yet. Send yourself a message to see whether it arrives here.</string>
+    <string name="push_log_verified">Confirmed</string>
+    <string name="push_log_not_applicable">Not applicable</string>
+    <!-- Account id and the object types whose state token moved. Never mail content: a push carries none, and this list keeps none. -->
+    <string name="push_log_changed">Account %1$s: %2$s</string>
 
     <string name="diagnostics_check">Check now</string>
     <string name="diagnostics_check_explains">Syncs every account and asks the server whether push is verified. This is the only thing on this screen that contacts your server.</string>

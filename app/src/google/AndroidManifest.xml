@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application>
+
+        <!--
+          Firebase delivery, google flavour only.
+
+          Merged into the main manifest for this flavour and absent from the
+          foss one, which is the same promise the googleImplementation
+          dependency makes: the foss build contains no Firebase artifact, so it
+          must not declare a service from one either.
+
+          exported="false" is correct here and is not the mistake it would be on
+          the UnifiedPush receiver. That receiver is reached by a *different app*
+          across a package boundary; this one is started by the Play services
+          process through a binding Firebase's own library sets up, and needs no
+          export.
+        -->
+        <service
+            android:name=".push.PlMailFirebaseMessagingService"
+            android:exported="false"
+            android:directBootAware="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!--
+          No default notification icon or channel metadata, deliberately.
+
+          Those keys tell Firebase how to draw a `notification` payload on the
+          app's behalf. plMail never sends one — every message is data-only, so
+          that the tray draws nothing before the app has decided whether the
+          user is already looking at the mailbox in question. Declaring the
+          defaults would advertise a path that must not exist.
+        -->
+
+        <!--
+          Auto-init off until the user asks for it.
+
+          With it on, Firebase mints a registration token — an identifier Google
+          holds and can route to — on the first launch of every install,
+          including every install that will never use FCM. This app's audience
+          self-hosts their mail specifically to avoid that, so the token is
+          minted at the moment somebody picks Firebase in settings and not
+          before: GoogleFcmSupport turns it on there.
+
+          Firebase's own init provider stays in place. It is what registers the
+          messaging component; what it does *not* do here is read a
+          google-services.json, because there is none — one APK serves every
+          self-hosted instance, so the project comes from the server's session
+          capability at runtime.
+        -->
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false"
+            tools:node="replace" />
+
+        <meta-data
+            android:name="firebase_analytics_collection_enabled"
+            android:value="false"
+            tools:node="replace" />
+
+    </application>
+
+</manifest>

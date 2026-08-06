@@ -72,33 +72,59 @@ class PushPayloadTest {
         assertEquals(mapOf("Email" to "9"), decoded.changed["1"])
     }
 
+    /**
+     * The server never returns the verification code, so the app cannot ask whether it is verified.
+     *
+     * This replaces a test that asserted the opposite, and the old code it pinned was wrong in the
+     * way that is hardest to notice: `PushRepository.isLive` read `verificationCode` back off a
+     * `PushSubscription/get` and called a null one verified — but the property is write-only on
+     * both `main` and the FCM branch, by design, because echoing it would hand the handshake to
+     * whoever could read one response. So the check could not return false, and the diagnostics
+     * line it powered said "verified" about every subscription, including the ones receiving
+     * nothing.
+     *
+     * The handshake is now recorded on the device that completed it, which is the only place the
+     * fact exists.
+     */
     @Test
-    fun `a subscription is only live once the code is gone`() {
-        // PushSubscriptionInfo still carrying a verificationCode is registered
-        // and receiving nothing -- the likeliest reason push "does not work".
-        val pending =
-            """{"state":"1","list":[{"id":"ps-1","url":"https://ntfy/x","verificationCode":"abc"}]}"""
-        val live = """{"state":"1","list":[{"id":"ps-1","url":"https://ntfy/x"}]}"""
+    fun `a get answers nothing about verification, so the device has to remember`() {
+        val response = """{"state":"1","list":[{"id":"ps-1","transport":"fcm","url":null}]}"""
 
-        val pendingCode =
+        val subscription =
             MethodResults.JMAP_JSON.decodeFromString(
                     de.plmail.jmap.methods.PushSubscriptionGetResult.serializer(),
-                    pending,
+                    response,
                 )
                 .list
                 .single()
-                .verificationCode
 
-        val liveCode =
-            MethodResults.JMAP_JSON.decodeFromString(
-                    de.plmail.jmap.methods.PushSubscriptionGetResult.serializer(),
-                    live,
-                )
-                .list
-                .single()
-                .verificationCode
+        // What it does answer, and both are useful: the row still exists, and
+        // which kind it is. An FCM token reported UNREGISTERED destroys the row
+        // server-side, so a `notFound` here is the one failure a device cannot
+        // notice on its own.
+        assertEquals("ps-1", subscription.id)
+        assertEquals(
+            de.plmail.jmap.methods.PushSubscriptionTransport.FCM,
+            subscription.transportKind,
+        )
+        assertEquals(null, subscription.url, "an FCM subscription has no URL")
+    }
 
-        assertEquals("abc", pendingCode)
-        assertEquals(null, liveCode)
+    /**
+     * Over FCM the same JSON arrives as the string value of one data key.
+     *
+     * Pinned because it is the join between two transports that must not drift: the Firebase
+     * service reads `data["payload"]` and hands the string to the same parser the UnifiedPush
+     * receiver hands its decrypted bytes to. If the payload were reshaped for FCM, a state change
+     * would apply on one transport and not the other — on different *devices*, so no single
+     * person's testing would see it.
+     */
+    @Test
+    fun `the fcm data payload is byte for byte the web push one`() {
+        val overFcm = """{"@type":"StateChange","changed":{"7":{"Email":"9"}}}"""
+
+        val decoded = MethodResults.JMAP_JSON.decodeFromString(StateChange.serializer(), overFcm)
+
+        assertEquals(mapOf("Email" to "9"), decoded.changed["7"])
     }
 }

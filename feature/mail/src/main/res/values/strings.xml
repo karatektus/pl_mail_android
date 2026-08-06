@@ -74,6 +74,7 @@
       one. Only drawn where the server publishes a calendar at all.
     -->
     <string name="calendar">Calendar</string>
+    <string name="push">Push</string>
     <string name="diagnostics">Diagnostics</string>
     <string name="accounts">Accounts</string>
     <string name="label_new_title">New label</string>
