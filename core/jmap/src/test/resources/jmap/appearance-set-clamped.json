@@ -1,0 +1,23 @@
+{
+  "methodResponses": [
+    [
+      "Appearance/set",
+      {
+        "oldState": "28d401877ba7a641",
+        "newState": "4b343f97a03c18ea",
+        "created": {},
+        "notCreated": {},
+        "updated": {
+          "singleton": {
+            "paneAlpha": 1
+          }
+        },
+        "notUpdated": {},
+        "destroyed": [],
+        "notDestroyed": {}
+      },
+      "a0"
+    ]
+  ],
+  "sessionState": "fedd99d33dd77929"
+}

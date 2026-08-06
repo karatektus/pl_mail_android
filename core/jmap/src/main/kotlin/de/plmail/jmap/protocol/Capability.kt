@@ -19,12 +19,36 @@ object Capability {
     const val SUBMISSION = "urn:ietf:params:jmap:submission"
     const val PUSH = "urn:plmail:params:jmap:push"
     const val CALENDARS = "urn:plmail:params:jmap:calendars"
+    const val CONTACTS = "urn:plmail:params:jmap:contacts"
+    const val APPEARANCE = "urn:plmail:params:jmap:appearance"
+
+    /**
+     * The sync window, and the one URN here that is never declared.
+     *
+     * It advertises numbers rather than methods — there is nothing to call under it — so it appears
+     * in the session's `accountCapabilities` and in no request's `using` list. See
+     * [Session.syncWindow].
+     */
+    const val SYNC = "urn:plmail:params:jmap:sync"
 
     /** The usual declaration for a mail request. */
     val USING_MAIL = listOf(CORE, MAIL)
 
     /** For requests that also submit mail. */
     val USING_MAIL_SUBMISSION = listOf(CORE, MAIL, SUBMISSION)
+
+    /**
+     * For `Contact/autocomplete`.
+     *
+     * Mail is absent for the same reason it is absent from [USING_CALENDARS]: the method reads the
+     * harvested address book and nothing from the mail capability. The server happens to answer
+     * without this declared — verified against the 8002 stack — which is exactly the kind of
+     * leniency that stops being true on the instance where the extension is switched off.
+     */
+    val USING_CONTACTS = listOf(CORE, CONTACTS)
+
+    /** For `Appearance/get` and `Appearance/set`. Per user, so no mail capability is involved. */
+    val USING_APPEARANCE = listOf(CORE, APPEARANCE)
 
     /**
      * For `Calendar/get` and every `CalendarEvent` method.

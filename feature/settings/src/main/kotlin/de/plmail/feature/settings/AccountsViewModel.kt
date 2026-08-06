@@ -5,47 +5,43 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.AccountSummary
 import de.plmail.core.data.AccountsRepository
+import de.plmail.jmap.protocol.SyncWindow
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** What the accounts screen is showing, once the server has been asked anything. */
-data class AccountsState(
-    val accounts: List<AccountSummary> = emptyList(),
-    val isAsking: Boolean = false,
-    val askError: String? = null,
-    /** True once the sweep has run, so "nothing came back" can be told from "not asked". */
-    val hasAsked: Boolean = false,
-)
-
-/** What pressing "ask the server" left behind, held apart from the list it decorates. */
-private data class ServerWindow(
-    val oldest: Map<String, Long> = emptyMap(),
-    val isAsking: Boolean = false,
-    val error: String? = null,
-    val hasAsked: Boolean = false,
-)
+/** What the accounts screen is showing. */
+data class AccountsState(val accounts: List<AccountSummary> = emptyList())
 
 @HiltViewModel
 class AccountsViewModel @Inject constructor(private val accounts: AccountsRepository) :
     ViewModel() {
 
-    private val asked = MutableStateFlow(ServerWindow())
+    /**
+     * What the server says it holds, read once when the screen opens.
+     *
+     * Held beside the list rather than joined into the database flow because it comes from the
+     * session, which is a suspending read of something already cached rather than a table anything
+     * observes.
+     *
+     * **No button, and no request.** This used to be an `Email/query` per account behind "Ask what
+     * the server holds", because the only way to find the boundary was to ask for the oldest
+     * message. The session now carries the window itself and the app has already fetched the
+     * session before this screen exists, so the honest thing is to draw it.
+     */
+    private val windows = MutableStateFlow<Map<String, SyncWindow>>(emptyMap())
+
+    init {
+        viewModelScope.launch { windows.value = accounts.serverWindows() }
+    }
 
     val state: StateFlow<AccountsState> =
-        combine(accounts.summaries, asked) { summaries, window ->
-                AccountsState(
-                    accounts =
-                        summaries.map { it.copy(oldestOnServer = window.oldest[it.accountKey]) },
-                    isAsking = window.isAsking,
-                    askError = window.error,
-                    hasAsked = window.hasAsked,
-                )
+        combine(accounts.summaries, windows) { summaries, server ->
+                AccountsState(summaries.map { it.copy(serverWindow = server[it.accountKey]) })
             }
             .stateIn(
                 scope = viewModelScope,
@@ -66,33 +62,6 @@ class AccountsViewModel @Inject constructor(private val accounts: AccountsReposi
 
     fun setNotifying(accountKey: String, notifying: Boolean) {
         viewModelScope.launch { accounts.setNotifying(accountKey, notifying) }
-    }
-
-    /**
-     * Asks every account how far back the server still holds mail.
-     *
-     * On the ViewModel's scope so leaving the screen does not cancel a sweep already in flight, the
-     * same way the diagnostics check is written — and for a second reason here: the result is
-     * cached in this ViewModel, so a cancelled sweep would leave the screen showing "asking…"
-     * forever when the user came back.
-     */
-    fun askServer() {
-        if (asked.value.isAsking) return
-
-        asked.update { it.copy(isAsking = true, error = null) }
-
-        viewModelScope.launch {
-            val outcome = runCatching { accounts.oldestOnServer() }
-
-            asked.update {
-                ServerWindow(
-                    oldest = outcome.getOrNull().orEmpty(),
-                    isAsking = false,
-                    error = outcome.exceptionOrNull()?.message,
-                    hasAsked = true,
-                )
-            }
-        }
     }
 
     private companion object {

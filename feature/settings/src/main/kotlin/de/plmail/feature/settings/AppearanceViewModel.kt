@@ -3,7 +3,7 @@ package de.plmail.feature.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import de.plmail.core.datastore.AppearanceStore
+import de.plmail.core.data.AppearanceRepository
 import de.plmail.core.designsystem.PlMailAppearance
 import de.plmail.core.designsystem.PlMailDensity
 import de.plmail.core.designsystem.PlMailLayout
@@ -20,27 +20,32 @@ import kotlinx.coroutines.launch
  *
  * Every setter writes and returns; nothing is held locally and applied on leaving. That is what
  * makes the screen its own preview — the whole app is already re-themed under the sheet by the time
- * the finger lifts — and it is also why there is no "apply" button to get wrong. The store is the
- * single source, so a second window or a process death mid-choice cannot disagree with it.
+ * the finger lifts — and it is also why there is no "apply" button to get wrong.
+ *
+ * The repository is the single source, and its source in turn is the server's `Appearance` with
+ * anything this device has changed since laid on top. `PlMailAppearance.of(...)` below is unchanged
+ * from when the values came out of DataStore alone: the plan promised that swap would touch the
+ * resolver's *source* and nothing else, and this is the line where that turned out to be true.
  */
 @HiltViewModel
-class AppearanceViewModel @Inject constructor(private val store: AppearanceStore) : ViewModel() {
+class AppearanceViewModel @Inject constructor(private val appearances: AppearanceRepository) :
+    ViewModel() {
 
     val appearance: StateFlow<PlMailAppearance> =
-        store.appearance
-            .map { stored ->
+        appearances.settings
+            .map { settings ->
                 PlMailAppearance.of(
-                    theme = stored.theme,
-                    layout = stored.layout,
-                    density = stored.density,
-                    dynamicColor = stored.dynamicColor,
-                    reduceTransparency = stored.reduceTransparency,
-                    paneAlpha = stored.paneAlpha,
+                    theme = settings.theme,
+                    layout = settings.layout,
+                    density = settings.density,
+                    dynamicColor = settings.dynamicColor,
+                    reduceTransparency = settings.reduceTransparency,
+                    paneAlpha = settings.paneAlpha,
                 )
             }
             .stateIn(
                 scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5_000),
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
                 // The defaults rather than a nullable state: this screen is
                 // drawn inside the theme it is editing, so there is no frame in
                 // which "not read yet" could be shown as anything else.
@@ -48,23 +53,23 @@ class AppearanceViewModel @Inject constructor(private val store: AppearanceStore
             )
 
     fun choose(theme: PlMailThemeChoice) {
-        viewModelScope.launch { store.setTheme(theme.wire) }
+        viewModelScope.launch { appearances.setTheme(theme.wire) }
     }
 
     fun choose(layout: PlMailLayout) {
-        viewModelScope.launch { store.setLayout(layout.wire) }
+        viewModelScope.launch { appearances.setLayout(layout.wire) }
     }
 
     fun choose(density: PlMailDensity) {
-        viewModelScope.launch { store.setDensity(density.wire) }
+        viewModelScope.launch { appearances.setDensity(density.wire) }
     }
 
     fun setDynamicColor(enabled: Boolean) {
-        viewModelScope.launch { store.setDynamicColor(enabled) }
+        viewModelScope.launch { appearances.setDynamicColor(enabled) }
     }
 
     fun setReduceTransparency(enabled: Boolean) {
-        viewModelScope.launch { store.setReduceTransparency(enabled) }
+        viewModelScope.launch { appearances.setReduceTransparency(enabled) }
     }
 
     /**
@@ -72,10 +77,15 @@ class AppearanceViewModel @Inject constructor(private val store: AppearanceStore
      *
      * A slider emits continuously, and DataStore serialises the whole preferences file on each
      * write — one drag across the track is several hundred rewrites of the file that also holds the
-     * credential and the push subscription id. This app has had one write storm already, in push
-     * registration; the shape of the mistake is worth recognising the second time.
+     * credential and the push subscription id, and now several hundred `Appearance/set` calls at a
+     * server that advertises four concurrent requests. This app has had one write storm already, in
+     * push registration; the shape of the mistake is worth recognising the second time.
      */
     fun setPaneAlpha(alpha: Float) {
-        viewModelScope.launch { store.setPaneAlpha(alpha) }
+        viewModelScope.launch { appearances.setPaneAlpha(alpha) }
+    }
+
+    private companion object {
+        const val STOP_TIMEOUT_MILLIS = 5_000L
     }
 }

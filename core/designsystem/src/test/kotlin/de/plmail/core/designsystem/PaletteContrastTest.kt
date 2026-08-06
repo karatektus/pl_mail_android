@@ -227,10 +227,11 @@ class PaletteContrastTest {
 
     @Test
     fun `a theme the app does not know resolves to system rather than failing`() {
-        // `Appearance` is not exposed yet, and when it is the server will be
-        // able to send `paper`, which this app deliberately does not have. A
-        // sync must not fail over a colour scheme.
-        assertEquals(PlMailThemeChoice.SYSTEM, PlMailThemeChoice.fromWire("paper"))
+        // A theme a future server adds is one this build has no opinion about,
+        // and a sync must not fail over a colour scheme. `paper` used to be
+        // here and is not any more: it is a theme this app now has an answer
+        // for. See ThemeWireTest.
+        assertEquals(PlMailThemeChoice.SYSTEM, PlMailThemeChoice.fromWire("midnight"))
         assertEquals(PlMailThemeChoice.SYSTEM, PlMailThemeChoice.fromWire(null))
         assertEquals(PlMailThemeChoice.NORD, PlMailThemeChoice.fromWire("nord"))
     }

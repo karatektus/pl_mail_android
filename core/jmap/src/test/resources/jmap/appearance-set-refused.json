@@ -1,0 +1,24 @@
+{
+  "methodResponses": [
+    [
+      "Appearance/set",
+      {
+        "oldState": "28d401877ba7a641",
+        "newState": "28d401877ba7a641",
+        "created": {},
+        "notCreated": {},
+        "updated": {},
+        "notUpdated": {
+          "singleton": {
+            "type": "invalidProperties",
+            "description": "\"midnight\" is not a known theme. Use one of: system, light, paper, dark, nord, dusk, solar."
+          }
+        },
+        "destroyed": [],
+        "notDestroyed": {}
+      },
+      "a0"
+    ]
+  ],
+  "sessionState": "fedd99d33dd77929"
+}

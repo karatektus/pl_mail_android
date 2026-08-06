@@ -1,0 +1,22 @@
+{
+  "methodResponses": [
+    [
+      "error",
+      {
+        "type": "invalidArguments"
+      },
+      "c0"
+    ],
+    [
+      "Contact/autocomplete",
+      {
+        "accountId": "1",
+        "query": "an",
+        "limit": 50,
+        "list": []
+      },
+      "c1"
+    ]
+  ],
+  "sessionState": "fedd99d33dd77929"
+}

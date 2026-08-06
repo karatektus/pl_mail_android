@@ -44,6 +44,13 @@ constructor(
     private val changes: StateChangeApplier,
     private val pushState: PushStateStore,
     private val push: PushTransport,
+    /**
+     * Appearance has no push and no `/changes`, so foreground is one of exactly two moments it can
+     * be noticed at all — the other being the fifteen-minute worker. A theme changed in a browser
+     * tab appears when the phone is next unlocked, which is the closest thing to "immediately" that
+     * a settings object with no change log can offer.
+     */
+    private val appearance: AppearanceRepository,
     @param:ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -64,6 +71,11 @@ constructor(
                 // half is the foreground-resume trigger; the stream is an
                 // optimisation on top of it.
                 deltaSync.syncAll()
+
+                // After the mail, and swallowing its own failures: the point of
+                // being here is that the app is visible, and re-theming it is
+                // never worth delaying the list that is on screen.
+                appearance.refresh()
 
                 if (webPushIsSilent()) stream()
             } catch (cancellation: CancellationException) {
