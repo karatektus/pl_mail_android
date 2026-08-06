@@ -25,6 +25,16 @@ abstract class DataModule {
     @Binds @Singleton abstract fun draftSender(real: ComposeRepository): DraftSender
 
     /**
+     * The reconcile's view of the submission methods.
+     *
+     * Bound rather than injected directly for the reason every seam in this file is: the reconciler
+     * wants four calls, and holding the whole composer repository would put the attachment uploader
+     * and the content resolver behind a background pass whose only job is to ask what the server
+     * thinks is still waiting.
+     */
+    @Binds @Singleton abstract fun submissionDirectory(real: ComposeRepository): SubmissionDirectory
+
+    /**
      * Declares the listener set so it can be empty.
      *
      * Without this, a graph with no `@IntoSet NewMailListener` fails to compile rather than

@@ -18,6 +18,7 @@ import de.plmail.jmap.methods.DraftEmail
 import de.plmail.jmap.methods.EmailGet
 import de.plmail.jmap.methods.EmailPatch
 import de.plmail.jmap.methods.EmailSet
+import de.plmail.jmap.methods.EmailSubmissionChanges
 import de.plmail.jmap.methods.EmailSubmissionGet
 import de.plmail.jmap.methods.EmailSubmissionSet
 import de.plmail.jmap.methods.FORBIDDEN_FROM
@@ -69,7 +70,7 @@ constructor(
     private val credentials: CredentialStore,
     private val mail: MailRepository,
     private val accounts: AccountsRepository,
-) : DraftSender {
+) : DraftSender, SubmissionDirectory {
 
     /**
      * Every address the user can send as, across every account.
@@ -312,21 +313,87 @@ constructor(
     }
 
     /**
-     * Whether this account released a completed send, and when.
+     * What the server says this submission is doing, or null when it has never heard of it.
      *
-     * The only question `EmailSubmission/get` can answer: a held submission and a cancelled one
-     * both come back `notFound`, so absence means "not sent (yet)" rather than "cancelled". Used to
-     * settle a schedule whose time has passed, never to poll one that has not.
+     * **This used to be able to say only one thing.** A held submission and a cancelled one both
+     * answered `notFound`, so a record coming back meant "it went" and nothing else. It now reports
+     * all three states, which is why the caller has to read [SubmissionRecord.undoStatus] rather
+     * than treat a non-null answer as a completed send — and why null no longer means "cancelled or
+     * held or failed" but only "never submitted, or an older plMail".
      */
-    override suspend fun releasedAt(accountKey: String, submissionId: String): SubmissionRecord? {
-        val account = database.accounts().byUid(accountKey) ?: return null
-        val client = clients.forAccount(accountKey) ?: return null
+    override suspend fun releasedAt(accountKey: String, submissionId: String): SubmissionRecord? =
+        submissions(accountKey, listOf(submissionId)).found.firstOrNull()
+
+    override suspend fun accountKeys(): List<String> = database.accounts().all().map { it.uid }
+
+    override suspend fun submissions(
+        accountKey: String,
+        ids: List<String>,
+    ): SubmissionSnapshot {
+        if (ids.isEmpty()) return SubmissionSnapshot()
+
+        val account = database.accounts().byUid(accountKey) ?: return SubmissionSnapshot()
+        val client = clients.forAccount(accountKey) ?: return SubmissionSnapshot()
 
         val request = RequestBuilder(Capability.USING_MAIL_SUBMISSION)
-        val get =
-            request.add(EmailSubmissionGet(AccountId(account.accountId), listOf(submissionId)))
+        val get = request.add(EmailSubmissionGet(AccountId(account.accountId), ids))
+        val result = client.send(request).result(get)
 
-        return client.send(request).result(get).list.firstOrNull()
+        return SubmissionSnapshot(found = result.list, notFound = result.notFound)
+    }
+
+    override suspend fun submissionChanges(
+        accountKey: String,
+        sinceState: String,
+    ): SubmissionDelta {
+        val account =
+            database.accounts().byUid(accountKey) ?: return SubmissionDelta(newState = sinceState)
+        val client = clients.forAccount(accountKey) ?: return SubmissionDelta(newState = sinceState)
+
+        val request = RequestBuilder(Capability.USING_MAIL_SUBMISSION)
+        val changes = request.add(EmailSubmissionChanges(AccountId(account.accountId), sinceState))
+        val result = client.send(request).result(changes)
+
+        return SubmissionDelta(
+            newState = result.newState.ifBlank { sinceState },
+            changed = result.changed,
+            hasMore = result.hasMoreChanges,
+        )
+    }
+
+    /**
+     * Subjects for messages this device did not compose.
+     *
+     * `Email/get` for the one property the scheduled-send bar draws. A message the account can no
+     * longer see is simply absent from the map; the bar has a name for that already.
+     */
+    override suspend fun subjects(
+        accountKey: String,
+        emailIds: List<String>,
+    ): Map<String, String> {
+        if (emailIds.isEmpty()) return emptyMap()
+
+        val account = database.accounts().byUid(accountKey) ?: return emptyMap()
+        val client = clients.forAccount(accountKey) ?: return emptyMap()
+
+        val request = RequestBuilder()
+        val get =
+            request.add(
+                EmailGet(
+                    accountId = AccountId(account.accountId),
+                    ids = emailIds.map(::EmailId),
+                    properties = listOf("id", "subject"),
+                )
+            )
+
+        return client
+            .send(request)
+            .result(get)
+            .list
+            .mapNotNull { email ->
+                email.subject?.takeIf { it.isNotBlank() }?.let { email.id.value to it }
+            }
+            .toMap()
     }
 
     /**

@@ -266,7 +266,7 @@ constructor(
      */
     private fun String.escapeForLike(): String = replace("%", "").replace("_", "")
 
-    private companion object {
+    internal companion object {
         const val MIN_QUERY = 2
         const val LIMIT = ContactAutocomplete.DEFAULT_LIMIT
 

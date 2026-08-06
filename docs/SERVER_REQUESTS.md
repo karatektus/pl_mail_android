@@ -93,16 +93,37 @@ it is `cannotUnsend`, and a cancelled submission answers `notFound` from `/get` 
 is no submission row to hold the state. The envelope is validated now, not dropped: a `mailFrom`
 that is not the submission's From is `forbiddenFrom`, an `rcptTo` differing from the Email's
 recipients is `invalidRecipients`. **Client action: the "send tomorrow at 8am" feature is
-buildable; the rejected local-alarm design stays rejected.** — *done 2026-08-06*, and one thing
-found while building it that the entry above does not say plainly enough to design from: **a
-submission that is still held is not gettable at all.** `EmailSubmissionGetMethod` skips any Message
-with a null `sentAt`, so `/get` answers `notFound` for a pending hold exactly as it does for a
-cancelled one and for a draft nobody ever submitted, and it always reports `undoStatus: "final"`.
-The release time therefore exists in the create response and nowhere else. The client keeps it in
-DataStore beside the offline queue — not Room, which is dropped on any schema bump precisely because
-everything in it is reconstructible from the server, and this is not. The consequence is the
-feature's honest limit: a message scheduled on one device is invisible on another, and only the
-ability to call it back is lost.
+buildable; the rejected local-alarm design stays rejected.** — *done 2026-08-06*.
+
+**Everything after "Cancellation exists" in the paragraph above described a limit that has since
+been lifted, and it is corrected here rather than deleted, because what was asked for and what
+arrived are not the same shape and the difference is the whole point of this file.** As first
+built, `EmailSubmissionGetMethod` skipped any Message with a null `sentAt`, so `/get` answered
+`notFound` for a pending hold exactly as it did for a cancelled one and for a draft nobody ever
+submitted, and it always reported `undoStatus: "final"`. The release time therefore existed in the
+create response and nowhere else, the client had to keep it in DataStore, and the feature's honest
+limit was that a message scheduled on one device was invisible on another.
+
+**`EmailSubmission/get` now reports all three of the spec's states**, and `EmailSubmission/changes`
+carries the transitions. Re-probed on 8002 on 2026-08-06 and captured verbatim into
+`core/jmap/src/test/resources/jmap/`:
+
+| State | `undoStatus` | `sendAt` |
+|---|---|---|
+| Queued or held | `pending` | when it is due — the real release time |
+| Cancelled before it left | `canceled` | when it *would* have left |
+| Sent | `final` | when it actually left |
+
+`notFound` now means one thing only: this Email was never submitted. A cancel is reported under
+`changes.updated` and the submit under `created`; a replay from `"0"` collapses both into
+`created`. Four further behaviours worth knowing, all probed the same day: `/get` refuses to
+enumerate (`ids: null` and a missing key are both `requestTooLarge`), `EmailSubmission/query` does
+not exist (`unknownMethod`), cancelling an already-cancelled submission is accepted again rather
+than refused, and the `final` arm **cannot be observed on this stack at all** — `in-memory://` with
+no consumer means no submission on it ever completes. **Client action: the device-local schedule
+becomes a cache, a schedule made anywhere is visible and cancellable everywhere.** — *done
+2026-08-06 on `chore/hardening`*; see `docs/REMAINING.md` for the reconcile and for how the
+fallback to an older plMail is detected from behaviour rather than from a version.
 
 Also worth writing down for whoever builds this next, all four verified on 8002 on 2026-08-06: the
 **minimal** scheduling envelope is `{"mailFrom": {"parameters": {"HOLDUNTIL": "…"}}}` — `email` and

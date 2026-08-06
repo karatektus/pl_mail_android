@@ -44,6 +44,42 @@ read it or not. The server was set back to its defaults afterwards.
 | `appearance-set-state-mismatch.json` | A stale `ifInState` is a **request-level** `error` with type `stateMismatch` — not a `notUpdated` entry. A caller waiting for a per-object failure never sees one. |
 | `contact-autocomplete.json` | Two calls in one batch: a blank query refused with `invalidArguments`, and a real one answered beside it — so a refusal does not take the batch down. Both normalised arguments are echoed: the trimmed `query` and the capped `limit` (asked 500, given 50). **`list` is empty and cannot be captured otherwise**: contacts are harvested through a Messenger message and the test stack runs no consumer, so its address book is permanently empty. The entry shape is asserted from `ContactAutocompleteMethod::toSuggestion` in the test instead. |
 
+## Submissions (`EmailSubmission/get` and `/changes`)
+
+Captured on 2026-08-06, in **one sequence against one submission**, which is why they can be read
+together: submit a draft with `HOLDUNTIL` eight hours out, get it, read the change log, cancel it,
+get it again, read the change log again.
+
+They exist because **a server behaviour changed and the old client was built around the absence**.
+plMail reconstructs a submission from the Message and used to skip any with no `sentAt`, so a
+submission still being *held* answered `notFound` — the same answer as a draft nobody had ever
+submitted — and anything that did resolve always reported `undoStatus: "final"`. The release time
+lived in the create response and nowhere else, which is why the schedule had to be kept in
+DataStore and why a message scheduled on one phone was invisible on every other device.
+
+| File | Pins down |
+|---|---|
+| `submission-set-held.json` | The create response: `undoStatus: "pending"` and the real `sendAt`. The submission id **is** the Email id, and `createdIds` carries the same value. |
+| `submission-get-pending.json` | Two ids in one get — one held, one a draft that was never submitted — landing on **opposite sides**: `list` with `undoStatus: "pending"` and the same `sendAt` the create response gave, and `notFound`. Under the old behaviour both would have been in `notFound`, and that difference is the whole of the client's feature detection. |
+| `submission-get-canceled.json` | `undoStatus: "canceled"`, **keeping the `sendAt` it would have left at**. The row survives rather than disappearing, which is what lets a cancel made on another device be seen here — absence would be indistinguishable from an old server holding it. |
+| `submission-changes.json` | The submit, reported under `created`. |
+| `submission-changes-cancel.json` | The cancel, reported under `updated`, for the same id. |
+
+**The `final` arm is deliberately absent and cannot be captured.** The `:8002` stack runs
+`MESSENGER_TRANSPORT_DSN=in-memory://` with no consumer and `MAILER_DSN=null://null`, so no
+submission on it ever completes. `EmailSubmissionReadTest` asserts that arm against a hand-built
+record and says so at the point of use, rather than a hand-written file sitting in here looking
+like everything around it.
+
+Two more behaviours probed the same day and worth knowing before writing anything against this
+surface, neither of which produces a fixture:
+
+- **There is no way to enumerate submissions.** `EmailSubmission/get` with `ids: null`, and with the
+  key missing entirely, are both `requestTooLarge`; `EmailSubmission/query` is `unknownMethod`. So
+  `/changes` is the only route to an id nobody remembered.
+- **Cancelling an already-cancelled submission is accepted again**, not refused — so a cancel is
+  safe to retry and safe to race with another device doing the same thing.
+
 ## Calendars (`urn:plmail:params:jmap:calendars`)
 
 Captured on 2026-08-05 against the same stack, after seeding four events onto the calendars the
@@ -121,6 +157,16 @@ no server change and exercises the same write path the app will use.
 **not** a JMAP bug: `IdentityGetMethod::fallbackIdentity` correctly returns `account.email`, and the
 seed sets it wrong (`SeedTestEmailCommand.php:110` does `->setEmail('E2E Mailbox')`). It is captured
 verbatim anyway. Do not write a From-picker test that treats this value as a valid address.
+
+**The seed also has no alias rows at all, on either account**, so this fixture is the *synthetic*
+identity — the one the server yields for the account address itself when there is nothing else to
+offer — and there is no captured multi-alias shape anywhere in here. Re-probed on 2026-08-06 and
+still true: account 1 answers one identity, account 2 answers one identity. Creating aliases is a
+server-side write this repo may not make, so the multi-alias case lives in
+`:core:data`'s `ComposeRepositoryTest` as a **constructed** fixture built to the contract in
+`docs/CLIENT_DEVELOPMENT.md` — one identity per sendable alias, primary first — and is labelled
+there as constructed rather than captured. If the seed ever grows alias rows, capture it and move
+it here.
 
 ## Re-capturing
 

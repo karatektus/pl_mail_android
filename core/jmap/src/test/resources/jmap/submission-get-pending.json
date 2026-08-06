@@ -1,0 +1,41 @@
+{
+  "methodResponses": [
+    [
+      "EmailSubmission/get",
+      {
+        "accountId": "1",
+        "state": "29576",
+        "list": [
+          {
+            "id": "38744",
+            "identityId": "1",
+            "emailId": "38744",
+            "threadId": "13928",
+            "envelope": {
+              "mailFrom": {
+                "email": "E2E Mailbox",
+                "parameters": null
+              },
+              "rcptTo": [
+                {
+                  "email": "probe@example.test",
+                  "parameters": null
+                }
+              ]
+            },
+            "sendAt": "2026-08-07T00:56:24Z",
+            "undoStatus": "pending",
+            "deliveryStatus": null,
+            "dsnBlobIds": [],
+            "mdnBlobIds": []
+          }
+        ],
+        "notFound": [
+          "38745"
+        ]
+      },
+      "c0"
+    ]
+  ],
+  "sessionState": "fedd99d33dd77929"
+}

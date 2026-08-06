@@ -1031,15 +1031,30 @@ constructor(
                     date = day.toString(),
                     startLocal = start.toWire(),
                     endLocal = start.plusWireDuration(occurrence.duration)?.toWire(),
-                    // An all-day event has no zone on the wire and is given none
-                    // here either. Inheriting the calendar's would let a reader in
-                    // another zone resolve midnight-in-Berlin to the previous
-                    // evening -- which is the whole thing all-day events exist to
-                    // not do.
-                    zoneId =
-                        (occurrence.timeZone ?: calendarZone).takeUnless {
-                            occurrence.showWithoutTime
-                        },
+                    // The event's own zone, or none. **Never the calendar's**, and
+                    // that changed: the fallback used to be `?: calendarZone`,
+                    // which read as harmless and made a real state unreachable.
+                    //
+                    // An all-day event has no zone on the wire and must be given
+                    // none, or a reader in another zone resolves
+                    // midnight-in-Berlin to the previous evening -- the whole
+                    // thing all-day events exist to not do. That much the
+                    // `takeUnless` already did. But a **floating** event also has
+                    // no zone and is not all-day: "9am wherever you are", which
+                    // plMail stores as a bare wall clock. Inheriting the
+                    // calendar's zone there labelled it `Europe/Berlin` on a
+                    // phone in Tokyo, and `EventDetailScreen` draws its
+                    // "floating" caption on `zoneId == null` -- so the fallback
+                    // did not just mislabel one event, it made that branch and
+                    // its string dead for every calendar that has a zone, which
+                    // is all of them.
+                    //
+                    // Safe because the server is explicit: probed on 8002,
+                    // `CalendarEvent/get` publishes `timeZone` on every timed
+                    // event and omits it only where `showWithoutTime` is set. So
+                    // the fallback never stood in for an ordinary event's zone;
+                    // the only thing it ever answered for was a floating one.
+                    zoneId = occurrence.timeZone.takeUnless { occurrence.showWithoutTime },
                     isAllDay = occurrence.showWithoutTime,
                     // Only when this occurrence's title is not the series'. Storing
                     // it unconditionally would work until a rename on the web left

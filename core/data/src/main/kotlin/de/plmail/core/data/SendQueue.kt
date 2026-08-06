@@ -50,6 +50,14 @@ constructor(
     private val compose: DraftSender,
     private val scheduled: ScheduledSends,
     /**
+     * What keeps the schedule agreeing with the server's own.
+     *
+     * Injected rather than constructed so a test of the undo window does not have to stand up a
+     * reconcile it has nothing to say about — and so the reconcile's own tests do not have to go
+     * through a send.
+     */
+    private val reconciler: ScheduledSendReconciler,
+    /**
      * A scope that deliberately outlives the composer.
      *
      * The screen closes the instant Send is tapped — that is the whole point — so a
@@ -252,24 +260,41 @@ constructor(
     /**
      * Retires records whose release time has passed.
      *
-     * `EmailSubmission/get` answers exactly one question — did it go, and when — because a held
-     * submission and a cancelled one both come back `notFound`. So a record is dropped when the
-     * server confirms the send, and otherwise only after [SETTLE_GRACE_MS]: a worker a minute
-     * behind would make the row vanish and the mail arrive afterwards, and a row still saying
-     * "leaving at 08:00" at half past nine is worse than no row at all.
+     * **A non-null answer is no longer enough to drop one, and that is the change here.**
+     * `EmailSubmission/get` used to resolve only for a completed send, so anything it returned
+     * meant "gone". It now also answers `pending` for a submission the worker has not got to yet —
+     * so a queue running a minute behind would, under the old rule, have made the row vanish while
+     * the mail was still sitting in it. A record is dropped when the server says the send is
+     * settled — [SubmissionRecord.isFinal] or [SubmissionRecord.isCanceled] — and otherwise only
+     * after [SETTLE_GRACE_MS], because a row still saying "leaving at 08:00" at half past nine is
+     * worse than no row at all.
+     *
+     * The grace is also what covers the server that says nothing useful: an older plMail answers
+     * `notFound` for a held submission, and a `null` here is that, a cancelled send and a failed
+     * one all wearing the same face.
      */
     suspend fun settle(now: Long = System.currentTimeMillis()) {
         scheduled.elapsed(now).forEach { send ->
-            val released = runCatching {
+            val record = runCatching {
                 compose.releasedAt(send.accountKey, send.emailId)
             }
                 .getOrNull()
 
-            if (released != null || now - send.sendAt > SETTLE_GRACE_MS) {
+            val settled = record != null && (record.isFinal || record.isCanceled)
+
+            if (settled || now - send.sendAt > SETTLE_GRACE_MS) {
                 scheduled.forget(send.accountKey, send.emailId)
             }
         }
     }
+
+    /**
+     * Brings the schedule in line with the server's, which is now where it actually lives.
+     *
+     * Kept behind the queue rather than injected wherever it is needed, so the one class that owns
+     * "what is still waiting to go" stays the one thing a screen has to know about.
+     */
+    suspend fun reconcile() = reconciler.reconcileAll()
 
     /** Clears a terminal state once it has been shown. */
     fun acknowledge() {

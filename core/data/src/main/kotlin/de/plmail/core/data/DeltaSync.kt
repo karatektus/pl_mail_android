@@ -77,6 +77,14 @@ constructor(
      */
     private val reachable: ReachableAccounts,
     /**
+     * What keeps the scheduled-send list agreeing with the server's.
+     *
+     * Here because `EmailSubmission` is a pushed type and this is the one place the app reacts to a
+     * push. It used to be unreachable news — a held submission had no server-side row to change —
+     * and now it is the mechanism by which two devices agree about when a message leaves.
+     */
+    private val schedules: ScheduledSendReconciler,
+    /**
      * Told about mail that has just arrived.
      *
      * A set rather than a single listener, and multibound rather than required, so that a module
@@ -111,6 +119,14 @@ constructor(
 
         return try {
             val outcome = run(client, AccountId(account.accountId), accountKey, StateToken(since))
+
+            // The schedule lives on the server now, and `EmailSubmission` is one
+            // of the four types push announces -- so this is the path a hold
+            // created on a laptop, or cancelled there, actually arrives on. One
+            // `EmailSubmission/changes` when there is nothing waiting, and its
+            // own failures are swallowed inside: a theme is not worth failing a
+            // sync over and neither is a scheduled-send row.
+            runCatching { schedules.reconcile(accountKey) }
 
             mail.recordSyncSucceeded(accountKey, at = System.currentTimeMillis())
 

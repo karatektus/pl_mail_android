@@ -21,6 +21,7 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -190,8 +191,10 @@ fun ScheduledSendsBar(
         }
 
         if (sends.size > MAX_ROWS) {
+            val overflow = sends.size - MAX_ROWS
+
             Text(
-                text = stringResource(R.string.send_scheduled_more, sends.size - MAX_ROWS),
+                text = pluralStringResource(R.plurals.send_scheduled_more, overflow, overflow),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -235,9 +238,19 @@ class ScheduledSendsViewModel @Inject constructor(private val queue: SendQueue) 
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     init {
-        // On every launch, and cheap: nothing to do unless a release time has
-        // passed while the app was closed, which is the case this exists for.
-        viewModelScope.launch { runCatching { queue.settle() } }
+        viewModelScope.launch {
+            // On every launch, and cheap: nothing to do unless a release time
+            // has passed while the app was closed, which is the case this
+            // exists for.
+            runCatching { queue.settle() }
+
+            // Then ask the server what it is actually holding. This is what
+            // makes a schedule created on a laptop appear here at all, and a
+            // cancel made there take the row away -- and it is deliberately
+            // *after* settle, so the cheap local pass has already retired
+            // anything obviously stale before a round trip is spent.
+            runCatching { queue.reconcile() }
+        }
     }
 
     fun cancel(send: ScheduledSend) {

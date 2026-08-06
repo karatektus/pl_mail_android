@@ -264,10 +264,55 @@ both were looked at rather than forgotten:
   why the From picker deliberately offers one entry per account. A management screen whose product
   effect cannot be exercised yet is furniture; build it together with the From picker the day the
   submission honours the identity.
-- **`EmailSubmission/get` / `EmailSubmission/changes`**. A submission's id is the Email id and its
-  `undoStatus` is `pending` the moment it is queued; the test stack cannot even complete a send
-  (in-memory transport, no consumer). Nothing user-visible exists to draw from it that the Sent
-  label does not already say. Skipped until something needs it.
+- **`EmailSubmission/get` / `EmailSubmission/changes`**. Deferred at the time on the grounds that
+  nothing user-visible could be drawn from them. **That reasoning expired the same week** — the
+  server started reporting held and cancelled submissions, which is precisely the user-visible
+  thing, and both methods are adopted on `chore/hardening`. See the scheduled-send section above.
+  The `Identity/set` deferral beside it still stands.
+
+### The test backfill — 2026-08-06, `chore/hardening`
+
+The compose, settings and calendar adoptions landed under a budget and left their risky paths
+uncovered. Filled in here, all JVM/Robolectric, all running on every `./gradlew test`:
+
+| Area | New | What it pins |
+|---|---|---|
+| **Scheduled send, server-backed** | `ScheduledSendReconcilerTest` (17), `EmailSubmissionReadTest` (10), five captured fixtures | The reconcile rules and the fallback detection above. The rule worth knowing is the asymmetry: getting the *first* question wrong leaves a stale row, getting the *second* wrong deletes the only copy of a release time in existence — so the suite is built around never dropping on silence. |
+| **`SendQueue.settle`** | 7 in `SendQueueTest` | A regression the three-state answer makes possible: `settle` used to drop a record on *any* non-null `/get` answer, and a queue running a minute behind now answers `pending` with a release time in the past. Dropping there makes the row vanish while the mail is still in the queue. Also the grace either side, and that a hold whose time has not come costs no request. |
+| **`AppearanceRepository`** | `AppearanceRepositoryTest` (8) | The flush loop's three non-success answers — `stateMismatch` retried once as a *re-read* with the user's own change re-applied on top, a refusal *dropping* the override rather than resending it for ever, and an unreachable server leaving it pending — plus `resolve`'s per-property precedence and the two Android-only switches. |
+| **`ContactSuggestions`** | `ContactSuggestionsTest` (10) | The debounce, and the supersede rule at **both** checkpoints. The second one needs the server's answer held open by a gate: with an instant transport there is no moment at which a request is in flight, which is why the naive version of that test passes whether the check exists or not. |
+| **`ComposeRepository` refusals** | `ComposeRepositoryTest` (17) | `forbiddenFrom` turned into a sentence naming the *address* with `Identity/get` re-read in the same breath; `invalidProperties` on a patch carrying attachments saying that **nothing** was saved, and the same refusal on a patch without them keeping the server's own wording; `submissionMode` decided per account from the session, including a second account with delayed send switched off. |
+| **Multi-alias** | in `ComposeRepositoryTest` | The picker with one entry per alias in the server's order, an alias's own display name, the account name riding along per identity, the user's account order deciding which address a new message opens on, and `loadDraft` matching the draft's existing From — case- and space-insensitively — rather than taking the first identity. |
+| **Calendar** | 4 in `CalendarRepositoryTest` | Paging past `maxEventsInGet`: 120 occurrences over two pages, every day exactly once, and the two sides paging **independently** — a client that paged them in lockstep would re-fetch the series once per page. And a floating multi-day series, which found a defect (below). |
+
+**One defect found by the backfill.** `CalendarRepository.place` resolved an occurrence's zone as
+`occurrence.timeZone ?: calendarZone`. Probed on 8002: plMail publishes `timeZone` on **every**
+timed event and omits it only where `showWithoutTime` is set — so that fallback never stood in for
+an ordinary event's zone, and the only thing it ever answered for was a *floating* event, which it
+then labelled with the calendar's zone. `EventDetailScreen` draws its "floating" caption on
+`zoneId == null`, so the fallback did not merely mislabel one event: it made that branch and its
+string unreachable for every calendar that has a zone, which is all of them. Nothing converted, so
+no event ever moved. The fallback is gone and the whole calendar suite still passes.
+
+**Deliberately not written, because they would be hollow here:**
+
+- **The undo/cancel race at the hold boundary.** What is deterministic is which side of
+  `UNDO_WINDOW_MS` the *client* thinks it is on, and that is pinned against a virtual clock. What is
+  not is whether a cancel leaving the device at window-minus-one-millisecond beats the server's own
+  release — that is decided by the network and the worker's poll on two unsynchronised clocks, and a
+  test driving real time to it would be asserting the speed of the test machine. The only honest
+  client-side statement is that the answer is *read* rather than assumed, which
+  `a cancel the server refuses is never reported as an undo` covers.
+- **`ContactSuggestions`' device-address-book branch.** `CONTENT_FILTER_URI` against a real
+  provider needs an emulator with contacts in it; Robolectric has no provider to query. What is
+  covered is that the ranked answer survives the supplement being absent or refusing.
+- **A `final` submission end to end.** The 8002 stack cannot complete a send at all — in-memory
+  transport, no consumer — so that arm is asserted from the documented contract against a
+  hand-built record, and the fixture README says so rather than a hand-written file sitting among
+  captured ones.
+- **The `ScheduledSendsBar` itself**, and every other Compose surface named above. These are
+  repository-level suites; the composables are still only covered by Roborazzi where they are
+  covered at all.
 
 ---
 
@@ -438,16 +483,54 @@ cannot do:
   mail leaves on time. Undo is a real `undoStatus: canceled` request that can be refused, and
   `SendState.TooLate` exists so "undone" is never shown over a message that has gone. The local
   delay is kept as the fallback for a server advertising no hold, chosen per account from the
-  session.
+  session. **The schedule became server-backed on 2026-08-06** — see the rewritten passage below.
 
-**The one thing a client cannot do, and it shapes the feature.** plMail reconstructs a submission
-from the Message, so a submission that is still *held* has no server-side row: `EmailSubmission/get`
-answers `notFound` for it exactly as it does for a draft nobody ever submitted, and the release time
-exists only in the create response. So the schedule lives in `ScheduledSendStore` — DataStore, not
-Room, for the same reason the outbox does: it is the one piece of state the server does not have,
-and Room is dropped on any schema bump. It follows that a message scheduled on this phone is
-invisible on another device and after a data wipe. The mail still goes; only the ability to call it
-back is lost, and nothing in the UI claims otherwise.
+**This section used to say a client could not read a held submission back. That is no longer
+true, and the passage is rewritten rather than annotated because a stale constraint is exactly the
+kind of thing this file has misled debugging with before.**
+
+What it used to say, and why: plMail reconstructs a submission from the Message and skipped any
+with a null `sentAt`, so a submission that was still *held* answered `notFound` from
+`EmailSubmission/get` exactly as a draft nobody ever submitted did. The release time existed in the
+create response and nowhere else, the schedule therefore had to live in `ScheduledSendStore`, and
+the feature's honest limit was that a message scheduled on one phone was invisible on every other
+device and could not be called back from any of them.
+
+**The server now reports all three states** — `pending` with the real `sendAt` for a held
+submission, `canceled` for one declined before it left, `final` for one that has gone — and
+`EmailSubmission/changes` carries every transition. Adopted 2026-08-06 on `chore/hardening`:
+
+- **`ScheduledSendReconciler`** reconciles the store against `EmailSubmission/get` per account, on
+  every delta sync (`EmailSubmission` is a pushed type, so this is the path a change on another
+  device actually arrives on) and when the scheduled-send bar first appears. A schedule created on a
+  laptop shows up here with the server's own release time and its subject read from `Email/get`; a
+  cancel made there takes the row away. **Cancellation goes through whichever device scheduled it** —
+  it never was device-bound, only the knowledge that there was something to cancel.
+- **Discovery is `EmailSubmission/changes` and nothing else.** There is no `EmailSubmission/query`
+  (`unknownMethod`) and `/get` with `ids: null` is `requestTooLarge`, both probed. The walk is
+  bounded — 8 pages per run, and only the most recent 128 ids are handed to `/get` — so a first run
+  against a mailbox with years of sent mail is not hundreds of round trips. The bound is honest
+  rather than invisible: it means "every recent schedule", not "every schedule ever".
+- **The local store is now the cache and the fallback**, not the record. Cache because the bar has
+  to be right on the first frame before any network. Fallback because an older plMail still answers
+  the old way, and there this file is the only copy of the release time there is.
+- **The fallback is detected by behaviour, never by a version.** A submission this device
+  submitted, whose release time has *not* yet passed, that comes back in `notFound`: a server that
+  reports held submissions would have answered `pending` for it, because it is holding it. So that
+  is proof of the old behaviour. A record answering `pending` or `canceled` is proof of the new one
+  — `final` alone is not, because the old server reported that too. And the rule that makes it safe
+  without any stored flag is that **a record is dropped on the server's word and never on its
+  silence**: `canceled`, `final`, or the settle grace expiring. An old server is silent about
+  exactly the submissions it is holding.
+
+What is still true: the store is not in Room. The reason has changed — it is no longer "the server
+does not have this" but "the schema bump must not empty a bar for somebody whose message leaves in
+ten minutes".
+
+**Not verified end to end, and it cannot be on this machine.** The 8002 stack runs
+`MESSENGER_TRANSPORT_DSN=in-memory://` with no consumer, so no submission on it ever reaches
+`final`; the `pending` → `canceled` half was probed live and captured as fixtures, and the `final`
+arm is handled from the documented contract. See `core/jmap/src/test/resources/jmap/README.md`.
 
 Two closed earlier and are merged into plMail `main`: **`Mailbox.color`** (`b06b909`), adopted here
 on 2026-08-01, and **the inbox categories** (`84c3f1b`), merged on 2026-08-02. Nothing stands

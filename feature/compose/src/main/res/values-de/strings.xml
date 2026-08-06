@@ -74,5 +74,8 @@
     <string name="send_scheduled_no_subject">(kein Betreff)</string>
     <string name="send_scheduled_leaves">Wird %1$s gesendet</string>
     <string name="send_scheduled_cancel">Abbrechen</string>
-    <string name="send_scheduled_more">und %1$d weitere warten</string>
+    <plurals name="send_scheduled_more">
+        <item quantity="one">und 1 weitere wartet</item>
+        <item quantity="other">und %1$d weitere warten</item>
+    </plurals>
 </resources>

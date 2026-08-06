@@ -15,6 +15,7 @@ import de.plmail.core.database.ThreadEntity
 import de.plmail.core.datastore.AccountPrefsStore
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.core.datastore.OutboxStore
+import de.plmail.core.datastore.ScheduledSendStore
 import de.plmail.core.datastore.SealedSecret
 import de.plmail.core.datastore.SecretCipher
 import de.plmail.core.datastore.ServerConnection
@@ -269,7 +270,29 @@ internal suspend fun syncStack(
         projection = FeedProjection(database, outbox),
         repages = RepageSignal(),
         reachable = {},
+        // A reconcile over a directory with no accounts, which does nothing and
+        // asks nothing. The sync tests are about `feed_entries`; the schedule
+        // has its own suite, and wiring the real one here would put an
+        // `EmailSubmission/changes` into every canned transport script.
+        schedules = ScheduledSendReconciler(scheduledSends(), NoSubmissions),
     )
+}
+
+/** A [ScheduledSends] over a store that is a variable. */
+internal fun scheduledSends(): ScheduledSends =
+    ScheduledSends(ScheduledSendStore(InMemoryPreferences()))
+
+/** A server with no accounts, for the paths that only have to not fall over. */
+internal object NoSubmissions : SubmissionDirectory {
+    override suspend fun accountKeys(): List<String> = emptyList()
+
+    override suspend fun submissions(accountKey: String, ids: List<String>) = SubmissionSnapshot()
+
+    override suspend fun submissionChanges(accountKey: String, sinceState: String) =
+        SubmissionDelta(newState = sinceState)
+
+    override suspend fun subjects(accountKey: String, emailIds: List<String>) =
+        emptyMap<String, String>()
 }
 
 /** The session the canned transports below answer discovery with. */

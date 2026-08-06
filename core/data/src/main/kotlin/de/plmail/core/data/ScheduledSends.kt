@@ -35,24 +35,55 @@ data class ScheduledSend(
 }
 
 /**
- * Every send this device is still holding a promise about.
+ * Every send this device knows the server is holding.
  *
- * The list is the client's, not the server's, and that asymmetry is the design rather than an
- * oversight — see [ScheduledSendStore] for why there is nothing to read back. What follows from it
- * is the retirement rule, which is deliberately conservative:
+ * **The list used to be the client's alone and is now a cache of the server's.**
+ * `EmailSubmission/get` reports a held submission as `pending` with its real `sendAt`, so
+ * [ScheduledSendReconciler] can put a schedule made on a laptop into this list and take out one
+ * cancelled there — see [ScheduledSendStore] for what changed and what did not. What is left of the
+ * old asymmetry is the retirement rule, still deliberately conservative:
  *
- * - **Before the release time** the record is authoritative. The mail is held, the draft is still
- *   in Drafts, and cancelling is a call the server will honour.
- * - **After it** the client can no longer promise anything. The cancel would race the worker, and
- *   `EmailSubmission/get` answers either "sent, at this time" or `notFound` — which is a cancelled
- *   send, a send in flight and a send that failed, all wearing the same face. So the record is
- *   settled once and retired either way: what happened to the mail is then the Sent label's answer
- *   to give, and it is a truthful one.
+ * - **Before the release time** the record stands. The mail is held, the draft is still in Drafts,
+ *   and cancelling is a call the server will honour whichever device asked for the hold.
+ * - **After it** the client can no longer promise anything of its own. The cancel would race the
+ *   worker. The server's own answer settles it — `canceled` and `final` are both "stop showing
+ *   this" — and a record the server says nothing useful about is dropped after a grace, because a
+ *   row still saying "leaving at 08:00" at half past nine is worse than no row at all.
+ *
+ * A record is **never** dropped on silence alone before its release time. That is the whole of the
+ * fallback for an older plMail: there, silence is what a held submission sounds like.
  *
  * Nothing here refuses a schedule the server would take. The ceiling comes from the session.
  */
 @Singleton
 class ScheduledSends @Inject constructor(private val store: ScheduledSendStore) {
+
+    /** Everything recorded for one account, which is the unit a reconcile works in. */
+    suspend fun forAccount(accountKey: String): List<ScheduledSend> =
+        decode(store.records.first()).filter { it.accountKey == accountKey }
+
+    /**
+     * Applies a whole account's reconciliation in one write.
+     *
+     * One `update` rather than a `record` per row and a `forget` per drop: every one of those wakes
+     * the bar over the mail list, and a reconcile that added three schedules and retired two would
+     * redraw it five times, twice showing a list that was never true.
+     *
+     * Records for **other** accounts are carried through untouched — this is a statement about one
+     * account, and a reconcile of the second account must not erase the first one's schedule.
+     */
+    suspend fun replaceAccount(accountKey: String, records: List<ScheduledSend>) {
+        store.update { raw ->
+            encode(decode(raw).filterNot { it.accountKey == accountKey } + records)
+        }
+    }
+
+    /** Where each account's `EmailSubmission/changes` walk has reached, by account key. */
+    suspend fun cursors(): Map<String, String> = decodeCursors(store.cursors.first())
+
+    suspend fun setCursor(accountKey: String, state: String) {
+        store.updateCursors { raw -> encodeCursors(decodeCursors(raw) + (accountKey to state)) }
+    }
 
     /** Everything recorded, soonest first. */
     val all: Flow<List<ScheduledSend>> = store.records.map { decode(it).sortedBy { it.sendAt } }
@@ -91,6 +122,13 @@ class ScheduledSends @Inject constructor(private val store: ScheduledSendStore) 
         runCatching { JSON.decodeFromString<List<ScheduledSend>>(raw) }.getOrDefault(emptyList())
 
     private fun encode(records: List<ScheduledSend>): String = JSON.encodeToString(records)
+
+    private fun decodeCursors(raw: String): Map<String, String> =
+        if (raw.isBlank()) emptyMap()
+        else
+            runCatching { JSON.decodeFromString<Map<String, String>>(raw) }.getOrDefault(emptyMap())
+
+    private fun encodeCursors(cursors: Map<String, String>): String = JSON.encodeToString(cursors)
 
     private companion object {
         val JSON = Json { ignoreUnknownKeys = true }

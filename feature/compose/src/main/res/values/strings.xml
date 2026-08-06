@@ -100,5 +100,14 @@
     <string name="send_scheduled_no_subject">(no subject)</string>
     <string name="send_scheduled_leaves">Leaves %1$s</string>
     <string name="send_scheduled_cancel">Cancel</string>
-    <string name="send_scheduled_more">and %1$d more waiting</string>
+    <!--
+      A count, so it is a plural and not a format string with a number in it.
+      English needs two forms; the languages this app is translated into do not
+      all agree on how many, which is the whole reason the count goes through
+      the platform rather than through a `%1$d` somebody wrote once.
+    -->
+    <plurals name="send_scheduled_more">
+        <item quantity="one">and 1 more waiting</item>
+        <item quantity="other">and %1$d more waiting</item>
+    </plurals>
 </resources>

@@ -64,6 +64,23 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     // once. Declaring a target we have never executed against
                     // would be a guess. Re-enable the moment an image ships.
                     disable += "OldTargetApi"
+
+                    // A build that fails on the calendar rather than on a
+                    // change. `AndroidGradlePluginVersion` compares the
+                    // wrapper's Gradle against whatever has been published
+                    // *today*, so a green build becomes a red one overnight
+                    // with nothing in the repo having moved -- and with
+                    // `warningsAsErrors` on, red means `./gradlew build` stops.
+                    // It reported nothing about this code even when it fired:
+                    // the whole finding was that Gradle 9.7.0 now exists.
+                    //
+                    // Upgrading is a real decision with a real diff behind it
+                    // -- the last time this project's Gradle moved it left
+                    // stale transform snapshots that read as a corrupt
+                    // dependency, see REMAINING.md -- and it belongs in a
+                    // commit that says so, not in whichever build happens to
+                    // run the morning after a release.
+                    disable += "AndroidGradlePluginVersion"
                 }
 
                 testOptions.unitTests {

@@ -151,8 +151,13 @@ class EmailSubmissionSet(
          *
          * Two answers to expect. `cannotUnsend` means the mail has already left and there is no
          * recalling it. Success means the draft is still a draft — and a following
-         * `EmailSubmission/get` will answer `notFound` rather than reporting "canceled", because
-         * there is no submission row to hold that state.
+         * `EmailSubmission/get` now reports `undoStatus: "canceled"`, keeping the `sendAt` the mail
+         * *would* have gone at, which is what lets a cancel made on one device be seen on another.
+         * It used to answer `notFound`; that is the change this file's `/get` note describes.
+         *
+         * Cancelling an already-cancelled submission is accepted again rather than refused — probed
+         * on 8002 — so this is safe to retry and safe to race with another device doing the same
+         * thing.
          */
         fun cancel(accountId: AccountId, submissionId: String): EmailSubmissionSet =
             EmailSubmissionSet(
@@ -235,14 +240,32 @@ data class Submission(
 }
 
 /**
- * `EmailSubmission/get` — what a submission turned into.
+ * `EmailSubmission/get` — what a submission is doing, from the moment it is accepted.
  *
- * Narrower than it looks, and the shape of the client's scheduling model follows from it: plMail
- * reconstructs a submission from the Message rather than storing one, so **only a send that has
- * completed resolves**. A submission still being held, and one that was cancelled, both answer
- * `notFound` — there is no row to say "pending" or "canceled" with. Which means this call answers
- * exactly one question, "did it go, and when", and the client owns the record of anything still
- * waiting.
+ * **This used to answer only one question and now answers three, and the client's whole scheduling
+ * model turns on the difference.** plMail reconstructs a submission from the Message, and it used
+ * to skip any Message with no `sentAt` — so a held submission answered `notFound` exactly as a
+ * draft nobody ever submitted did, the release time existed only in the create response, and a
+ * schedule could not be shared between two devices. It now reports all three of the spec's states:
+ *
+ * |State                       |[SubmissionRecord.undoStatus]|[SubmissionRecord.sendAt]             |
+ * |----------------------------|-----------------------------|--------------------------------------|
+ * |Queued or held, not gone yet|[SubmissionRecord.PENDING]   |when it is due — the real release time|
+ * |Cancelled before it left    |[SubmissionRecord.CANCELED]  |when it *would* have left             |
+ * |Sent                        |[SubmissionRecord.FINAL]     |when it actually left                 |
+ *
+ * `notFound` now means one thing only: **this Email was never submitted.** It is the absence of a
+ * submission rather than a state of one.
+ *
+ * That is a server change rather than a protocol one, so an older plMail still answers the old way
+ * — and the client cannot ask which it is talking to, because nothing in the session says. See
+ * `ScheduledSendReconciler` for the behavioural detection, which is the only honest kind.
+ *
+ * Verified on the wire against 8002 on 2026-08-06, all four arms: a `HOLDUNTIL` submission thirty
+ * minutes out answered `pending` with the `sendAt` the create response had reported to the second;
+ * a cancel moved it to `canceled` keeping that same `sendAt`; a draft created and never submitted
+ * came back in `notFound`; and a get naming all three at once partitioned them correctly between
+ * `list` and `notFound`.
  */
 class EmailSubmissionGet(
     private val accountId: AccountId,
@@ -253,13 +276,84 @@ class EmailSubmissionGet(
 
     override fun arguments(): JsonObject = buildJsonObject {
         put("accountId", accountId.value)
-        // Never null: the server refuses a get with no ids outright rather than
-        // enumerating every submission in the account.
+        // Never null. plMail answers a get with no ids -- or with the key
+        // missing -- with `requestTooLarge` rather than enumerating the
+        // account, so there is no way to *list* submissions and
+        // `EmailSubmission/changes` is the only route to an id nobody
+        // remembered. Both probed on 8002.
         put("ids", buildJsonArray { ids.forEach { add(it) } })
     }
 
     override fun decode(json: Json, arguments: JsonObject): EmailSubmissionGetResult =
         json.decodeFromJsonElement(EmailSubmissionGetResult.serializer(), arguments)
+
+    companion object {
+        /**
+         * How many ids to name in one get.
+         *
+         * The same modesty as `Email/changes`' page size and for the same audience: this runs
+         * against a Raspberry Pi advertising four concurrent requests.
+         */
+        const val MAX_IDS = 64
+    }
+}
+
+/**
+ * `EmailSubmission/changes` — the only way to hear about a submission this device did not make.
+ *
+ * There is no `EmailSubmission/query` (probed: `unknownMethod`) and no way to enumerate through
+ * `/get`, so a schedule created on a laptop reaches this phone by exactly one route: the change
+ * log. Push tracks `EmailSubmission` as a type, so the announcement arrives as well.
+ *
+ * Verified on 8002: submitting reports the id under `created`, an accepted cancel reports it under
+ * `updated`, and a replay from `"0"` collapses both into `created` — which is what makes a first
+ * run cheap to reason about and is why the reconciler treats `created` and `updated` alike.
+ */
+class EmailSubmissionChanges(
+    private val accountId: AccountId,
+    private val sinceState: String,
+    private val maxChanges: Int = MAX_CHANGES,
+) : JmapMethod<EmailSubmissionChangesResult> {
+
+    override val name = "EmailSubmission/changes"
+
+    override fun arguments(): JsonObject = buildJsonObject {
+        put("accountId", accountId.value)
+        put("sinceState", sinceState)
+        put("maxChanges", maxChanges)
+    }
+
+    override fun decode(json: Json, arguments: JsonObject): EmailSubmissionChangesResult =
+        json.decodeFromJsonElement(EmailSubmissionChangesResult.serializer(), arguments)
+
+    companion object {
+        const val MAX_CHANGES = 256
+
+        /** The state a device that has never looked starts from. */
+        const val FROM_THE_BEGINNING = "0"
+    }
+}
+
+@Serializable
+data class EmailSubmissionChangesResult(
+    val accountId: String = "",
+    val oldState: String = "",
+    val newState: String = "",
+    val hasMoreChanges: Boolean = false,
+    val created: List<String> = emptyList(),
+    val updated: List<String> = emptyList(),
+    val destroyed: List<String> = emptyList(),
+) {
+    /**
+     * Created and updated together.
+     *
+     * Both mean "ask `/get` about this one": a submission is created when it is accepted and
+     * updated when it is cancelled or when it leaves, and the client wants the current state in
+     * every case. Nothing is learned from which list an id arrived in that the record itself does
+     * not say better.
+     */
+    val changed: List<String>
+        get() = created + updated
 }
 
 @Serializable
@@ -282,10 +376,44 @@ data class SubmissionRecord(
      */
     val identityId: String? = null,
     val emailId: String = "",
+    /**
+     * The release time, and now the authoritative copy of it.
+     *
+     * Present in all three states and meaning something slightly different in each: when the mail
+     * is due, when it would have gone, when it went. See [EmailSubmissionGet].
+     */
     val sendAt: String? = null,
-    /** `"final"` for anything this call can return at all — see the class note. */
-    val undoStatus: String = "final",
-)
+    /**
+     * One of [PENDING], [CANCELED] or [FINAL].
+     *
+     * Defaulted to [FINAL] rather than [PENDING] on purpose: a server that omits the field is one
+     * that predates the three-state answer, and on those the only submission that resolved at all
+     * was a completed one. Reading an absent field as "pending" would invent a hold that no longer
+     * exists.
+     */
+    val undoStatus: String = FINAL,
+) {
+    /** Held or queued: not gone, and still callable back. */
+    val isPending: Boolean
+        get() = undoStatus == PENDING
+
+    /** Declined before it left. The draft is still a draft. */
+    val isCanceled: Boolean
+        get() = undoStatus == CANCELED
+
+    /** Gone. Nothing here is undoable any more. */
+    val isFinal: Boolean
+        get() = undoStatus == FINAL
+
+    companion object {
+        const val PENDING = "pending"
+
+        /** RFC 8621 §7's spelling, which is not the British one. */
+        const val CANCELED = "canceled"
+
+        const val FINAL = "final"
+    }
+}
 
 @Serializable
 data class EmailSubmissionSetResult(

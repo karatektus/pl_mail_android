@@ -1,0 +1,29 @@
+{
+  "methodResponses": [
+    [
+      "EmailSubmission/set",
+      {
+        "accountId": "1",
+        "oldState": "29572",
+        "newState": "29576",
+        "created": {
+          "s1": {
+            "id": "38744",
+            "sendAt": "2026-08-07T00:56:24Z",
+            "undoStatus": "pending"
+          }
+        },
+        "notCreated": {},
+        "updated": {},
+        "notUpdated": {},
+        "destroyed": [],
+        "notDestroyed": {}
+      },
+      "c0"
+    ]
+  ],
+  "sessionState": "fedd99d33dd77929",
+  "createdIds": {
+    "s1": "38744"
+  }
+}

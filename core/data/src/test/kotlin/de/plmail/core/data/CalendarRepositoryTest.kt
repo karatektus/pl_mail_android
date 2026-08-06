@@ -1109,6 +1109,190 @@ class CalendarRepositoryTest {
             ),
         )
 
+    // ---------------------------------------------- paging past maxEventsInGet
+
+    /**
+     * A quarter of a daily standup, which is where the chunking first matters.
+     *
+     * `maxEventsInGet` is **100** and it is counted in *occurrences* — a get handed three hundred
+     * ids is refused outright, and the refusal is of the whole call, so a busy quarter would draw
+     * nothing at all rather than its first hundred. Nothing in the suite had ever driven the fake
+     * past one page, so the second request's `position` was unexercised: an off-by-one there
+     * duplicates or silently drops a day, and both look like the server being wrong.
+     *
+     * The two sides page independently, which this also pins: one series, a hundred and twenty
+     * occurrences, so the collapsed query is finished after the first request and only the expanded
+     * one asks again.
+     */
+    @Test
+    fun `a window holding more occurrences than one get allows is paged`() = runTest {
+        val start = LocalDate.of(2026, 8, 3)
+        val days = (0 until 120).map { start.plusDays(it.toLong()) }.toSet()
+
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        recurring(
+                            id = "10867",
+                            title = "Standup",
+                            start = "2026-08-03T09:00:00",
+                            days = days,
+                        )
+                    )
+            )
+
+        val repository = calendarStack(database, calendarTransport(server))
+
+        val result =
+            repository.refresh(CalendarWindow(start, start.plusDays(120)))
+                as CalendarRefresh.Refreshed
+
+        // Two round trips rather than one: 120 occurrences at 100 a page.
+        assertEquals(2, result.requests)
+        assertEquals(120, result.occurrences)
+
+        val cached = database.calendarEvents().occurrencesOf(standupKey)
+
+        // Every day exactly once. A `position` that restarted at zero would put
+        // the first hundred in twice, and the uid's start component would not
+        // save it -- the occurrences are genuinely distinct rows.
+        assertEquals(120, cached.size)
+        assertEquals(days.map { it.toString() }.sorted(), cached.map { it.date }.sorted())
+    }
+
+    @Test
+    fun `the second page asks from where the first stopped, and only for what is left`() = runTest {
+        val start = LocalDate.of(2026, 8, 3)
+        val days = (0 until 120).map { start.plusDays(it.toLong()) }.toSet()
+
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        recurring(
+                            id = "10867",
+                            title = "Standup",
+                            start = "2026-08-03T09:00:00",
+                            days = days,
+                        )
+                    )
+            )
+
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(CalendarWindow(start, start.plusDays(120)))
+
+        // Three windowed queries in all: the collapsed one, which finishes
+        // in a single page because there is one series, and two expanded
+        // ones. The collapsed side must *not* ask again -- a client that
+        // paged both in lockstep would re-fetch the series 120 times over a
+        // year of standups.
+        assertEquals(1, server.collapsedQueries)
+        assertEquals(2, server.expandedQueries)
+    }
+
+    // --------------------------------------------------- a floating series
+
+    /**
+     * A floating multi-day series, which is two departures from the ordinary case at once.
+     *
+     * **Floating** means no zone at all — a conference that is "9am wherever you are", stored by
+     * the server as a bare wall clock in a UTC column rather than as an instant. The client must
+     * neither convert it nor inherit the calendar's zone: the *fetch* window is deliberately the
+     * union of the converted and naive bounds precisely so an event like this at the edge is
+     * reachable, and the placement comes from the occurrence's own published wall clock.
+     *
+     * **Multi-day** means one occurrence occupies several rows, one per day it covers, so a day
+     * view can draw it on each. Together they are the case REMAINING.md lists as never watched: a
+     * floating recurring series.
+     */
+    @Test
+    fun `a floating multi-day series is placed on every day it covers, in no zone at all`() =
+        runTest {
+            val server =
+                FakeCalendarServer(
+                    events =
+                        mutableListOf(
+                            recurring(
+                                id = "10870",
+                                title = "Workshop",
+                                start = "2026-08-03T09:00:00",
+                                // Two runs, a fortnight apart, each 30 hours long.
+                                days = setOf(LocalDate.of(2026, 8, 3), LocalDate.of(2026, 8, 17)),
+                                duration = "PT30H",
+                                timeZone = null,
+                            )
+                        )
+                )
+
+            val repository = calendarStack(database, calendarTransport(server))
+
+            repository.refresh(CalendarWindow(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 9, 1)))
+
+            val occurrences =
+                database.calendarEvents().occurrencesOf(StoreKey.objectKey(testAccountKey, "10870"))
+
+            // Each 30-hour run covers its own day and the next.
+            assertEquals(
+                listOf("2026-08-03", "2026-08-04", "2026-08-17", "2026-08-18"),
+                occurrences.map { it.date }.sorted(),
+            )
+
+            // No zone, and not the calendar's Europe/Berlin either. Inheriting
+            // it would turn "9am wherever you are" into an instant, which is a
+            // different meeting for anybody who travels -- and the calendar's
+            // zone is exactly the plausible wrong answer, because every other
+            // event in this fixture does inherit it.
+            assertTrue(
+                occurrences.all { it.zoneId == null },
+                "a floating occurrence inherits no zone: got ${occurrences.map { it.zoneId }}",
+            )
+            // And it is not an all-day event, which is the other thing a null
+            // zone could be mistaken for. It has a wall-clock time.
+            assertTrue(occurrences.none { it.isAllDay })
+            assertEquals(
+                listOf("2026-08-03T09:00:00", "2026-08-03T09:00:00"),
+                occurrences.filter { it.date.startsWith("2026-08-0") }.map { it.startLocal },
+            )
+        }
+
+    @Test
+    fun `a floating series keeps its own wall clock rather than the device's offset`() = runTest {
+        // The device is two hours ahead of UTC. A client that converted a
+        // floating event out of the device zone would file the 09:00 run at
+        // 07:00 or 11:00, and the day view would draw it in the wrong slot for
+        // everyone but a user in Berlin.
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        recurring(
+                            id = "10870",
+                            title = "Workshop",
+                            start = "2026-08-03T09:00:00",
+                            days = setOf(LocalDate.of(2026, 8, 3)),
+                            duration = "PT2H",
+                            timeZone = null,
+                        )
+                    )
+            )
+
+        val repository = calendarStack(database, calendarTransport(server), clock = berlinClock())
+
+        repository.refresh(CalendarWindow(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 9, 1)))
+
+        val occurrence =
+            database
+                .calendarEvents()
+                .occurrencesOf(StoreKey.objectKey(testAccountKey, "10870"))
+                .single()
+
+        assertEquals("2026-08-03T09:00:00", occurrence.startLocal)
+        assertEquals("2026-08-03T11:00:00", occurrence.endLocal)
+        assertEquals("2026-08-03", occurrence.date)
+    }
+
     /** The agenda as `"<day> <title>"`, which is the shape a mismatch is readable in. */
     private suspend fun agenda(): List<String> =
         database.calendarEvents().observeAgenda(from = "2026-01-01", limit = 100).first().map {
