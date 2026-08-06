@@ -10,7 +10,8 @@
     <string name="compose_from">From</string>
     <!-- Shown only before identities have been read; never a made-up address. -->
     <string name="compose_from_unknown">Not known yet</string>
-    <string name="compose_choose_sender">Choose which account sends</string>
+    <!-- "Address" rather than "account": the picker offers one entry per alias now. -->
+    <string name="compose_choose_sender">Choose which address sends</string>
     <string name="compose_to">To</string>
     <string name="compose_cc">Cc</string>
     <string name="compose_bcc">Bcc</string>
@@ -38,11 +39,37 @@
     <string name="compose_saved">Draft saved</string>
     <string name="compose_saving">Saving…</string>
 
+    <!--
+      Scheduling. "Send later" rather than "Schedule": the menu entry is a verb
+      for what happens to this message, not a noun for a feature.
+    -->
+    <string name="compose_send_later">Send later…</string>
+    <string name="send_later_today">Later today</string>
+    <string name="send_later_tomorrow">Tomorrow morning</string>
+    <string name="send_later_monday">Monday morning</string>
+    <string name="send_later_pick">Pick a date and time…</string>
+    <string name="send_later_next">Next</string>
+    <string name="send_later_confirm">Schedule</string>
+    <string name="send_later_cancel">Cancel</string>
+
+    <!--
+      Says the release time rather than "scheduled", because the time is the only
+      part the user cannot work out for themselves.
+    -->
+    <string name="compose_scheduled_for">Leaves %1$s</string>
+    <string name="compose_cancel_schedule">Cancel</string>
+
     <string name="compose_error_no_recipients">Add someone to send this to.</string>
     <string name="compose_error_no_identity">No account can send mail yet. Check that your server is reachable.</string>
     <string name="compose_error_no_original">That message could not be loaded, so there is nothing to quote.</string>
     <!-- The server's own words, because they name the actual problem. -->
     <string name="compose_error_save_failed">The draft could not be saved: %1$s</string>
+    <string name="compose_error_cancel_failed">The scheduled send could not be called back: %1$s</string>
+    <!--
+      Not an apology and not a failure: the mail went out as asked, a moment
+      before the cancel arrived. Says what is true of the message now.
+    -->
+    <string name="compose_error_already_sent">This message has already been sent.</string>
 
     <!--
       The attribution line above a quoted reply. Date first, sender second — the
@@ -62,4 +89,16 @@
     <string name="send_done">Message sent</string>
     <string name="send_failed">Not sent: %1$s</string>
     <string name="send_reopen">Edit</string>
+    <string name="send_scheduled">Will leave %1$s</string>
+    <!--
+      "Already sent" rather than "could not undo": what the user needs to know is
+      where the message is, not which request failed.
+    -->
+    <string name="send_too_late">Too late — this message has already been sent.</string>
+
+    <!-- The bar over the mail list, for messages the server is holding. -->
+    <string name="send_scheduled_no_subject">(no subject)</string>
+    <string name="send_scheduled_leaves">Leaves %1$s</string>
+    <string name="send_scheduled_cancel">Cancel</string>
+    <string name="send_scheduled_more">and %1$d more waiting</string>
 </resources>

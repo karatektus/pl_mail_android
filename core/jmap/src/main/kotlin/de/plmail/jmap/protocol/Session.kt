@@ -1,6 +1,9 @@
 package de.plmail.jmap.protocol
 
+import java.time.Duration
+import java.util.Locale
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -87,6 +90,21 @@ data class Session(
     /** Whether this server exposes calendars at all. */
     val supportsCalendars: Boolean
         get() = capabilities.containsKey(Capability.CALENDARS)
+
+    /**
+     * What this account will accept on an `EmailSubmission/set`, scheduling included.
+     *
+     * **Per account, not per session.** RFC 8621 §7 puts `maxDelayedSend` in `accountCapabilities`,
+     * and plMail follows it — so a client that read the session-level object would find an empty
+     * `{}` and conclude that no server anywhere can schedule. The defaults here are the spec's,
+     * which is "cannot": an instance that says nothing about delayed send is one that does not do
+     * it.
+     */
+    fun submission(id: AccountId): SubmissionCapability =
+        account(id)
+            ?.accountCapabilities
+            ?.get(Capability.SUBMISSION)
+            ?.let(SubmissionCapability::from) ?: SubmissionCapability()
 }
 
 @Serializable
@@ -133,6 +151,76 @@ data class CoreCapability(
                 maxObjectsInSet = int("maxObjectsInSet", defaults.maxObjectsInSet),
             )
         }
+    }
+}
+
+/**
+ * The per-account `urn:ietf:params:jmap:submission` limits.
+ *
+ * [maxDelayedSend] is the **only** thing that decides whether this app offers "send later", and it
+ * is read here rather than compared against a constant: the ceiling is the server's to pick —
+ * plMail holds a messenger envelope rather than handing HOLDFOR to a relay, so the number is a
+ * retention decision that instance made and not a property of the protocol. Zero means the feature
+ * is hidden, which is also what the spec's default says for a server that publishes nothing.
+ *
+ * [extensions] is `submissionExtensions`, the SMTP extensions the server will honour through the
+ * envelope, keyed by extension name. `FUTURERELEASE` carrying `HOLDFOR`/`HOLDUNTIL` (RFC 4865) is
+ * the one this client uses. Checked as well as [maxDelayedSend] because the two answer different
+ * questions — how long a hold may be, and whether a hold can be asked for at all.
+ */
+data class SubmissionCapability(
+    val maxDelayedSend: Long = 0,
+    val extensions: Map<String, List<String>> = emptyMap(),
+) {
+    /** Whether an absolute release time may be asked for. */
+    val supportsHoldUntil: Boolean
+        get() = HOLD_UNTIL in futureRelease
+
+    /** Whether a relative hold may be asked for. */
+    val supportsHoldFor: Boolean
+        get() = HOLD_FOR in futureRelease
+
+    /**
+     * Whether "send later" exists on this account at all.
+     *
+     * Both halves, because either one alone is a promise the server has not made: a ceiling with no
+     * `FUTURERELEASE` is a server that would refuse the parameter, and the extension with a ceiling
+     * of zero is a server that would refuse every value of it.
+     */
+    val supportsScheduledSend: Boolean
+        get() = maxDelayedSend > 0 && (supportsHoldUntil || supportsHoldFor)
+
+    /** The longest hold this account accepts, as a duration rather than a number. */
+    val longestHold: Duration
+        get() = Duration.ofSeconds(maxDelayedSend)
+
+    private val futureRelease: Set<String>
+        get() =
+            extensions[FUTURE_RELEASE].orEmpty().mapTo(mutableSetOf()) { it.uppercase(Locale.ROOT) }
+
+    companion object {
+        private const val FUTURE_RELEASE = "FUTURERELEASE"
+        private const val HOLD_FOR = "HOLDFOR"
+        private const val HOLD_UNTIL = "HOLDUNTIL"
+
+        fun from(json: JsonObject): SubmissionCapability {
+            val extensions =
+                (json["submissionExtensions"] as? JsonObject).orEmpty().mapValues { (_, value) ->
+                    (value as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }
+                }
+
+            return SubmissionCapability(
+                maxDelayedSend =
+                    (json["maxDelayedSend"] as? JsonPrimitive)?.content?.toLongOrNull() ?: 0,
+                extensions = extensions,
+            )
+        }
+
+        private fun JsonObject?.orEmpty(): Map<String, kotlinx.serialization.json.JsonElement> =
+            this ?: emptyMap()
+
+        private fun JsonArray?.orEmpty(): List<kotlinx.serialization.json.JsonElement> =
+            this ?: emptyList()
     }
 }
 

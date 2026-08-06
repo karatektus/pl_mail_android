@@ -33,20 +33,26 @@ data class ComposeDraft(
     /**
      * The attachment list as the saved draft actually has it.
      *
-     * The comparison against [attachments] is what decides whether the next save can be an update
-     * or has to be a create: the server accepts `attachments` only on a create, so adding or
-     * removing one after the first save cannot be patched. Without this the choice would be
-     * "recreate on every keystroke that follows an attachment", which fills Trash with shells.
+     * The comparison against [attachments] decides whether a save has to *say anything* about them.
+     * `Email/set` update takes the whole set, and an absent key means "leave them alone" — so
+     * sending the array on every keystroke would re-state a dozen blob ids per autosave for
+     * nothing, on a link that may be someone's uplink. Kept for that, not for the
+     * recreate-the-draft workaround it was originally added for.
      */
     val savedAttachments: List<StagedAttachment> = emptyList(),
 ) {
     /**
      * Whether saving means creating a new message rather than patching the one that exists.
      *
-     * True for a draft that has never been saved, and for any change to its attachments.
+     * True only for a draft that has never been saved. Attachments used to force a create as well,
+     * because update dropped them; it applies them now.
      */
     val needsCreate: Boolean
-        get() = emailId == null || attachments != savedAttachments
+        get() = emailId == null
+
+    /** Whether the next patch has to carry the attachment set. */
+    val attachmentsChanged: Boolean
+        get() = attachments != savedAttachments
 
     val hasRecipients: Boolean
         get() = to.isNotEmpty() || cc.isNotEmpty() || bcc.isNotEmpty()

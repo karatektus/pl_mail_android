@@ -12,19 +12,27 @@ import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.mail.DraftComposer
 import de.plmail.jmap.mail.Email
 import de.plmail.jmap.mail.EmailAddress
+import de.plmail.jmap.methods.CANNOT_UNSEND
 import de.plmail.jmap.methods.DraftAttachment
 import de.plmail.jmap.methods.DraftEmail
 import de.plmail.jmap.methods.EmailGet
 import de.plmail.jmap.methods.EmailPatch
 import de.plmail.jmap.methods.EmailSet
+import de.plmail.jmap.methods.EmailSubmissionGet
 import de.plmail.jmap.methods.EmailSubmissionSet
+import de.plmail.jmap.methods.FORBIDDEN_FROM
 import de.plmail.jmap.methods.IdentityGet
+import de.plmail.jmap.methods.SendHold
+import de.plmail.jmap.methods.SetError
+import de.plmail.jmap.methods.SubmissionRecord
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.BlobId
+import de.plmail.jmap.protocol.Capability
 import de.plmail.jmap.protocol.EmailId
 import de.plmail.jmap.protocol.IdentityId
 import de.plmail.jmap.protocol.MailboxId
 import de.plmail.jmap.protocol.RequestBuilder
+import de.plmail.jmap.protocol.SubmissionCapability
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -35,18 +43,21 @@ import kotlinx.coroutines.flow.first
  * Saving, sending and discarding what the composer is holding.
  *
  * Three server behaviours shape everything below, all three established by probing the running
- * server rather than by reading the PHP, and all three of them silent:
+ * server rather than by reading the PHP:
  *
- * 1. **`attachments` can only be set when the draft is created.** `Email/set` update lists
- *    `attachments` among the properties a draft may change, accepts one, reports `updated`, and
- *    changes nothing — `JmapDraftWriter::update()` never looks at the key. A composer that saved
- *    first and attached second would send a message with no attachment and no error anywhere.
+ * 1. **`attachments` on an update is whole-value.** The array sent is the complete set: a part left
+ *    out is removed, a part kept is named by the `p-` blobId `Email/get` handed out and costs no
+ *    upload. An unresolvable blobId refuses the *whole* patch with `invalidProperties` and writes
+ *    nothing — so there is never anything to roll back, and the draft is exactly as it was. This
+ *    used to be a silent no-op, which is why saving an attachment once meant recreating the draft
+ *    and binning the old one; that machinery is gone.
  * 2. **`destroy` on a draft leaves it in Drafts.** It adds the Trash label and removes Inbox, and a
  *    draft never had Inbox — so a "deleted" draft comes back with `mailboxIds: {drafts, trash}` and
  *    still appears in the Drafts list. Discarding is therefore an explicit mailbox patch.
- * 3. **The identity is not honoured.** Neither `from` on the create nor `identityId` on the
- *    submission reaches the sent message; `JmapDraftWriter` sets the From from the account. See
- *    `docs/SERVER_REQUESTS.md` — the picker still chooses the *account*, which is real.
+ * 3. **`identityId` decides the From address.** `EmailSubmission/set` resolves it through the same
+ *    list `Identity/get` publishes, so an id the server offered is an id it accepts and an id it
+ *    did not is `forbiddenFrom` rather than a mail quietly sent as the account's own address. It
+ *    sets the *address* only — the display name still comes from the account, on the web path too.
  */
 @Singleton
 class ComposeRepository
@@ -149,8 +160,18 @@ constructor(
      */
     suspend fun loadDraft(accountKey: String, emailId: String): ComposeDraft? {
         val email = original(accountKey, emailId) ?: return null
+        val known = database.identities().forAccount(accountKey)
+
+        // Matched on the address the draft already carries rather than taking
+        // the first of the account's identities. Now that there is one identity
+        // per sendable alias, "the first" is the primary — so reopening a draft
+        // written from an alias and saving it again would silently move it back
+        // to the main address.
+        val from = email.from.firstOrNull()?.email?.trim()?.lowercase()
         val identity =
-            database.identities().forAccount(accountKey).firstOrNull()?.identityId ?: return null
+            known.firstOrNull { it.email.trim().lowercase() == from }?.identityId
+                ?: known.firstOrNull()?.identityId
+                ?: return null
 
         return ComposeDraft(
             accountKey = accountKey,
@@ -171,15 +192,13 @@ constructor(
     /**
      * Writes the draft to the server and returns it carrying its id.
      *
-     * Autosave calls this on a debounce; [send] calls it once more before submitting, so the mail
-     * exists in Drafts before the undo window starts and a process death during that window loses
-     * nothing.
+     * Autosave calls this on a debounce; the send path calls it once more before submitting, so the
+     * mail exists in Drafts before anything can go wrong with the submission.
      *
-     * A change to the *attachments* forces a create, for reason (1) at the top of this file — there
-     * is no patch that adds or removes one. Everything else is an ordinary update, so typing after
-     * attaching a file costs one round trip rather than a new draft per keystroke. When a create
-     * replaces a draft that was already saved, the previous copy is moved to Trash rather than left
-     * behind: two drafts of one message in the list is worse than one in the bin.
+     * A draft that has never been saved is created; everything else is a patch, **attachments
+     * included**. The attachment array is only sent when the set has actually changed — it is
+     * whole-value, so re-stating a dozen blob ids on every keystroke would be pure cost, and an
+     * absent key means "leave them alone".
      */
     override suspend fun save(draft: ComposeDraft): ComposeDraft {
         val account =
@@ -190,38 +209,41 @@ constructor(
 
         val accountId = AccountId(account.accountId)
 
-        if (!draft.needsCreate) {
-            update(client, accountId, draft)
+        if (draft.needsCreate) {
+            val uploaded = upload(client, accountId, draft.attachments)
+            val created = create(client, accountId, draft, uploaded)
+
+            return draft
+                .copy(emailId = created, attachments = readBack(client, accountId, created))
+                .let { it.copy(savedAttachments = it.attachments) }
+        }
+
+        if (!draft.attachmentsChanged) {
+            update(client, accountId, draft, attachments = null)
             return draft
         }
 
         val uploaded = upload(client, accountId, draft.attachments)
-        val created = create(client, accountId, draft, uploaded)
 
-        draft.emailId?.let { previous ->
-            // Best effort: a shell left in Drafts is untidy, a send that failed
-            // because tidying failed is not acceptable.
-            runCatching { moveToTrash(client, accountId, draft.accountKey, previous) }
-        }
+        update(client, accountId, draft, attachments = uploaded)
 
-        // Read back rather than assumed. The ids that went out name *staged
-        // uploads*, which the server copies into its own attachment store and
-        // then reclaims on a timer; the ids that come back are the permanent
-        // ones. It also confirms the attachments landed at all, which is the one
-        // thing this server's success response does not tell you.
-        val attached =
-            if (uploaded.isEmpty()) emptyList() else attachmentsOf(client, accountId, created)
+        val attached = readBack(client, accountId, draft.emailId!!)
 
-        return draft.copy(emailId = created, attachments = attached, savedAttachments = attached)
+        return draft.copy(attachments = attached, savedAttachments = attached)
     }
 
     /**
-     * Submits a draft that is already saved.
+     * Submits a draft that is already saved, now or at [hold].
      *
-     * Separate from [save] because the undo window sits between the two: the mail is on the server
-     * as a draft for those seconds, and only this call makes it leave.
+     * Separate from [save] so the draft is on the server before anything asks for it to leave: the
+     * worst case of a failure here is a message still in Drafts, which is what the user would
+     * expect to find.
+     *
+     * The returned [Submitted] carries the server's own `sendAt`, which is the only trustworthy
+     * release time — a `HOLDFOR` is counted from when the request arrived, and a phone whose clock
+     * is fast would otherwise promise a moment that has not happened.
      */
-    override suspend fun submit(draft: ComposeDraft) {
+    override suspend fun submit(draft: ComposeDraft, hold: SendHold?): Submitted {
         val emailId = draft.emailId ?: error("This message has not been saved yet.")
         val account =
             database.accounts().byUid(draft.accountKey)
@@ -229,7 +251,7 @@ constructor(
         val client =
             clients.forAccount(draft.accountKey) ?: error("There is no connection to this server.")
 
-        val request = RequestBuilder()
+        val request = RequestBuilder(Capability.USING_MAIL_SUBMISSION)
         val submission =
             request.add(
                 EmailSubmissionSet.send(
@@ -238,16 +260,140 @@ constructor(
                     identityId = IdentityId(draft.identityId),
                     drafts = binding(draft.accountKey, DRAFTS_ROLE),
                     sent = binding(draft.accountKey, SENT_ROLE),
+                    hold = hold,
                 )
             )
 
         val result = client.send(request).result(submission)
 
-        result.failure?.let { failure ->
+        result.failure?.let { failure -> throw refusal(draft, failure) }
+
+        val created = result.submission
+
+        return Submitted(
+            submissionId = created?.id?.takeIf { it.isNotBlank() } ?: emailId,
+            sendAt = created?.sendAt,
+        )
+    }
+
+    /**
+     * Declines a send the server has not released yet.
+     *
+     * Not an error path: a cancel that arrives too late is an ordinary outcome of a race the user
+     * started, and [CancelOutcome.AlreadySent] is what says so honestly. Anything else — a
+     * connection that failed, a server that refused for a reason this client did not anticipate —
+     * is thrown, because "cancelled" must never be shown for a message that is on its way.
+     *
+     * A successful cancel leaves the draft in Drafts. There is nothing to fetch afterwards:
+     * `EmailSubmission/get` answers `notFound` for a cancelled submission, because there is no row
+     * to hold that state.
+     */
+    override suspend fun cancel(accountKey: String, submissionId: String): CancelOutcome {
+        val account =
+            database.accounts().byUid(accountKey) ?: error("This account is no longer connected.")
+        val client =
+            clients.forAccount(accountKey) ?: error("There is no connection to this server.")
+
+        val request = RequestBuilder(Capability.USING_MAIL_SUBMISSION)
+        val set = request.add(EmailSubmissionSet.cancel(AccountId(account.accountId), submissionId))
+
+        val result = client.send(request).result(set)
+
+        result.updateFailure?.let { failure ->
+            if (failure.type == CANNOT_UNSEND) return CancelOutcome.AlreadySent
+
             error(
+                failure.description
+                    ?: failure.type.ifBlank { "The server refused to cancel this send." }
+            )
+        }
+
+        return CancelOutcome.Cancelled
+    }
+
+    /**
+     * Whether this account released a completed send, and when.
+     *
+     * The only question `EmailSubmission/get` can answer: a held submission and a cancelled one
+     * both come back `notFound`, so absence means "not sent (yet)" rather than "cancelled". Used to
+     * settle a schedule whose time has passed, never to poll one that has not.
+     */
+    override suspend fun releasedAt(accountKey: String, submissionId: String): SubmissionRecord? {
+        val account = database.accounts().byUid(accountKey) ?: return null
+        val client = clients.forAccount(accountKey) ?: return null
+
+        val request = RequestBuilder(Capability.USING_MAIL_SUBMISSION)
+        val get =
+            request.add(EmailSubmissionGet(AccountId(account.accountId), listOf(submissionId)))
+
+        return client.send(request).result(get).list.firstOrNull()
+    }
+
+    /**
+     * How far ahead this account will let a send be scheduled, from the session.
+     *
+     * Zero hides the feature. Read per account rather than per server because that is where RFC
+     * 8621 puts it — and because a login that reaches two mailboxes can genuinely have two answers.
+     */
+    suspend fun sendWindow(accountKey: String): SubmissionCapability {
+        val account = database.accounts().byUid(accountKey) ?: return SubmissionCapability()
+        val client = clients.forAccount(accountKey) ?: return SubmissionCapability()
+
+        return runCatching { client.session().submission(AccountId(account.accountId)) }
+            .getOrDefault(SubmissionCapability())
+    }
+
+    /**
+     * Whether this account's undo window can be the server's hold.
+     *
+     * The ceiling has to cover the window itself, which on any plMail built since the scheduling
+     * batch it does by four orders of magnitude — but reading it is what makes the fallback real
+     * rather than dead code, and an instance that switched delayed send off has to keep sending.
+     */
+    override suspend fun submissionMode(accountKey: String): SubmissionMode {
+        val capability = sendWindow(accountKey)
+        val window = SendQueue.UNDO_WINDOW_MS / 1_000
+
+        return if (capability.supportsHoldFor && capability.maxDelayedSend >= window) {
+            SubmissionMode.SERVER_HOLD
+        } else {
+            SubmissionMode.LOCAL_DELAY
+        }
+    }
+
+    /**
+     * A refused submission, as a sentence naming what the user actually chose.
+     *
+     * `forbiddenFrom` is the one worth translating rather than passing through: it means the alias
+     * in the From row is not one this account may send as — a stale `Identity/get` list, or an
+     * alias deleted on the web since the composer opened — and the server's own wording names an
+     * id, which is not a thing anybody picked. The list is re-read in the same breath so the picker
+     * stops offering it.
+     */
+    private suspend fun refusal(draft: ComposeDraft, failure: SetError): Throwable {
+        if (failure.type != FORBIDDEN_FROM) {
+            return IllegalStateException(
                 failure.description ?: failure.type.ifBlank { "The server refused to send this." }
             )
         }
+
+        val address =
+            database
+                .identities()
+                .forAccount(draft.accountKey)
+                .firstOrNull { it.identityId == draft.identityId }
+                ?.email
+
+        runCatching { refreshIdentities() }
+
+        return IllegalStateException(
+            if (address == null) {
+                "This account may not send as the address you chose. Pick another and try again."
+            } else {
+                "This account may not send as \"$address\" any more. Pick another address and " +
+                    "try again."
+            }
+        )
     }
 
     /**
@@ -339,13 +485,18 @@ constructor(
             ?: error("The server saved the draft without telling us its id.")
     }
 
-    private suspend fun update(client: JmapClient, accountId: AccountId, draft: ComposeDraft) {
+    private suspend fun update(
+        client: JmapClient,
+        accountId: AccountId,
+        draft: ComposeDraft,
+        attachments: List<DraftAttachment>?,
+    ) {
         val request = RequestBuilder()
         val set =
             request.add(
                 EmailSet(
                     accountId = accountId,
-                    update = mapOf(EmailId(draft.emailId!!) to draft.toPatch()),
+                    update = mapOf(EmailId(draft.emailId!!) to draft.toPatch(attachments)),
                 )
             )
 
@@ -355,6 +506,18 @@ constructor(
         // 200. An autosave that ignored them would show "Saved" over a draft the
         // server had rejected.
         result.notUpdated.values.firstOrNull()?.let { failure ->
+            // A patch carrying attachments is refused whole — subject, body and
+            // all — when one blob cannot be resolved, and nothing is written. So
+            // there is no rollback to do and no partial save to explain; what
+            // the user needs is the name of the problem, because the server's
+            // wording is an array index.
+            if (attachments != null && failure.type == "invalidProperties") {
+                error(
+                    "One of the attached files is no longer on the server, so nothing was " +
+                        "saved. Remove it and attach it again."
+                )
+            }
+
             error(
                 failure.description ?: failure.type.ifBlank { "The server refused to save this." }
             )
@@ -430,8 +593,16 @@ constructor(
         client.send(request).result(set)
     }
 
-    /** What a saved draft actually carries, by the ids the server will keep. */
-    private suspend fun attachmentsOf(
+    /**
+     * What a saved draft actually carries, by the ids the server will keep.
+     *
+     * Read back rather than assumed, and worth the round trip. The ids that went out name *staged
+     * uploads*, which the server copies into its own attachment store and then reclaims on a timer;
+     * the ids that come back are the permanent `p-` ones, and re-sending those on the next save
+     * keeps the part rather than uploading it again. It also confirms the attachments landed at
+     * all, which is the one thing a success response does not say.
+     */
+    private suspend fun readBack(
         client: JmapClient,
         accountId: AccountId,
         emailId: String,
@@ -503,18 +674,22 @@ internal fun ComposeDraft.toWire(attachments: List<DraftAttachment>): DraftEmail
 /**
  * The patch for a re-save.
  *
- * Only what a composer owns. `attachments` is deliberately absent even though the server lists it
- * among the patchable draft properties: it accepts the key, answers `updated`, and drops it.
+ * Only what a composer owns. [attachments] is null for a save that has not touched them, which
+ * leaves the key out — the server reads an absent key as "leave them alone", and the array is
+ * whole-value, so sending it unchanged would be a dozen blob ids per keystroke for no effect. An
+ * *empty* list is different and is sent: that is how the last attachment is removed.
  */
-internal fun ComposeDraft.toPatch(): EmailPatch = EmailPatch.build {
-    addresses("to", to)
-    addresses("cc", cc)
-    addresses("bcc", bcc)
-    text("subject", subject)
-    html(bodyHtml)
-    inReplyTo?.let { strings("inReplyTo", it) }
-    references?.let { strings("references", it) }
-}
+internal fun ComposeDraft.toPatch(attachments: List<DraftAttachment>?): EmailPatch =
+    EmailPatch.build {
+        addresses("to", to)
+        addresses("cc", cc)
+        addresses("bcc", bcc)
+        text("subject", subject)
+        html(bodyHtml)
+        inReplyTo?.let { strings("inReplyTo", it) }
+        references?.let { strings("references", it) }
+        attachments?.let { attachments(it) }
+    }
 
 /** Compares two drafts by everything that would need saving. */
 internal fun ComposeDraft.sameContentAs(other: ComposeDraft): Boolean =

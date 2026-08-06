@@ -545,26 +545,45 @@ quoting and `In-Reply-To`/`References`, an always-visible From picker, autosave 
 `Email/set`, attachments staged locally and uploaded at **send**, contact autocomplete from cached
 mail plus the OS address book, and a client-side undo-send window.
 
-**Four server behaviours were established by probing the running instance, and three of them succeed
-while doing nothing.** All four are written up in `docs/SERVER_REQUESTS.md`; the short version:
+**Four server behaviours were established by probing the running instance.** Two have since been
+fixed on the server and adopted here on 2026-08-06; the other two still hold:
 
-1. `Email/set` **update** accepts `attachments`, answers `updated`, and drops them. Only a `create`
-   attaches. So a change to the attachment set recreates the draft and bins the old one.
-2. Neither the draft's `from` nor the submission's `identityId` reaches the sent message — it always
-   goes out as the account's address. The picker therefore offers one entry per *account*.
+1. ~~`Email/set` **update** accepts `attachments`, answers `updated`, and drops them.~~ **Fixed.**
+   Update stores the whole set: a part left out is removed, a part kept by its `p-` blobId costs no
+   upload, and an unresolvable blobId refuses the whole patch and writes nothing. The
+   recreate-the-draft-and-bin-the-old-one workaround is deleted.
+2. ~~Neither the draft's `from` nor the submission's `identityId` reaches the sent message.~~
+   **Fixed for `identityId`.** `EmailSubmission/set` resolves it through the same list
+   `Identity/get` publishes and refuses an id it did not publish with `forbiddenFrom`, so the From
+   picker offers one entry per *alias*. It sets the From **address** only — the display name still
+   comes from the account, on the web path too.
 3. `destroy` on a draft adds Trash and removes **Inbox**, which a draft never had, so it stays in
    Drafts as well. Discarding is an explicit `mailboxIds` patch instead.
 4. A back-reference to a single created id resolves to a bare string, which `Email/get` rejects with
    an undescribed `invalidArguments`. Submitting a draft created in the same request uses the
    creation-id form (`"#c1"`), which is a different mechanism and does work.
 
-The undo window writes the draft to Drafts **first**, then waits, then submits — so a process death
-inside those seconds leaves the mail in Drafts rather than losing it.
+The draft reaches Drafts **first** and only then is anything asked to send it, so a failure leaves
+the mail in Drafts rather than losing it. **The undo window itself is the server's hold now**:
+`HOLDFOR 6` on the submission, which is why killing the app inside those seconds no longer drops a
+send the user watched the composer close over, and why the mail leaves on time rather than whenever
+the app got round to it. Undo is a real `undoStatus: canceled` request that can be refused, and the
+refusal is shown rather than swallowed. The old local delay survives as the fallback for a server
+that advertises no hold.
 
 The tablet presentation landed on 2026-08-01: `ComposeHost` decides from the window size class —
 both axes, so a phone in landscape stays full screen — and presents the composer as a dialog over
-the mailbox where there is room. Scheduled send remains blocked on the server (`maxDelayedSend` is
-0).
+the mailbox where there is room.
+
+**Send later landed on 2026-08-06**, once the server advertised `maxDelayedSend: 2592000` and
+`submissionExtensions: {"FUTURERELEASE": ["HOLDFOR", "HOLDUNTIL"]}`. Presets plus a bounded date and
+time picker, the whole feature absent rather than disabled when the account's ceiling is zero, and
+the ceiling read per account from the session rather than written down anywhere here. The limit
+worth knowing is the server's, not the client's: a *held* submission has no server-side row —
+`EmailSubmission/get` answers `notFound` for it, the same as for a draft nobody submitted — so the
+release time exists only in the create response and the schedule is kept in DataStore beside the
+outbox, for the same reason. A message scheduled on this phone is therefore invisible on another
+device.
 
 ### M9 · Organising — **in progress**
 
@@ -899,7 +918,7 @@ Android work:
 | `Email/queryChanges` | M6 | Without it, refreshing a list means re-running the whole query |
 | Contact autocomplete endpoint (server already harvests them) | M8 | No JMAP Contacts; the alternative is a worse local-only guess |
 | JWT issuance endpoint | M2 | Android is first-party; the plumbing exists, only the endpoint is missing |
-| Scheduled send (`maxDelayedSend` is 0) | M8 | Gmail parity |
+| ~~Scheduled send (`maxDelayedSend` is 0)~~ — landed and adopted 2026-08-06 | M8 | Gmail parity |
 | Vacation responder (`VacationResponse/*`) | M10 | Gmail parity |
 | Mail rules / block sender over JMAP | M9 | Exists server-side, no client surface |
 | An FCM sender alongside Web Push | M6 | UnifiedPush needs a distributor app; FCM is what most Android users expect |

@@ -2,9 +2,11 @@ package de.plmail.jmap.methods
 
 import de.plmail.jmap.mail.Keyword
 import de.plmail.jmap.protocol.AccountId
+import de.plmail.jmap.protocol.BlobId
 import de.plmail.jmap.protocol.EmailId
 import de.plmail.jmap.protocol.IdentityId
 import de.plmail.jmap.protocol.MailboxId
+import de.plmail.jmap.protocol.Session
 import de.plmail.jmap.protocol.ThreadId
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -269,6 +271,98 @@ class WriteMethodsTest {
     }
 
     @Test
+    fun `the attachment set is sent whole, and an empty one is an empty array`() {
+        // Whole-value: what is sent is what the draft ends up with. An empty
+        // list has to be an empty *array* rather than a null or an absent key --
+        // absent means "leave them alone", so removing the last attachment would
+        // silently do nothing and the message would go out carrying it.
+        val kept = DraftAttachment(blobId = BlobId("p-7308"), type = "text/plain", name = "a.txt")
+
+        val patch = EmailPatch.build { attachments(listOf(kept)) }.toJson()
+
+        assertEquals(
+            "p-7308",
+            patch["attachments"]!!.jsonArray[0].jsonObject["blobId"]?.jsonPrimitive?.content,
+        )
+
+        val cleared = EmailPatch.build { attachments(emptyList()) }.toJson()
+
+        assertEquals(0, cleared["attachments"]!!.jsonArray.size)
+    }
+
+    @Test
+    fun `a hold rides on the envelope parameters and nothing else`() {
+        // Deliberately no `email` and no `rcptTo`. The server checks both
+        // against the message it is about to send -- a different sender is
+        // `forbiddenFrom`, a different recipient set `invalidRecipients` -- so
+        // repeating what it already knows can only turn a working send into a
+        // refused one.
+        val submission =
+            EmailSubmissionSet.send(
+                accountId = account,
+                emailId = EmailId("5"),
+                identityId = IdentityId("1"),
+                drafts = null,
+                sent = null,
+                hold = SendHold.Until("2026-08-07T06:00:00Z"),
+            )
+
+        val create = argumentsOf(submission)["create"]!!.jsonObject["s1"]!!.jsonObject
+        val mailFrom = create["envelope"]!!.jsonObject["mailFrom"]!!.jsonObject
+
+        assertEquals(setOf("parameters"), mailFrom.keys)
+        assertEquals(
+            "2026-08-07T06:00:00Z",
+            mailFrom["parameters"]?.jsonObject?.get("HOLDUNTIL")?.jsonPrimitive?.content,
+        )
+
+        // HOLDFOR is text, as ESMTP parameters are.
+        val relative = Submission(EmailId("5"), IdentityId("1"), SendHold.For(6)).toJson()
+
+        assertEquals(
+            "6",
+            relative["envelope"]
+                ?.jsonObject
+                ?.get("mailFrom")
+                ?.jsonObject
+                ?.get("parameters")
+                ?.jsonObject
+                ?.get("HOLDFOR")
+                ?.jsonPrimitive
+                ?.content,
+        )
+    }
+
+    @Test
+    fun `a send with no hold carries no envelope at all`() {
+        // An envelope the server has to validate for nothing, on the ordinary
+        // path taken by every message anybody sends.
+        val create =
+            argumentsOf(
+                    EmailSubmissionSet.send(account, EmailId("5"), IdentityId("1"), null, null)
+                )["create"]!!
+                .jsonObject["s1"]!!
+                .jsonObject
+
+        assertFalse(create.containsKey("envelope"))
+    }
+
+    @Test
+    fun `cancelling is an update of undoStatus and only that`() {
+        // The server accepts exactly one key in this patch and refuses the
+        // whole update when a second one is present.
+        val arguments = argumentsOf(EmailSubmissionSet.cancel(account, "42"))
+
+        assertFalse(arguments.containsKey("create"))
+
+        val patch = arguments["update"]!!.jsonObject["42"]!!.jsonObject
+
+        assertEquals(setOf("undoStatus"), patch.keys)
+        // The American spelling, which is RFC 8621's. "cancelled" is refused.
+        assertEquals("canceled", patch["undoStatus"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun `push subscription types exclude Identity`() {
         // Identity changes only when the user edits their own addresses, which
         // they did in this app — waking the device for it is pure cost.
@@ -290,5 +384,58 @@ class WriteMethodsTest {
 
         assertEquals("BPubKey", keys?.get("p256dh")?.jsonPrimitive?.content)
         assertEquals("AuthSecret", keys?.get("auth")?.jsonPrimitive?.content)
+    }
+}
+
+/**
+ * Whether "send later" exists, read from the session exactly as the server writes it.
+ *
+ * One test rather than a suite, but the load-bearing one: `maxDelayedSend` lives in
+ * **accountCapabilities**, not in the session-level capability object, and a client that looked in
+ * the wrong place would find `{}` and conclude that no plMail anywhere can schedule a send.
+ */
+class SubmissionCapabilityTest {
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    /** The 8002 stack's own answer, copied off the wire on 2026-08-06. */
+    private val session =
+        """
+        {
+          "accounts": {
+            "1": {
+              "name": "E2E Mailbox",
+              "accountCapabilities": {
+                "urn:ietf:params:jmap:submission": {
+                  "maxDelayedSend": 2592000,
+                  "submissionExtensions": {"FUTURERELEASE": ["HOLDFOR", "HOLDUNTIL"]}
+                }
+              }
+            },
+            "2": {"name": "Old server", "accountCapabilities": {}}
+          },
+          "apiUrl": "http://localhost:8002/jmap/api",
+          "downloadUrl": "http://localhost:8002/jmap/download",
+          "uploadUrl": "http://localhost:8002/jmap/upload"
+        }
+        """
+
+    @Test
+    fun `the ceiling is read per account, and absence means the feature is off`() {
+        val decoded = json.decodeFromString(Session.serializer(), session)
+
+        val first = decoded.submission(AccountId("1"))
+
+        assertEquals(2_592_000, first.maxDelayedSend)
+        assertTrue(first.supportsHoldFor)
+        assertTrue(first.supportsHoldUntil)
+        assertTrue(first.supportsScheduledSend)
+
+        // An account that publishes nothing about delayed send is one that does
+        // not do it. The spec's default is zero, and so is this.
+        val second = decoded.submission(AccountId("2"))
+
+        assertEquals(0, second.maxDelayedSend)
+        assertFalse(second.supportsScheduledSend)
     }
 }

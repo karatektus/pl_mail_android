@@ -166,6 +166,27 @@ class EmailPatch private constructor(private val fields: Map<String, JsonElement
         }
 
         /**
+         * The complete attachment set, on a draft.
+         *
+         * **Whole-value, not a patch.** What is sent is what the draft ends up with: a part left
+         * out is removed, and a part kept is named by the `p-` blobId `Email/get` handed out —
+         * which costs no upload and keeps the same part id. A `p-` blob from a *different* message
+         * is copied in, which is what makes forwarding an attachment free.
+         *
+         * An empty list is sent as an empty array rather than omitted or nulled, because that is
+         * how "remove them all" is said. Omitting the key entirely means "leave them alone", so
+         * every save that has not touched the attachments should not call this at all.
+         *
+         * An unresolvable blobId — expired, malformed, another account's — refuses the **whole
+         * patch** with `invalidProperties` and writes nothing, subject and body included. That is
+         * stricter than the rest of `Email/set` and it is the useful direction: there is nothing to
+         * roll back, and the draft is exactly as it was.
+         */
+        fun attachments(parts: List<DraftAttachment>) = apply {
+            fields["attachments"] = buildJsonArray { parts.forEach { add(it.toJson()) } }
+        }
+
+        /**
          * Archiving is *removing the Inbox label*, and nothing else.
          *
          * Adding an Archive label instead leaves the message in the inbox as well, which is not

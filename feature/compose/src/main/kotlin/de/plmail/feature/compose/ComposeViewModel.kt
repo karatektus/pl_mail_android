@@ -4,14 +4,18 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import de.plmail.core.data.CancelOutcome
 import de.plmail.core.data.ComposeDraft
 import de.plmail.core.data.ComposeRepository
 import de.plmail.core.data.ContactSuggestions
+import de.plmail.core.data.ScheduledSend
+import de.plmail.core.data.ScheduledSends
 import de.plmail.core.data.SendIdentity
 import de.plmail.core.data.SendQueue
 import de.plmail.core.data.StagedAttachment
 import de.plmail.jmap.mail.DraftComposer
 import de.plmail.jmap.mail.EmailAddress
+import java.time.Instant
 import javax.inject.Inject
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -50,6 +54,7 @@ constructor(
     private val compose: ComposeRepository,
     private val contacts: ContactSuggestions,
     private val sendQueue: SendQueue,
+    private val scheduled: ScheduledSends,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ComposeUiState())
@@ -99,6 +104,7 @@ constructor(
                 is ComposeRequest.Edit -> startEdit(current, request)
             }
 
+            readSendWindow()
             watchForAutosave()
         }
     }
@@ -124,20 +130,30 @@ constructor(
      * object graph — so a draft already saved under the old account is abandoned rather than
      * carried over. Its id would name a message in a mailbox the new account cannot see.
      */
-    fun setIdentity(identity: SendIdentity) = edit { draft ->
-        if (identity.accountKey == draft.accountKey) {
-            draft.copy(identityId = identity.identityId)
-        } else {
-            draft.copy(
-                accountKey = identity.accountKey,
-                identityId = identity.identityId,
-                emailId = null,
-                // The blobs belong to the old account too; BlobResolver filters
-                // by account and would refuse them.
-                attachments = draft.attachments.filter { it.uri != null },
-                savedAttachments = emptyList(),
-            )
+    fun setIdentity(identity: SendIdentity) {
+        val changedAccount = identity.accountKey != _state.value.draft.accountKey
+
+        edit { draft ->
+            if (!changedAccount) {
+                draft.copy(identityId = identity.identityId)
+            } else {
+                draft.copy(
+                    accountKey = identity.accountKey,
+                    identityId = identity.identityId,
+                    emailId = null,
+                    // The blobs belong to the old account too; BlobResolver
+                    // filters by account and would refuse them.
+                    attachments = draft.attachments.filter { it.uri != null },
+                    savedAttachments = emptyList(),
+                )
+            }
         }
+
+        // A different account is a different `maxDelayedSend`. One login can
+        // reach two mailboxes and RFC 8621 puts the ceiling per account, so
+        // carrying the old answer over would offer "send later" on a mailbox
+        // that would refuse it.
+        if (changedAccount) viewModelScope.launch { readSendWindow() }
     }
 
     /**
@@ -184,7 +200,18 @@ constructor(
      * The composer closes immediately and the undo window runs outside it — which is why the queue
      * owns the work rather than `viewModelScope`, and why nothing here waits for a result.
      */
-    fun send(): Boolean {
+    fun send(): Boolean = hand(at = null)
+
+    /**
+     * Hands the message over to be released at [at] rather than now.
+     *
+     * Nothing here checks [at] against the ceiling beyond what the picker already bounded: the
+     * ceiling is `maxDelayedSend` from the session, and a second copy of the rule in this class
+     * would start refusing sends the server would accept the day an instance raised it.
+     */
+    fun sendLater(at: Instant): Boolean = hand(at)
+
+    private fun hand(at: Instant?): Boolean {
         val draft = _state.value.draft
 
         if (!draft.hasRecipients) {
@@ -196,9 +223,45 @@ constructor(
         // queue has taken over would write the pre-send body over the one being
         // sent, and on a draft the queue may already have replaced.
         autosave?.cancel()
-        sendQueue.enqueue(draft.withQuote(_state.value.quotedHtml))
+        sendQueue.enqueue(draft.withQuote(_state.value.quotedHtml), at)
 
         return true
+    }
+
+    /**
+     * Calls back a schedule from the composer the draft was reopened in.
+     *
+     * The draft stays in Drafts either way — a cancelled submission leaves the message exactly as
+     * it was — so the composer stays open on it and the user can send, edit or reschedule. What
+     * changes is only whether this device still has a promise to keep.
+     */
+    fun cancelSchedule() {
+        val send = _state.value.scheduled ?: return
+
+        viewModelScope.launch {
+            runCatching { sendQueue.cancelScheduled(send) }
+                .onSuccess { outcome ->
+                    _state.update {
+                        it.copy(
+                            scheduled = null,
+                            error =
+                                if (outcome == CancelOutcome.AlreadySent) ComposeError.AlreadySent
+                                else null,
+                        )
+                    }
+                }
+                .onFailure { failure ->
+                    _state.update {
+                        it.copy(
+                            error =
+                                ComposeError.CancelFailed(
+                                    failure.message
+                                        ?: "The scheduled send could not be called back."
+                                )
+                        )
+                    }
+                }
+        }
     }
 
     /**
@@ -365,7 +428,41 @@ constructor(
                     return
                 }
 
-        _state.update { it.copy(draft = draft, isLoading = false, isSaved = true) }
+        _state.update {
+            it.copy(
+                draft = draft,
+                scheduled = liveSchedule(request.accountKey, request.emailId),
+                isLoading = false,
+                isSaved = true,
+            )
+        }
+    }
+
+    /**
+     * The schedule this draft is still waiting on, or null.
+     *
+     * A record whose release time has passed is *confirmed* before it is shown, because the two
+     * things it could mean look identical from here: the mail went out on time, or the worker is
+     * behind. `EmailSubmission/get` resolves only a completed send, so an answer means the message
+     * has left — and offering "cancel this send" over a message already delivered is the exact lie
+     * this whole path exists to avoid.
+     */
+    private suspend fun liveSchedule(accountKey: String, emailId: String): ScheduledSend? {
+        val record = scheduled.forDraft(accountKey, emailId) ?: return null
+
+        if (record.isPendingAt(System.currentTimeMillis())) return record
+
+        val released = runCatching { compose.releasedAt(accountKey, emailId) }.getOrNull()
+
+        if (released != null) scheduled.forget(accountKey, emailId)
+
+        return record.takeIf { released == null }
+    }
+
+    private suspend fun readSendWindow() {
+        val capability = compose.sendWindow(_state.value.draft.accountKey)
+
+        _state.update { it.copy(submission = capability) }
     }
 
     /**

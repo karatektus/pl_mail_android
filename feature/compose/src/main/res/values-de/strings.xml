@@ -9,7 +9,7 @@
 
     <string name="compose_from">Von</string>
     <string name="compose_from_unknown">Noch nicht bekannt</string>
-    <string name="compose_choose_sender">Absendekonto wählen</string>
+    <string name="compose_choose_sender">Absenderadresse wählen</string>
     <string name="compose_to">An</string>
     <string name="compose_cc">Cc</string>
     <string name="compose_bcc">Bcc</string>
@@ -31,10 +31,25 @@
     <string name="compose_saved">Entwurf gespeichert</string>
     <string name="compose_saving">Wird gespeichert…</string>
 
+    <string name="compose_send_later">Später senden…</string>
+    <string name="send_later_today">Heute Abend</string>
+    <string name="send_later_tomorrow">Morgen früh</string>
+    <string name="send_later_monday">Montagmorgen</string>
+    <string name="send_later_pick">Datum und Uhrzeit wählen…</string>
+    <string name="send_later_next">Weiter</string>
+    <string name="send_later_confirm">Planen</string>
+    <string name="send_later_cancel">Abbrechen</string>
+
+    <!-- "Geht … raus" is too colloquial for the composer; "wird gesendet" states the fact. -->
+    <string name="compose_scheduled_for">Wird %1$s gesendet</string>
+    <string name="compose_cancel_schedule">Abbrechen</string>
+
     <string name="compose_error_no_recipients">Fügen Sie eine Empfängerin oder einen Empfänger hinzu.</string>
     <string name="compose_error_no_identity">Noch kann kein Konto senden. Prüfen Sie, ob Ihr Server erreichbar ist.</string>
     <string name="compose_error_no_original">Diese Nachricht konnte nicht geladen werden, es gibt also nichts zu zitieren.</string>
     <string name="compose_error_save_failed">Der Entwurf konnte nicht gespeichert werden: %1$s</string>
+    <string name="compose_error_cancel_failed">Der geplante Versand konnte nicht zurückgenommen werden: %1$s</string>
+    <string name="compose_error_already_sent">Diese Nachricht wurde bereits gesendet.</string>
 
     <!--
       "Am <Datum> schrieb <Name>:" — the German order puts the verb before the
@@ -53,4 +68,11 @@
     <string name="send_done">Nachricht gesendet</string>
     <string name="send_failed">Nicht gesendet: %1$s</string>
     <string name="send_reopen">Bearbeiten</string>
+    <string name="send_scheduled">Wird %1$s gesendet</string>
+    <string name="send_too_late">Zu spät — diese Nachricht wurde bereits gesendet.</string>
+
+    <string name="send_scheduled_no_subject">(kein Betreff)</string>
+    <string name="send_scheduled_leaves">Wird %1$s gesendet</string>
+    <string name="send_scheduled_cancel">Abbrechen</string>
+    <string name="send_scheduled_more">und %1$d weitere warten</string>
 </resources>

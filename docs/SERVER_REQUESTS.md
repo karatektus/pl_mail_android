@@ -68,7 +68,9 @@ account's — refuses the **whole patch** with `invalidProperties` and writes no
 subject in the same patch; the refused-update-is-a-no-op behaviour is deliberately stricter than
 the mailbox-patch precedent. One behaviour change beyond the ask: `create` now also refuses a
 non-array `attachments` instead of ignoring it. **Client action: retire the recreate-and-trash
-workaround.**
+workaround.** — *done 2026-08-06.* `ComposeRepository.save` patches; the attachment array rides on
+the patch only when the set has changed, because it is whole-value and re-stating it per keystroke
+is pure cost. A refused patch needs no rollback, so the composer reports it and leaves the draft.
 
 **`identityId` reaches the sent message.** `EmailSubmission/set` resolves it through the same list
 `Identity/get` publishes (one identity per sendable alias; the synthetic account-id identity only
@@ -76,7 +78,10 @@ while an account has no alias rows), so an id the server offered is exactly an i
 that resolves to nothing is `forbiddenFrom` — never silently sent as the account's address.
 `EmailSubmission/get` now reports the identity actually used. Limit worth knowing: it sets the From
 *address*; the display name still comes from the account, on the web path too. **Client action:
-the From picker can finally show one entry per alias.**
+the From picker can finally show one entry per alias.** — *done 2026-08-06.* One entry per alias,
+the account's name shown beside it only when more than one account is connected, and a
+`forbiddenFrom` turned into a sentence naming the address with `Identity/get` re-read in the same
+breath. `loadDraft` matches the draft's existing From rather than taking the first identity.
 
 **Scheduled send.** `maxDelayedSend` is now `2592000` (30 days), and the session advertises
 `submissionExtensions: {"FUTURERELEASE": ["HOLDFOR", "HOLDUNTIL"]}`. The request shape is RFC 8621
@@ -88,7 +93,23 @@ it is `cannotUnsend`, and a cancelled submission answers `notFound` from `/get` 
 is no submission row to hold the state. The envelope is validated now, not dropped: a `mailFrom`
 that is not the submission's From is `forbiddenFrom`, an `rcptTo` differing from the Email's
 recipients is `invalidRecipients`. **Client action: the "send tomorrow at 8am" feature is
-buildable; the rejected local-alarm design stays rejected.**
+buildable; the rejected local-alarm design stays rejected.** — *done 2026-08-06*, and one thing
+found while building it that the entry above does not say plainly enough to design from: **a
+submission that is still held is not gettable at all.** `EmailSubmissionGetMethod` skips any Message
+with a null `sentAt`, so `/get` answers `notFound` for a pending hold exactly as it does for a
+cancelled one and for a draft nobody ever submitted, and it always reports `undoStatus: "final"`.
+The release time therefore exists in the create response and nowhere else. The client keeps it in
+DataStore beside the offline queue — not Room, which is dropped on any schema bump precisely because
+everything in it is reconstructible from the server, and this is not. The consequence is the
+feature's honest limit: a message scheduled on one device is invisible on another, and only the
+ability to call it back is lost.
+
+Also worth writing down for whoever builds this next, all four verified on 8002 on 2026-08-06: the
+**minimal** scheduling envelope is `{"mailFrom": {"parameters": {"HOLDUNTIL": "…"}}}` — `email` and
+`rcptTo` are both optional, and sending them only risks `forbiddenFrom`/`invalidRecipients` for
+information the server already has. `HOLDFOR` accepts a bare integer as well as the RFC's string.
+Parameter names are case-insensitive (`holduntil` works). And the submission id that comes back is
+the Email id, which is what a later cancel names.
 
 **`Contact/autocomplete`, under `urn:plmail:params:jmap:contacts`.** Takes `accountId`, a
 non-empty `query`, optional `limit` (default 8, capped at 50, both advertised in the session's

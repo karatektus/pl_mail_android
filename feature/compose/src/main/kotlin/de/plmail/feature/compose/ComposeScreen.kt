@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.FormatBold
 import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -70,6 +71,7 @@ import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailPane
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.jmap.mail.DraftComposer
+import java.time.Instant
 
 /**
  * Writing a message.
@@ -101,6 +103,9 @@ fun ComposeScreen(
     val strings = composeStrings()
     val snackbars = remember { SnackbarHostState() }
     val body = rememberRichTextState()
+
+    var isChoosingWhen by remember { mutableStateOf(false) }
+    var isPickingExactTime by remember { mutableStateOf(false) }
 
     LaunchedEffect(request) { viewModel.open(request, strings) }
 
@@ -160,7 +165,21 @@ fun ComposeScreen(
                         )
                     }
 
-                    OverflowMenu(onDiscard = { viewModel.discard(onClose) })
+                    OverflowMenu(
+                        canSchedule = state.canScheduleSend,
+                        onSendLater = { isChoosingWhen = true },
+                        onDiscard = { viewModel.discard(onClose) },
+                    )
+
+                    // Anchored under the overflow button it was opened from, so
+                    // the presets appear where the finger already is.
+                    SendLaterMenu(
+                        isOpen = isChoosingWhen,
+                        latest = state.latestSendAt(Instant.now()),
+                        onDismiss = { isChoosingWhen = false },
+                        onChosen = { at -> if (viewModel.sendLater(at)) onClose() },
+                        onPickExact = { isPickingExactTime = true },
+                    )
                 },
             )
         },
@@ -175,9 +194,28 @@ fun ComposeScreen(
 
         val spacing = PlMailTheme.spacing
 
+        if (isPickingExactTime) {
+            SendLaterPicker(
+                latest = state.latestSendAt(Instant.now()),
+                onDismiss = { isPickingExactTime = false },
+                onChosen = { at ->
+                    isPickingExactTime = false
+                    if (viewModel.sendLater(at)) onClose()
+                },
+            )
+        }
+
         Column(
             modifier = Modifier.fillMaxSize().padding(insets).verticalScroll(rememberScrollState())
         ) {
+            state.scheduled?.let { scheduled ->
+                ScheduledBanner(
+                    sendAt = scheduled.sendAt,
+                    onCancel = viewModel::cancelSchedule,
+                )
+                PlMailDivider()
+            }
+
             FromRow(state = state, onSelected = viewModel::setIdentity)
             PlMailDivider()
 
@@ -276,16 +314,20 @@ fun ComposeScreen(
  * and one credential reaches several accounts, so "which of me is this from" is a real question at
  * the moment of writing rather than a setting.
  *
- * Note what selecting a non-primary alias does *not* yet do: the server ignores both the draft's
- * `from` and the submission's `identityId` and sends as the account's own address. Choosing a
- * different **account** works; choosing a different alias within one does not. The ask is queued in
- * `docs/SERVER_REQUESTS.md`, and until it lands the picker shows one entry per account so it cannot
- * promise something the send will not honour.
+ * **One entry per alias**, which it could not be until recently: `EmailSubmission/set` ignored
+ * `identityId` and sent everything as the account's own address, so the picker collapsed the list
+ * to one entry per account rather than promising something the send would not honour. The server
+ * now resolves the id through the same list `Identity/get` publishes and refuses an id it did not
+ * publish with `forbiddenFrom`, so every entry here is an address the mail will genuinely leave as.
+ *
+ * One limit worth knowing and not worth pretending about: the server sets the From *address* only.
+ * The display name still comes from the account, on the web path too — so an alias with its own
+ * name shows that name here and the mail goes out under the account's.
  */
 @Composable
 private fun FromRow(state: ComposeUiState, onSelected: (de.plmail.core.data.SendIdentity) -> Unit) {
     var isOpen by remember { mutableStateOf(false) }
-    val choices = state.identities.distinctBy { it.accountKey }
+    val choices = state.identities
 
     Row(
         modifier =
@@ -320,6 +362,21 @@ private fun FromRow(state: ComposeUiState, onSelected: (de.plmail.core.data.Send
             choices.forEach { identity ->
                 DropdownMenuItem(
                     text = { Text(identity.label) },
+                    // Only when there is more than one account in the list.
+                    // Several aliases of one mailbox do not need its name
+                    // repeated under each of them.
+                    trailingIcon =
+                        if (state.showsAccountNames) {
+                            {
+                                Text(
+                                    text = identity.accountName,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        } else {
+                            null
+                        },
                     onClick = {
                         onSelected(identity)
                         isOpen = false
@@ -327,6 +384,41 @@ private fun FromRow(state: ComposeUiState, onSelected: (de.plmail.core.data.Send
                 )
             }
         }
+    }
+}
+
+/**
+ * What this draft is already waiting for.
+ *
+ * Shown only for a schedule *this device* recorded, because a held submission has no server-side
+ * row to read back — `EmailSubmission/get` answers `notFound` until the mail has actually gone. So
+ * the absence of this bar is not a promise that nothing is scheduled, and it never claims to be.
+ */
+@Composable
+private fun ScheduledBanner(sendAt: Long, onCancel: () -> Unit) {
+    Row(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(
+                    horizontal = PlMailTheme.spacing.medium,
+                    vertical = PlMailTheme.spacing.small,
+                ),
+        horizontalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.small),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Filled.Schedule, contentDescription = null)
+
+        Text(
+            text =
+                stringResource(
+                    R.string.compose_scheduled_for,
+                    java.time.Instant.ofEpochMilli(sendAt).asWhen(),
+                ),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+
+        TextButton(onClick = onCancel) { Text(stringResource(R.string.compose_cancel_schedule)) }
     }
 }
 
@@ -433,8 +525,19 @@ private fun SaveState(isSaved: Boolean, hasId: Boolean) {
     )
 }
 
+/**
+ * Discard, and "Send later" where the server offers it.
+ *
+ * The schedule entry is absent rather than disabled on an instance whose `maxDelayedSend` is zero.
+ * A greyed-out control is a promise that the feature exists somewhere in the settings; it does not,
+ * and nothing the user can do on this phone would turn it on.
+ */
 @Composable
-private fun OverflowMenu(onDiscard: () -> Unit) {
+private fun OverflowMenu(
+    canSchedule: Boolean,
+    onSendLater: () -> Unit,
+    onDiscard: () -> Unit,
+) {
     var isOpen by remember { mutableStateOf(false) }
 
     IconButton(onClick = { isOpen = true }) {
@@ -445,6 +548,17 @@ private fun OverflowMenu(onDiscard: () -> Unit) {
     }
 
     DropdownMenu(expanded = isOpen, onDismissRequest = { isOpen = false }) {
+        if (canSchedule) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.compose_send_later)) },
+                leadingIcon = { Icon(Icons.Filled.Schedule, contentDescription = null) },
+                onClick = {
+                    isOpen = false
+                    onSendLater()
+                },
+            )
+        }
+
         DropdownMenuItem(
             text = { Text(stringResource(R.string.compose_discard)) },
             onClick = {
@@ -511,6 +625,9 @@ private fun ComposeError.text(): String =
         ComposeError.NoIdentity -> stringResource(R.string.compose_error_no_identity)
         ComposeError.OriginalUnavailable -> stringResource(R.string.compose_error_no_original)
         is ComposeError.SaveFailed -> stringResource(R.string.compose_error_save_failed, message)
+        is ComposeError.CancelFailed ->
+            stringResource(R.string.compose_error_cancel_failed, message)
+        ComposeError.AlreadySent -> stringResource(R.string.compose_error_already_sent)
     }
 
 /**

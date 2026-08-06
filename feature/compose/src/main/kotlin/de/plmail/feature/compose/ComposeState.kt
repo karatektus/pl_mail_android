@@ -1,10 +1,12 @@
 package de.plmail.feature.compose
 
 import de.plmail.core.data.ComposeDraft
+import de.plmail.core.data.ScheduledSend
 import de.plmail.core.data.SendIdentity
 import de.plmail.jmap.mail.DraftComposer
 import de.plmail.jmap.mail.Email
 import de.plmail.jmap.mail.EmailAddress
+import de.plmail.jmap.protocol.SubmissionCapability
 import java.time.Instant
 import java.time.OffsetDateTime
 import java.time.ZoneId
@@ -16,6 +18,21 @@ import java.time.format.FormatStyle
 data class ComposeUiState(
     val draft: ComposeDraft = ComposeDraft(accountKey = "", identityId = ""),
     val identities: List<SendIdentity> = emptyList(),
+    /**
+     * What the sending account will accept, read from the session.
+     *
+     * The default is the spec's — no delayed send — so a server that says nothing about it gets a
+     * composer with no "Send later" in the menu rather than one offering a feature that would be
+     * refused.
+     */
+    val submission: SubmissionCapability = SubmissionCapability(),
+    /**
+     * The release time this draft is already waiting for, when it is one.
+     *
+     * Only ever set from this device's own record: a held submission has no server-side row to read
+     * back, so a draft scheduled on the web or on another phone opens here as an ordinary draft.
+     */
+    val scheduled: ScheduledSend? = null,
     /**
      * The original, quoted, held beside the draft rather than inside the editor.
      *
@@ -39,6 +56,22 @@ data class ComposeUiState(
     /** Whether the From row is worth opening as a menu. */
     val hasChoiceOfSender: Boolean
         get() = identities.size > 1
+
+    /**
+     * Whether the account name has to be shown beside each address in the picker.
+     *
+     * One entry per *alias* now, so several rows can belong to one account — and with only one
+     * account connected, repeating its name on every row is noise that tells nobody anything.
+     */
+    val showsAccountNames: Boolean
+        get() = identities.distinctBy { it.accountKey }.size > 1
+
+    /** Whether "Send later" belongs in the menu at all. The session decides, not this client. */
+    val canScheduleSend: Boolean
+        get() = submission.supportsScheduledSend
+
+    /** The furthest ahead this server will accept a release time. */
+    fun latestSendAt(now: Instant): Instant = now.plus(submission.longestHold)
 }
 
 /** What went wrong, in terms the screen can turn into a sentence. */
@@ -54,6 +87,12 @@ sealed interface ComposeError {
     data object OriginalUnavailable : ComposeError
 
     data class SaveFailed(val message: String) : ComposeError
+
+    /** A schedule could not be called back — the server refused, or nothing answered. */
+    data class CancelFailed(val message: String) : ComposeError
+
+    /** The cancel arrived after the release. The mail has gone; nothing was undone. */
+    data object AlreadySent : ComposeError
 }
 
 /**

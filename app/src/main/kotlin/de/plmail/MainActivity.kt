@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.material3.SnackbarHost
@@ -28,6 +29,7 @@ import de.plmail.feature.calendar.CalendarScreen
 import de.plmail.feature.compose.ComposeHost
 import de.plmail.feature.compose.ComposeRequest
 import de.plmail.feature.compose.ComposeRequestSaver
+import de.plmail.feature.compose.ScheduledSendsBar
 import de.plmail.feature.compose.SendStatusHost
 import de.plmail.feature.mail.MailShell
 import de.plmail.feature.mail.ThreadTarget
@@ -287,14 +289,17 @@ private fun PlMailApp(
                     }
                 }
 
-                // Last, so it draws over the screen it belongs to, and inset
-                // only against the navigation bar: it floats above content
-                // rather than being laid out with it, so the gesture bar is the
-                // one thing it has to clear.
-                SnackbarHost(
-                    hostState = snackbars,
-                    modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
-                )
+                // Above the snackbar and below everything else, for the same
+                // reason the snackbar is here: a message the server is holding
+                // has to stay reachable whichever screen the user has navigated
+                // to, and it is the only place on the device its release time
+                // exists. Draws nothing when nothing is scheduled, which is
+                // nearly always.
+                Column(modifier = Modifier.align(Alignment.BottomCenter).navigationBarsPadding()) {
+                    ScheduledSendsBar()
+
+                    SnackbarHost(hostState = snackbars)
+                }
             }
     }
 }

@@ -26,7 +26,7 @@ Read this first, then `PLAN.md` for why anything is the way it is.
 | M5 Actions, undo, bulk | **done** | offline queue added M11, see below |
 | M6 Staying current (sync, SSE, push, notifications) | **done** | ticked early; genuinely closed 2026-08-02, see below |
 | M7 Search | **done** | |
-| M8 Compose | **done** | scheduled send blocked on server |
+| M8 Compose | **done** | scheduled send adopted 2026-08-06, see below |
 | M9 Organising (labels, snooze) | **done** | colour adopted 2026-08-01, see below |
 | Inbox categories (Gmail tabs) | **done, server merged** | `84c3f1b` on plMail `main`, verified on the wire — see below |
 | Design system | **done** | six themes, two layouts, three densities |
@@ -401,14 +401,49 @@ Written down because previous sessions' honesty about exactly this has led direc
 Six are open in `docs/SERVER_REQUESTS.md`, which has the probe evidence for each. In short, and in
 terms of what each unblocks on the client:
 
-| Ask | Unblocks |
-|---|---|
-| `Email/set` update honours `attachments` | Removes the "recreate the draft and bin the old one" workaround, and the stray Trash entry per attachment change |
-| `EmailSubmission/set` honours `identityId` | The From picker can offer aliases instead of one entry per account |
-| A JMAP surface for contact autocomplete | Suggestions for people whose mail is not on this device |
-| `Appearance` over JMAP | The phone honours the theme set on the web; `PlMailAppearance.of` is already the one function the sync will call |
-| Scheduled send (`maxDelayedSend` > 0) | "Send tomorrow at 8am"; the current undo window is seconds and does not survive the process |
-| Sync window in the session object | The accounts screen could say what the *server* retains rather than inferring it from the oldest message |
+| Ask | Unblocks | State |
+|---|---|---|
+| `Email/set` update honours `attachments` | Removes the "recreate the draft and bin the old one" workaround, and the stray Trash entry per attachment change | **adopted 2026-08-06** |
+| `EmailSubmission/set` honours `identityId` | The From picker can offer aliases instead of one entry per account | **adopted 2026-08-06** |
+| Scheduled send (`maxDelayedSend` > 0) | "Send tomorrow at 8am"; the undo window used to be seconds and did not survive the process | **adopted 2026-08-06** |
+| A JMAP surface for contact autocomplete | Suggestions for people whose mail is not on this device | landed server-side, not adopted here |
+| `Appearance` over JMAP | The phone honours the theme set on the web; `PlMailAppearance.of` is already the one function the sync will call | landed server-side, not adopted here |
+| Sync window in the session object | The accounts screen could say what the *server* retains rather than inferring it from the oldest message | landed server-side, not adopted here |
+
+### The compose adoptions — 2026-08-06
+
+All three landed together because they are one code path. What each cost, and what each still
+cannot do:
+
+- **The attachment workaround is gone.** `ComposeRepository.save` patches instead of recreating,
+  and `attachments` rides on the patch only when the set has actually changed — the array is
+  whole-value, so re-stating it per keystroke would be pure cost. `ComposeDraft.needsCreate` is now
+  "has never been saved" and nothing else, and the recreate-then-trash arm went with it. An
+  unresolvable blobId refuses the *whole* patch and writes nothing, so there is no rollback path to
+  own; the composer says so and leaves the draft as it was.
+- **The From picker offers one entry per alias.** `FromRow` no longer collapses on `accountKey`,
+  the account's name appears beside an entry only when more than one account is connected, and a
+  `forbiddenFrom` refusal is turned into a sentence naming the *address* rather than the id, with
+  `Identity/get` re-read in the same breath. `loadDraft` matches the draft's existing From against
+  the identity list rather than taking the first, so reopening a draft written from an alias no
+  longer quietly moves it back to the main address. The server sets the From **address** only —
+  the display name still comes from the account, on the web path too, and nothing here pretends
+  otherwise.
+- **Send later exists, and undo-send moved onto the server's hold.** The undo window is now
+  `HOLDFOR 6`, submitted immediately, so killing the app inside it no longer drops the send and the
+  mail leaves on time. Undo is a real `undoStatus: canceled` request that can be refused, and
+  `SendState.TooLate` exists so "undone" is never shown over a message that has gone. The local
+  delay is kept as the fallback for a server advertising no hold, chosen per account from the
+  session.
+
+**The one thing a client cannot do, and it shapes the feature.** plMail reconstructs a submission
+from the Message, so a submission that is still *held* has no server-side row: `EmailSubmission/get`
+answers `notFound` for it exactly as it does for a draft nobody ever submitted, and the release time
+exists only in the create response. So the schedule lives in `ScheduledSendStore` — DataStore, not
+Room, for the same reason the outbox does: it is the one piece of state the server does not have,
+and Room is dropped on any schema bump. It follows that a message scheduled on this phone is
+invisible on another device and after a data wipe. The mail still goes; only the ability to call it
+back is lost, and nothing in the UI claims otherwise.
 
 Two have closed, and both are now merged into plMail `main`: **`Mailbox.color`** (`b06b909`),
 adopted here on 2026-08-01, and **the inbox categories** (`84c3f1b`), merged on 2026-08-02. Nothing
