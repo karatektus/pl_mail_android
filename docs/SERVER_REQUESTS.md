@@ -41,235 +41,10 @@ Each one should let someone decide in a minute, without opening the client:
 
 ## Open
 
-### `Email/set` update accepts `attachments` and silently drops them
-
-**What the client wants to do.** Let someone attach a file to a message they have already started
-writing. The composer autosaves as it goes, so by the time a file is picked the draft usually
-exists on the server already.
-
-**What it can do today.** Nothing, by that route. `EmailPatchApplier::DRAFT_PROPERTIES` lists
-`attachments` among the properties a draft may change, so the patch is accepted, and
-`JmapDraftWriter::update()` never looks at the key — the call answers `updated`, the attachment is
-not stored, and nothing anywhere says so. The Android composer therefore *creates a new draft*
-whenever the attachment set changes and moves the old one to Trash, which costs a round trip, an
-upload of anything already uploaded, and one stray message in the bin per change.
-
-**What was checked.** Against the running 8002 stack on 2026-08-01. Uploaded a blob
-(`POST /jmap/upload/1` → `{"blobId":"u-1"}`), then
-`Email/set {"update":{"10":{"attachments":[{"blobId":"u-1",…}],"subject":"…"}}}`. Response:
-`"updated": {"10": null}`, no `notUpdated`. A following `Email/get` returns
-`"attachments": [], "hasAttachment": false` — while the `subject` from the same patch *did* change.
-The same `attachments` array on a `create` works correctly. Source: `src/Jmap/Mail/EmailPatchApplier.php`
-(the property list) and `src/Jmap/Mail/JmapDraftWriter.php` (`update()` vs `applyAttachments()`,
-which is only called from `create()`).
-
-**Smallest change that would unblock it.** Either handle `attachments` in `JmapDraftWriter::update()`
-the way `create()` does, or — if editing attachments on a saved draft is deliberately out of scope —
-reject the property so the client learns, rather than reporting success. The silent success is the
-part that is actively harmful; a `notUpdated` entry would be an improvement on its own.
-
-**Client-side workaround.** In place, and it works: recreate the draft and bin the old one. It costs
-a Trash entry the user did not ask for and re-uploads nothing (existing parts are re-attached by
-blob id), so the risk of it being wrong is low — but it is a second implementation of "what a draft
-is", and it disagrees with the web composer, which edits attachments in place.
-
-### The chosen identity does not reach the sent message
-
-**What the client wants to do.** Show an always-visible From picker and honour it. plMail accounts
-can hold several sendable aliases and `Identity/get` publishes them, so "which of me is this from"
-is a question the composer should be able to answer.
-
-**What it can do today.** Choose the **account**, which works, because a draft is created under one.
-Choosing a different *alias within* an account has no effect at all: the message goes out as the
-account's own address, and nothing reports the difference. So the Android picker deliberately shows
-one entry per account rather than one per alias — a control that silently ignores half its options
-is worse than a smaller control.
-
-**What was checked.** 2026-08-01, 8002 stack. `Email/set` create with
-`"from":[{"name":"Alias Person","email":"alias@plmail.test"}]` stores and returns
-`"from":[{"name":"E2E Mailbox","email":"E2E Mailbox"}]` — the account's own address.
-`JmapDraftWriter::persistDraft()` sets `->setFromAddress($account->getEmail())` unconditionally and
-never reads `from`. `EmailSubmissionSetMethod::submit()` reads `emailId` and ignores `identityId`
-entirely. The web composer *does* honour the choice, through
-`ComposeController::resolveFromAddress()`, so this is a JMAP-only gap rather than a product decision.
-
-**Smallest change that would unblock it.** Have `EmailSubmission/set` resolve `identityId` against
-`Account::getSendableAliases()` and set the From from it — the same resolution
-`resolveFromAddress()` already performs. Honouring `from` on the draft would be a bonus; the
-submission is the point where it matters.
-
-**Client-side workaround.** None that is honest. Guessing the alias from the draft would mean
-sending as an address the server did not agree to, which is the one thing a mail client must not do
-quietly.
-
-### Contact autocomplete has no JMAP surface
-
-**What the client wants to do.** Suggest addresses as a recipient is typed, ranked by how often and
-how recently the user has written to them. The server already harvests exactly this —
-`HarvestContactsMessage`, a `Contact` entity with a `frequency` column.
-
-**What it can do today.** The Android composer suggests from its **own cache**: senders and
-recipients of mail already synced to the device, plus the OS address book when the user has granted
-that permission. That is a good answer for anyone whose recent mail is on the phone and a poor one
-for a new device, a rarely-used address, or someone the user has only ever mailed from the web.
-
-**What was checked.** `grep -rn 'Contact' src/Jmap/` finds nothing — there is no JMAP method and no
-JMAP Contacts capability in the session. The functionality exists only at
-`src/Controller/Mail/ContactController.php`, `GET /contacts/autocomplete?q=`, which is one of the
-HTML/Turbo routes clients are explicitly told never to build against.
-
-**Smallest change that would unblock it.** Any JMAP-shaped surface over the same
-`ContactRepository::findForAutocomplete()` — an `urn:plmail:params:jmap:contacts` capability with a
-single query method would do. It does not need to be RFC 8621 Contacts.
-
-**Client-side workaround.** In place and deliberately limited. The cost of being wrong is small —
-a suggestion list that is shorter than it could be — which is why this was built rather than
-blocked. It should be replaced rather than extended.
-
-### `Appearance` has no JMAP surface, so the phone and the web disagree about the theme
-
-**What the client wants to do.** Look the way the user set it on the web. Somebody who picked Nord
-in plMail's settings and then installs the Android app is, reasonably, expecting Nord — and having
-to set it a second time is the moment the app stops feeling like the same product.
-
-**What it can do today.** Everything except read and write it. The Android appearance model landed
-on 2026-08-01 and is deliberately built to the server's shape rather than to its own: six themes
-named with plMail's own `Theme` values, `Layout` flat/boxed, `Density` comfortable/cosy/compact —
-all resolved from **wire strings**, through `PlMailAppearance.of(...)`, which is the one function
-the sync will have to call. The choice is stored locally in DataStore instead. So the cost today is
-that the two surfaces drift apart the moment either is changed, silently, with no indication that
-they were ever meant to agree.
-
-**What was checked.** 2026-08-01, reading `~/pl_mail`. `App\Entity\Embeddable\Appearance` is a
-real embeddable on `User` with `theme`, `layout`, `accent`, `paneAlpha`, `paneBlur`, `radius`,
-`density`, `backgroundKind/Preset/File/Solid`, `scrimAlpha` and four ink overrides — all validated
-and clamped in the setters. `grep -rn 'Appearance' src/Jmap/` returns **nothing**: it is reachable
-only through `App\Controller\Settings\AppearanceController`, an HTML/Turbo route, which is exactly
-the surface clients are told never to build against. The session object advertises no capability
-for it.
-
-**Smallest change that would unblock it.** A read of the same embeddable in the session object would
-be enough to start — the client can honour a theme it cannot yet change. A settable version wants
-something like `Appearance/get` and `Appearance/set` under a `urn:plmail:params:jmap:appearance`
-capability, over the accessors that already exist.
-
-**Client-side workaround.** In place: the setting is local. It is honest as far as it goes and does
-not have to be undone — the local store becomes the override rather than the source, which is what
-`StoredAppearance`'s nullable fields are for.
-
-Three details worth having decided in advance, since they are what the swap will trip over:
-
-- **The server has a seventh theme, `paper`, and the app does not.** plMail's own default is Paper,
-  and the app's Light *is* a warm sheet already — two near-identical creams in one picker is a
-  choice nobody can make. `PlMailThemeChoice.fromWire` therefore falls back to `system` rather than
-  throwing, so a synced `paper` degrades instead of failing. Whether it should map to Light instead
-  is a product decision, not a technical one.
-- **`density` disagreed and the app moved.** It was compact/comfortable/spacious here and is
-  comfortable/cosy/compact there; a "spacious" the server can never send would vanish on the first
-  sync, so the Android enum was renamed to the server's before anything shipped on top of it.
-- **`paneBlur` is accepted and not implemented on Android.** Compose can blur a composable's own
-  content and has no backdrop blur, so a "frosted" pane would blur the text written on it rather
-  than the list behind it. `paneAlpha` is honoured; blur will have to be ignored until Compose grows
-  a backdrop filter, and the client should say so rather than pretending.
-
-### The sync window is a real per-account setting and JMAP does not mention it
-
-**What the client wants to do.** Tell someone why a mail they know exists is not in search. plMail
-does not necessarily hold a whole mailbox: `sync.message_limit` caps a sync at the newest N
-messages, and `sync.backfill_target` records how far back a completed backfill actually reached. So
-"no results" can mean "not on your server", and the app currently cannot tell the difference between
-that and "not on this phone".
-
-**What it can do today.** Two observable facts, both honest and neither authoritative. The accounts
-screen shows how many of an account's messages are cached on the device and the date of the oldest,
-which is the boundary of what is *searchable* — the app pages backwards as the user scrolls, and
-that was previously visible nowhere in the product. Behind a button it also runs one
-`Email/query` per account, ascending, limit 1, and reports the date that comes back. That is the
-oldest message the server still holds, which is close to the answer and is not it: it cannot
-distinguish a mailbox whose owner simply has no older mail from one that has been trimmed, and it
-says nothing about whether a backfill is still walking backwards.
-
-**What was checked.** 2026-08-01, reading `~/pl_mail` and probing the 8002 stack.
-`Account::getSyncLimit()`, `getBackfillTarget()`, `getBackfillRanAt()` and `getBackfillAttempts()`
-are real accessors over the `settings` JSONB column, with `SYNC_LIMIT_CHOICES` offered in the web UI.
-`grep -rn 'SyncLimit\|BackfillTarget' src/Jmap/` returns nothing: neither the session object nor
-`Mailbox/get` nor any account capability mentions any of it. The `Email/query` probe works — both
-seeded accounts answered with the date of their oldest message on the first try.
-
-**Smallest change that would unblock it.** The two numbers in the per-account section of the session
-object, beside the mail capability: the message cap in force, and the target a backfill has reached.
-A boolean "a backfill is still running" would be a bonus and is not needed to say something true.
-
-**Client-side workaround.** In place, described above, and deliberately worded to claim only what it
-knows — "on this device", and "your server still holds mail back to". Guessing a retention policy
-from the observed boundary would produce a client that tells somebody their mail has been deleted
-when it has not.
-
-### Scheduled send: `maxDelayedSend` is 0
-
-**What the client wants to do.** "Send tomorrow at 8am", which is table stakes against Gmail.
-
-**What it can do today.** Nothing. The undo window the Android app offers is a client-side delay
-before calling `EmailSubmission/set` at all — it is not scheduling, it does not survive the process,
-and it is measured in seconds.
-
-**What was checked.** The live session advertises
-`"urn:ietf:params:jmap:submission": {"maxDelayedSend": 0, "submissionExtensions": {}}`, and
-`EmailSubmissionSetMethod` dispatches `SendMessageMessage` immediately with no `sendAt` handling.
-
-**Smallest change that would unblock it.** Accept `sendAt` on the submission and hold the message
-until then, advertising a non-zero `maxDelayedSend`. The messenger bus already has delayed dispatch.
-
-**Client-side workaround.** A local alarm that submits later — rejected. It would send only if the
-phone were awake, unblocked by Doze and still holding a valid credential, so a scheduled mail would
-sometimes simply not go, with no way for the user to tell in advance.
-
-### `CalendarEvent/query` returns series, so placing a recurring event costs a query per day
-
-**What the client wants to do.** Draw a month of the calendar. That means knowing, for every event,
-which days it appears on and at what time — which for a recurring series is a different question
-from what the series says about itself.
-
-**What it can do today.** It works, and it costs up to 31 method calls per visible month.
-`CalendarEvent/query` takes a mandatory `after`/`before` window and answers with **series** ids
-ordered by first occurrence in the window; nothing in the answer says which days inside the window
-each series actually landed on. A one-off is placeable from its own `start` and `duration`, so it
-costs nothing extra. A recurring one is not, and the client is explicitly forbidden from expanding
-the rule itself (`CLIENT_DEVELOPMENT.md`) — rightly, because the phone and the web UI would then
-disagree at a DST boundary about the same event. So the Android client asks the server instead: one
-`CalendarEvent/query` per day of the window, batched into requests of 31 (`maxCallsInRequest` is
-32), issued only when the window's events actually include a recurring one. A month with no
-recurring events costs one round trip; a month with any costs two.
-
-**What was checked.** Probed 2026-08-05 against the running 8002 stack, on the seeded calendar.
-Event `10867` is a weekly Mon/Wed/Fri standup starting `2026-08-03T10:00:00`. A one-day window for
-the Friday (`after: 2026-08-07T00:00:00`, `before: 2026-08-08T00:00:00`) returns `["10867"]`; the
-Monday window returns it too; the **Thursday** window does not return it. So day membership is
-answerable, one day at a time, and that is the mechanism the client now uses. A single request
-carrying 31 one-day queries (`2026-08-01` through `2026-08-31`) was accepted and answered in full —
-31 responses, `10867` in exactly the Mondays, Wednesdays and Fridays — which is what makes the
-workaround one round trip per month rather than 31. `recurrenceOverrides`
-is published on the object and keyed by the occurrence's original start, which is what supplies the
-time when an occurrence has been moved and the `{"excluded": true}` that cancels one — those are
-read rather than derived. Also confirmed: `queryState` is the constant `"fixed"`,
-`canCalculateChanges` is `false`, and there is no `CalendarEvent/queryChanges`, so there is no
-cheaper way to re-ask either.
-
-**Smallest change that would unblock it.** An `expandRecurrences: true` argument on
-`CalendarEvent/query`, as the IETF JMAP-calendars draft defines it: return occurrence identifiers —
-each series id paired with the occurrence's start — instead of one id per series. One query would
-then replace up to 31 per visible month, and the client would place every occurrence from the
-answer with no probing and no local expansion. The server already materialises occurrences within
-`materialisedHorizon` (`-1 year` / `+2 years`), so the data being asked for is data it already
-holds; this is a projection of the index rather than new computation.
-
-**Client-side workaround.** In place, and it is honest — no rule is expanded on the device, and
-every day an event is drawn on came from the server saying so. What it costs is round trips, on
-exactly the hardware this product targets: a Raspberry Pi with a single PHP worker pool and an
-advertised `maxConcurrentRequests` of 4. The client keeps that bounded (probes only when a window
-holds a recurring event, never on a timer, only while the calendar is on screen), but a user
-flicking through months is issuing a batch of 31 queries per month either way, and the honest
-version of this feature is the one where they issue one.
+Nothing, for the first time. All seven asks below were built on 2026-08-06 — each in its own
+worktree branch, all merged into plMail `main` in one push (`cbd27e0`) — and every wire behaviour
+described under "Landed" was verified over HTTP against a live stack built from that merge, not
+read out of the PHP. The entries moved to "Landed" below, with what a client author needs.
 
 ---
 
@@ -277,6 +52,89 @@ version of this feature is the one where they issue one.
 
 Kept rather than deleted, because what was asked for and what arrived are not always the same shape,
 and the difference is what a client author needs.
+
+### The 2026-08-06 batch — all seven remaining asks, **merged into plMail `main`** (`cbd27e0`)
+
+Built by five parallel sessions, each in its own worktree, integrated and probed live before the
+merge. `docs/CLIENT_DEVELOPMENT.md` (EN and DE) was updated with all of it. What follows is the
+shape that actually landed, per ask, where it differs from or sharpens what was requested.
+
+**`Email/set` update stores `attachments`.** Whole-value semantics, exactly like the web composer's
+strip: the array is the complete set, a part left out is removed. A part already on the draft is
+kept by the `p-` blobId `Email/get` handed out — no re-upload, same part id — and a `p-` blob from
+a *different* message is copied in, so forwarding an attachment costs no round trip. `name`/`type`
+on a kept part are applied when present. An unresolvable blobId — malformed, expired, another
+account's — refuses the **whole patch** with `invalidProperties` and writes nothing, including a
+subject in the same patch; the refused-update-is-a-no-op behaviour is deliberately stricter than
+the mailbox-patch precedent. One behaviour change beyond the ask: `create` now also refuses a
+non-array `attachments` instead of ignoring it. **Client action: retire the recreate-and-trash
+workaround.**
+
+**`identityId` reaches the sent message.** `EmailSubmission/set` resolves it through the same list
+`Identity/get` publishes (one identity per sendable alias; the synthetic account-id identity only
+while an account has no alias rows), so an id the server offered is exactly an id it accepts. An id
+that resolves to nothing is `forbiddenFrom` — never silently sent as the account's address.
+`EmailSubmission/get` now reports the identity actually used. Limit worth knowing: it sets the From
+*address*; the display name still comes from the account, on the web path too. **Client action:
+the From picker can finally show one entry per alias.**
+
+**Scheduled send.** `maxDelayedSend` is now `2592000` (30 days), and the session advertises
+`submissionExtensions: {"FUTURERELEASE": ["HOLDFOR", "HOLDUNTIL"]}`. The request shape is RFC 8621
+§7 / RFC 4865: `envelope.mailFrom.parameters.HOLDFOR` (seconds) or `.HOLDUNTIL` (UTC date), names
+case-insensitive, both together refused, beyond the ceiling refused naming `maxDelayedSend`. The
+response's `sendAt` is the real release time. Cancellation exists: `update {id: {"undoStatus":
+"canceled"}}` before release declines the send (the flag the web undo button sets); after `sentAt`
+it is `cannotUnsend`, and a cancelled submission answers `notFound` from `/get` afterwards — there
+is no submission row to hold the state. The envelope is validated now, not dropped: a `mailFrom`
+that is not the submission's From is `forbiddenFrom`, an `rcptTo` differing from the Email's
+recipients is `invalidRecipients`. **Client action: the "send tomorrow at 8am" feature is
+buildable; the rejected local-alarm design stays rejected.**
+
+**`Contact/autocomplete`, under `urn:plmail:params:jmap:contacts`.** Takes `accountId`, a
+non-empty `query`, optional `limit` (default 8, capped at 50, both advertised in the session's
+capability object). Answers `{accountId, query, limit, list}` — each entry a JMAP `EmailAddress`
+(`name`, `email`) plus `frequency`, `lastSeenAt`, `isCorrespondent`; no id on purpose (the address
+is the stable key). Ranked `frequency DESC, last_seen_at DESC` — the recency tie-break was a
+product decision made during the build and applies to the web composer too, so both surfaces rank
+identically. Served from **every** account, unlike calendars. A blank query is `invalidArguments`,
+as are `filter`/`sort`/`position`. **Client action: the local-cache suggester should be replaced,
+as its own docblock always said; the OS address book stays as a supplement.**
+
+**`Appearance/get` / `Appearance/set`, under `urn:plmail:params:jmap:appearance`.** The JMAP
+singleton pattern: one object, id `"singleton"`, no `accountId` (per-user, like PushSubscription —
+sending one is refused). All embeddable fields are readable; enums outside the vocabulary are
+refused with `invalidProperties` naming the accepted values, numeric knobs are clamped **and the
+clamped value reported** in `updated`, so nothing is applied behind the client's back. `ifInState`
+is honoured. The session also carries a compact read (`theme`, `layout`, `accent`, `density`) plus
+the full vocabularies, ranges and per-layout defaults — enough to paint the first frame and bound
+the sliders without a method call. Two things to design around: there is **no `Appearance/changes`
+and no push** — a theme changed in the browser is seen on the next `Appearance/get` — and a patch
+of `layout` alone also seeds that layout's knob preset (explicit knobs in the same patch win;
+everything seeded is reported). The `paper` theme question is still the client's to answer.
+**Client action: wire `PlMailAppearance.of(...)` to `Appearance/get`, flip DataStore from source to
+override.**
+
+**The sync window, under `urn:plmail:params:jmap:sync`.** Per-account in `accountCapabilities`:
+`syncLimit` (the cap **in force** — reported as 0 on Microsoft accounts whatever is stored, because
+Graph cannot honour it), `backfillTarget` (how far a completed backfill reached; null when none has
+finished), and `backfillPending` (derived from the same accessors the sync engine uses — it means
+"there is mail still coming", not "a worker is running this second"). **Client action: the
+accounts-screen `Email/query` oldest-message probe can go; "your server holds mail back to" becomes
+a session read.**
+
+**`CalendarEvent/query` takes `expandRecurrences: true`.** One entry per *occurrence* in the
+window; `position`/`limit`/`total` count occurrences; ordering is by occurrence start, moved
+overrides sorting at their moved time and exclusions absent. The id shape is
+**`<eventId>_<recurrenceId>`** — `42_20260304T090000Z`, the occurrence's *original* start as a UTC
+instant in ISO basic format — treat it as opaque. The separator is `_` rather than the `;` other
+servers use because RFC 8620 §1.2 confines a JMAP Id to `A-Za-z0-9`, `-`, `_`; this was decided
+during the build, and the client builds against it fresh. One-off events keep their plain series id
+even when expanding. `CalendarEvent/get` resolves instance ids — the series with its override
+merged in, plus `seriesId` (plMail extension), `recurrenceId`, its own `start`/`duration`, and
+`recurrenceRules`/`recurrenceOverrides` nulled per the draft. `CalendarEvent/set` refuses an
+instance id by name, pointing at `seriesId` + `recurrenceOverrides`. A window past the advertised
+`materialisedHorizon` is `cannotCalculateOccurrences`; `timeZone` alongside expansion is refused.
+**Client action: the 31-one-day-queries-per-month machinery reduces to one query per window.**
 
 ### `Mailbox.color` — **merged into plMail `main`** (`b06b909`), adopted 2026-08-01
 
