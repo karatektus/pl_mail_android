@@ -27,6 +27,23 @@ something into a test that asserts a fiction. Re-capture rather than edit.
 | `error-unsupported-anchor.json` | `anchor` paging is refused — **same `unsupportedFilter` type** as the filter case, so the two are indistinguishable by type alone. |
 | `error-not-request.json` | Well-formed JSON that is not a JMAP request: HTTP **400**, `urn:ietf:params:jmap:error:notRequest`. Note the different status from the method-level errors above. |
 
+## Settings (`urn:plmail:params:jmap:contacts`, `:appearance`, `:sync`)
+
+Captured on 2026-08-06 against the same stack, after the seven-ask batch merged into plMail `main`.
+
+The appearance fixtures were taken with a **deliberately non-default** appearance in place — Nord,
+boxed, comfortable — because a fixture that happens to equal the defaults passes whether the client
+read it or not. The server was set back to its defaults afterwards.
+
+| File | Pins down |
+|---|---|
+| `session-settings.json` | All three new capabilities in one discovery. The appearance capability carries a compact `{theme, layout, accent, density}` **plus** the full vocabularies (**seven** themes — `paper` is the one the app does not have), the per-layout knob presets and the published `ranges`. `urn:plmail:params:jmap:sync` is **per account** in `accountCapabilities`, on both accounts: `syncLimit: 0` means *uncapped*, `backfillTarget: null` means no backfill has completed, and `backfillPending: true`. The contacts capability advertises `defaultSuggestions` and `maxSuggestions`, and `primaryAccounts` has its own key for the contacts URN. |
+| `appearance-get.json` | The singleton: id `"singleton"`, **no `accountId`**, and seventeen properties including `paneBlur: 24` and background/ink fields Android does not render. Note `paneAlpha: 0.7` and `paneBlur: 24` are the boxed layout's *seeded* preset, not values anybody sent. |
+| `appearance-set-clamped.json` | `paneAlpha: 1.4` sent, `{"paneAlpha": 1}` reported in `updated` — RFC 8620 §5.3, what the server changed *beyond* the request. `layout` and `density` were taken as asked and say nothing, which is why `updated` cannot be read as "what was applied". |
+| `appearance-set-refused.json` | A bad theme beside a valid layout and paneAlpha: the **whole patch** is refused with a per-object `invalidProperties` naming the seven accepted themes, `newState` equals `oldState`, and none of the valid properties landed. |
+| `appearance-set-state-mismatch.json` | A stale `ifInState` is a **request-level** `error` with type `stateMismatch` — not a `notUpdated` entry. A caller waiting for a per-object failure never sees one. |
+| `contact-autocomplete.json` | Two calls in one batch: a blank query refused with `invalidArguments`, and a real one answered beside it — so a refusal does not take the batch down. Both normalised arguments are echoed: the trimmed `query` and the capped `limit` (asked 500, given 50). **`list` is empty and cannot be captured otherwise**: contacts are harvested through a Messenger message and the test stack runs no consumer, so its address book is permanently empty. The entry shape is asserted from `ContactAutocompleteMethod::toSuggestion` in the test instead. |
+
 ## Calendars (`urn:plmail:params:jmap:calendars`)
 
 Captured on 2026-08-05 against the same stack, after seeding four events onto the calendars the

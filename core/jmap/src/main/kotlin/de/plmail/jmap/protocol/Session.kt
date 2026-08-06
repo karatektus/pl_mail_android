@@ -105,6 +105,39 @@ data class Session(
             ?.accountCapabilities
             ?.get(Capability.SUBMISSION)
             ?.let(SubmissionCapability::from) ?: SubmissionCapability()
+
+    /**
+     * The account to ask for contact suggestions.
+     *
+     * Unlike calendars this is a convenience rather than the whole surface — **every** account
+     * answers `Contact/autocomplete` from the same user-wide address book, because a suggestion has
+     * no id and therefore none of the (accountId, id) collisions that made calendars
+     * single-account. So this is somewhere to ask, and any account would do.
+     */
+    val primaryContactsAccount: AccountId?
+        get() = primaryAccounts[Capability.CONTACTS]?.let(::AccountId) ?: primaryMailAccount
+
+    /** The advertised autocomplete limits, or null on an instance without the extension. */
+    val contacts: ContactsCapability?
+        get() = capabilities[Capability.CONTACTS]?.let(ContactsCapability::from)
+
+    /**
+     * What the server already knows about how this user wants the app to look.
+     *
+     * Null means the instance has no appearance extension, which is a supported instance rather
+     * than a broken one: the app keeps its own local choice and never calls `Appearance/get`.
+     */
+    val appearance: AppearanceCapability?
+        get() = capabilities[Capability.APPEARANCE]?.let(AppearanceCapability::from)
+
+    /**
+     * How far back this server intends to hold mail for one account.
+     *
+     * Null when the account publishes no sync capability. Absence is the signal, as with calendars
+     * — it is not the same as an uncapped window, which is published as `syncLimit: 0`.
+     */
+    fun syncWindow(id: AccountId): SyncWindow? =
+        account(id)?.accountCapabilities?.get(Capability.SYNC)?.let(SyncWindow::from)
 }
 
 @Serializable
@@ -278,5 +311,149 @@ data class CalendarsCapability(
  * client says so.
  */
 data class MaterialisedHorizon(val past: String = "", val future: String = "")
+
+/**
+ * The `urn:plmail:params:jmap:contacts` limits.
+ *
+ * Advertised so a type-ahead does not have to discover the cap by having a request silently
+ * shortened. The server caps rather than refuses — it echoes the limit it used — so a client that
+ * ignored these would still work and would quietly ask for a sequential scan per keystroke.
+ */
+data class ContactsCapability(val defaultSuggestions: Int = 8, val maxSuggestions: Int = 50) {
+    companion object {
+        fun from(json: JsonObject): ContactsCapability {
+            val defaults = ContactsCapability()
+
+            fun int(key: String, fallback: Int) =
+                (json[key] as? JsonPrimitive)?.content?.toIntOrNull() ?: fallback
+
+            return ContactsCapability(
+                defaultSuggestions = int("defaultSuggestions", defaults.defaultSuggestions),
+                maxSuggestions = int("maxSuggestions", defaults.maxSuggestions),
+            )
+        }
+    }
+}
+
+/**
+ * The appearance capability: a compact read of the current settings, plus the vocabularies.
+ *
+ * The four values in [hint] are the *whole* point of it being in the session. `Appearance/get` is
+ * the authoritative read and needs a round trip; these arrive with discovery, which the app already
+ * does before it draws anything, so the first frame can be painted in the theme the user actually
+ * chose rather than in the default followed by a flash.
+ *
+ * [themes] is read rather than assumed because it is how a client discovers a theme it does not
+ * have — `paper` is one today — without having to be told.
+ */
+data class AppearanceCapability(
+    val hint: AppearanceHint = AppearanceHint(),
+    val themes: List<String> = emptyList(),
+    val layouts: List<String> = emptyList(),
+    val densities: List<String> = emptyList(),
+    val ranges: Map<String, ClosedRange> = emptyMap(),
+) {
+    /** The bounds for one numeric knob, or null when this server does not publish it. */
+    fun range(property: String): ClosedRange? = ranges[property]
+
+    companion object {
+        fun from(json: JsonObject): AppearanceCapability {
+            fun strings(key: String) =
+                (json[key] as? JsonArray).orEmpty().mapNotNull {
+                    (it as? JsonPrimitive)?.content
+                }
+
+            val compact = json["appearance"] as? JsonObject
+
+            fun hint(key: String) = (compact?.get(key) as? JsonPrimitive)?.content
+
+            return AppearanceCapability(
+                hint =
+                    AppearanceHint(
+                        theme = hint("theme"),
+                        layout = hint("layout"),
+                        accent = hint("accent"),
+                        density = hint("density"),
+                    ),
+                themes = strings("themes"),
+                layouts = strings("layouts"),
+                densities = strings("densities"),
+                ranges =
+                    (json["ranges"] as? JsonObject)
+                        .orEmpty()
+                        .mapNotNull { (name, bounds) ->
+                            val range = bounds as? JsonObject ?: return@mapNotNull null
+                            val min = (range["min"] as? JsonPrimitive)?.content?.toFloatOrNull()
+                            val max = (range["max"] as? JsonPrimitive)?.content?.toFloatOrNull()
+
+                            if (min == null || max == null) null else name to ClosedRange(min, max)
+                        }
+                        .toMap(),
+            )
+        }
+    }
+}
+
+/**
+ * The session's four-field appearance summary.
+ *
+ * Deliberately loose strings: this is the same vocabulary `Appearance/get` answers in, and the one
+ * resolver in `:core:designsystem` is what turns either of them into types. `accent` has no Android
+ * counterpart today — each theme here carries its own accent, tuned to pass AA on that theme's
+ * surfaces — so it is carried and not used rather than dropped, because a client that never parsed
+ * it could not later notice it had arrived.
+ */
+data class AppearanceHint(
+    val theme: String? = null,
+    val layout: String? = null,
+    val accent: String? = null,
+    val density: String? = null,
+)
+
+/** A numeric knob's published bounds. */
+data class ClosedRange(val min: Float, val max: Float) {
+    fun clamp(value: Float): Float = value.coerceIn(min, max)
+}
+
+/**
+ * What the server intends to hold for one account, per `urn:plmail:params:jmap:sync`.
+ *
+ * All three answer the same user question — "why can I not find a mail I know exists?" — and none
+ * of them is about this device. The client's own cached count answers a different question and both
+ * are worth showing.
+ *
+ * [syncLimit] is the cap **in force**, not the one stored: an account whose provider cannot honour
+ * it (Microsoft Graph enumerates a folder in an order that cannot stop early) is published as 0
+ * whatever is configured, because a stored number would have a client explain a gap that is not
+ * there.
+ *
+ * [backfillTarget] is a message *count*, not a date — how far back a completed backfill reached, 0
+ * meaning the whole mailbox. Null means none has ever finished, which is why it cannot be collapsed
+ * into 0.
+ *
+ * [backfillPending] means "there is mail still coming", not "a worker is running this second".
+ * Nothing records the latter, and a client that worded it as progress would be inventing a
+ * guarantee.
+ */
+data class SyncWindow(
+    val syncLimit: Int = 0,
+    val backfillTarget: Int? = null,
+    val backfillPending: Boolean = false,
+) {
+    /** Whether the server intends to hold everything this account has. */
+    val isUncapped: Boolean
+        get() = syncLimit == 0
+
+    companion object {
+        fun from(json: JsonObject): SyncWindow =
+            SyncWindow(
+                syncLimit = (json["syncLimit"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0,
+                backfillTarget = (json["backfillTarget"] as? JsonPrimitive)?.content?.toIntOrNull(),
+                backfillPending =
+                    (json["backfillPending"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+                        ?: false,
+            )
+    }
+}
 
 private fun JsonPrimitive.contentOrNullIfBlank(): String? = content.takeIf { it.isNotBlank() }

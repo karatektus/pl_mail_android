@@ -243,11 +243,20 @@ enum class PlMailLayout(val wire: String) {
  * Which colours to resolve.
  *
  * The names and the order are plMail's own `App\Domain\Enum\Theme\Theme`, so a value that arrives
- * over the wire once `Appearance` is exposed maps by name and nothing has to be translated. The
- * server carries one more, `paper`; it is not here because the app's own light scheme is already
- * the warm sheet paper exists to be, and two near-identical creams in one picker is a choice nobody
- * can make. [fromWire] therefore has to answer for a value it does not know, and does — falling
- * back to [SYSTEM] rather than throwing, because a theme is not worth failing a sync over.
+ * over the wire maps by name and nothing has to be translated. The server carries one more,
+ * `paper`; it is not here because the app's own light scheme is already the warm sheet paper exists
+ * to be, and two near-identical creams in one picker is a choice nobody can make.
+ *
+ * **`paper` therefore resolves to [LIGHT], and that is a decision rather than a fallback.** It used
+ * to fall through to [SYSTEM] along with every unknown value, which was wrong in a way that only
+ * showed once appearance actually synced: somebody who chose a light theme on the web got a phone
+ * that went dark at sunset. An unknown value is still [SYSTEM] — a theme a future server adds is a
+ * theme this build genuinely has no opinion about — but `paper` is one this build knows and has an
+ * answer for.
+ *
+ * Nothing here can produce the string `paper` again, which is the other half of the decision: the
+ * app writes back only the property the user touched, so a `paper` it renders as Light survives
+ * every write except an explicit choice of theme. See `AppearanceRepository`.
  */
 enum class PlMailThemeChoice(val wire: String) {
     SYSTEM("system"),
@@ -275,8 +284,19 @@ enum class PlMailThemeChoice(val wire: String) {
         }
 
     companion object {
+        /**
+         * The server's seventh theme, which this app renders as [LIGHT] and never writes back.
+         *
+         * Named rather than inlined because two places have to agree about it: the resolver below,
+         * and whatever decides that a write must not flatten it.
+         */
+        const val PAPER_WIRE = "paper"
+
         fun fromWire(value: String?): PlMailThemeChoice =
-            entries.firstOrNull { it.wire == value } ?: SYSTEM
+            when (value) {
+                PAPER_WIRE -> LIGHT
+                else -> entries.firstOrNull { it.wire == value } ?: SYSTEM
+            }
     }
 }
 

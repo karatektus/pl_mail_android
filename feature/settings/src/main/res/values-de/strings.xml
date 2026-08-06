@@ -48,6 +48,7 @@
     <string name="layout_flat">Flach</string>
     <string name="layout_boxed">Flächen</string>
     <string name="appearance_layout_body">Flach trennt mit Haarlinien auf der Seite. Flächen hebt Inhalte auf abgerundete Karten.</string>
+    <string name="appearance_blur_unsupported">Im Web eingestellte Milchglas-Flächen werden hier nicht gezeichnet — Android kann nicht unscharf zeichnen, was hinter einer Fläche liegt. Ihre Einstellung bleibt unverändert.</string>
 
     <string name="appearance_density">Dichte</string>
     <string name="density_comfortable">Bequem</string>
@@ -76,11 +77,18 @@
     <string name="accounts_window">%1$s, zurück bis %2$s</string>
     <string name="accounts_window_empty">Von diesem Konto liegt noch nichts auf diesem Gerät.</string>
 
-    <string name="accounts_server_window">Ihr Server hat noch Post bis zurück zum %1$s.</string>
-    <string name="accounts_server_window_unknown">Ihr Server hat für dieses Konto keine Post gemeldet.</string>
-    <string name="accounts_ask_server">Server fragen</string>
-    <string name="accounts_ask_server_explains">Fragt für jedes Konto das Datum der ältesten Nachricht ab. Nur das kontaktiert auf diesem Bildschirm Ihren Server.</string>
-    <string name="accounts_ask_failed">Abfrage fehlgeschlagen: %1$s</string>
+    <string name="accounts_server_window_uncapped">Ihr Server behält jede Nachricht in diesem Postfach.</string>
+    <plurals name="accounts_server_window_capped">
+        <item quantity="one">Ihr Server behält die neueste Nachricht in diesem Postfach.</item>
+        <item quantity="other">Ihr Server behält die neuesten %1$d Nachrichten in diesem Postfach.</item>
+    </plurals>
+
+    <string name="accounts_server_backfill_pending">Es kommt noch ältere Post; Ihr Server ist in diesem Postfach noch nicht am Ende angelangt.</string>
+    <string name="accounts_server_backfill_all">Er hat alles davon geholt.</string>
+    <plurals name="accounts_server_backfill_reached">
+        <item quantity="one">Er hat die neueste Nachricht geholt.</item>
+        <item quantity="other">Er hat die neuesten %1$d Nachrichten geholt.</item>
+    </plurals>
 
     <string name="accounts_notify">Bei neuer Post benachrichtigen</string>
     <string name="accounts_notify_a11y">Bei neuer Post von %1$s benachrichtigen</string>

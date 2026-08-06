@@ -71,6 +71,12 @@
     <string name="layout_flat">Flat</string>
     <string name="layout_boxed">Boxed</string>
     <string name="appearance_layout_body">Flat separates with hairlines on the page. Boxed lifts content onto rounded panes.</string>
+    <!--
+      Only shown for the boxed layout, because that is the only one with a pane
+      to frost. Android has no backdrop blur, so the setting is honoured by
+      being left alone rather than by being drawn.
+    -->
+    <string name="appearance_blur_unsupported">Frosted panes set on the web are not drawn here — Android cannot blur what is behind a pane. Your setting is left as it is.</string>
 
     <string name="appearance_density">Density</string>
     <string name="density_comfortable">Comfortable</string>
@@ -115,11 +121,30 @@
     <string name="accounts_window">%1$s, back to %2$s</string>
     <string name="accounts_window_empty">Nothing from this account is on this device yet.</string>
 
-    <string name="accounts_server_window">Your server still holds mail back to %1$s.</string>
-    <string name="accounts_server_window_unknown">Your server did not report any mail for this account.</string>
-    <string name="accounts_ask_server">Ask what the server holds</string>
-    <string name="accounts_ask_server_explains">Asks each account for the date of its oldest message. This is the only thing on this screen that contacts your server.</string>
-    <string name="accounts_ask_failed">Could not ask: %1$s</string>
+    <!--
+      What the *server* intends to hold, read from the session rather than
+      probed. Counted in messages because that is what the server publishes: it
+      caps a mailbox at the newest N, and a date would be a guess laid over a
+      number.
+    -->
+    <string name="accounts_server_window_uncapped">Your server keeps every message in this mailbox.</string>
+    <plurals name="accounts_server_window_capped">
+        <item quantity="one">Your server keeps the newest message in this mailbox.</item>
+        <item quantity="other">Your server keeps the newest %1$d messages in this mailbox.</item>
+    </plurals>
+
+    <!--
+      Deliberately not "a backfill is running". The server publishes whether
+      there is ground left to cover, derived from two numbers — nothing records
+      whether a worker is on it this second, and phrasing it as progress would
+      promise something no one can see.
+    -->
+    <string name="accounts_server_backfill_pending">There is older mail still to come; your server has not reached the end of this mailbox yet.</string>
+    <string name="accounts_server_backfill_all">It has fetched all of it.</string>
+    <plurals name="accounts_server_backfill_reached">
+        <item quantity="one">It has fetched the newest message.</item>
+        <item quantity="other">It has fetched the newest %1$d messages.</item>
+    </plurals>
 
     <string name="accounts_notify">Notify me about new mail</string>
     <!-- Names the account, because every row's visible label is identical. -->

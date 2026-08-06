@@ -6,14 +6,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -22,7 +20,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -36,7 +33,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.plmail.core.data.AccountSummary
@@ -44,6 +40,7 @@ import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailPane
 import de.plmail.core.designsystem.PlMailTheme
+import de.plmail.jmap.protocol.SyncWindow
 
 /**
  * The mailboxes behind one credential: what order they are in, how much of each is here, and which
@@ -58,10 +55,13 @@ import de.plmail.core.designsystem.PlMailTheme
  * stored in DataStore rather than on the account row, because the account row is a cache that gets
  * dropped and rebuilt on any schema change and an ordering nobody can reconstruct would go with it.
  *
- * **The window is about this device.** The app pages backwards as the user scrolls, so what is
- * searchable is what has been paged — which is why search's empty state has to talk about a sync
- * window at all, and why the number was previously visible nowhere. The server's own boundary needs
- * a request, so it sits behind a button that says it makes one.
+ * **Two windows, and the row says which is which.** The device's own — how much is here, how far
+ * back it reaches — is what search can actually find, because the app pages backwards as the user
+ * scrolls. The server's is what it intends to hold at all, and it is read straight out of the
+ * session's `urn:plmail:params:jmap:sync` rather than probed. That replaced a button that asked
+ * every account for its oldest message: a round trip each, and an answer that quietly meant "the
+ * oldest mail fetched so far" on precisely the mailboxes still being backfilled — which are the
+ * ones somebody opens this screen about.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -132,13 +132,10 @@ fun AccountsScreen(onBack: () -> Unit, viewModel: AccountsViewModel = hiltViewMo
                     isLast = index == state.accounts.lastIndex,
                     onMove = { by -> viewModel.move(account.accountKey, by) },
                     onNotifying = { viewModel.setNotifying(account.accountKey, it) },
-                    hasAsked = state.hasAsked,
                 )
 
                 if (index != state.accounts.lastIndex) PlMailDivider()
             }
-
-            AskServer(state, onAsk = viewModel::askServer)
         }
     }
 }
@@ -150,7 +147,6 @@ private fun AccountRow(
     isLast: Boolean,
     onMove: (Int) -> Unit,
     onNotifying: (Boolean) -> Unit,
-    hasAsked: Boolean,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(vertical = PlMailTheme.spacing.small),
@@ -219,16 +215,7 @@ private fun AccountRow(
             color = PlMailTheme.colors.inkSoft,
         )
 
-        if (hasAsked) {
-            Text(
-                text =
-                    account.oldestOnServer?.let {
-                        stringResource(R.string.accounts_server_window, asAbsoluteDate(it))
-                    } ?: stringResource(R.string.accounts_server_window_unknown),
-                style = MaterialTheme.typography.bodySmall,
-                color = PlMailTheme.colors.inkMuted,
-            )
-        }
+        account.serverWindow?.let { ServerWindow(it) }
 
         // Read out of composition, because a semantics block is not a composable
         // scope and cannot reach a string resource from inside itself.
@@ -279,34 +266,59 @@ private fun AccountRow(
     }
 }
 
+/**
+ * What the server intends to hold, in at most two sentences.
+ *
+ * The cap first, because it is the setting; the backfill second, because it is the state. Both are
+ * counted in *messages* rather than dated — that is what the server publishes, and inventing a date
+ * from a count would be the same guess the old probe made.
+ *
+ * `backfillPending` is worded as mail still to come rather than as work in progress. It is derived
+ * from two numbers the sync engine compares, not from a running job, so "the server is fetching
+ * older mail right now" would be a promise nothing here can keep.
+ */
 @Composable
-private fun AskServer(state: AccountsState, onAsk: () -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.small)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.small),
-        ) {
-            TextButton(onClick = onAsk, enabled = !state.isAsking) {
-                Text(stringResource(R.string.accounts_ask_server))
-            }
-
-            if (state.isAsking) {
-                CircularProgressIndicator(
-                    color = PlMailTheme.colors.accent,
-                    strokeWidth = 2.dp,
-                    modifier = Modifier.size(16.dp),
-                )
-            }
-        }
-
+private fun ServerWindow(window: SyncWindow) {
+    Column {
         Text(
-            text = stringResource(R.string.accounts_ask_server_explains),
+            text =
+                if (window.isUncapped) {
+                    stringResource(R.string.accounts_server_window_uncapped)
+                } else {
+                    pluralStringResource(
+                        R.plurals.accounts_server_window_capped,
+                        window.syncLimit,
+                        window.syncLimit,
+                    )
+                },
             style = MaterialTheme.typography.bodySmall,
             color = PlMailTheme.colors.inkMuted,
         )
 
-        state.askError?.let {
-            Note(text = stringResource(R.string.accounts_ask_failed, it), tone = PaneTone.DANGER)
+        val reached = window.backfillTarget
+
+        val backfill =
+            when {
+                window.backfillPending -> stringResource(R.string.accounts_server_backfill_pending)
+                reached == 0 -> stringResource(R.string.accounts_server_backfill_all)
+                reached != null ->
+                    pluralStringResource(
+                        R.plurals.accounts_server_backfill_reached,
+                        reached,
+                        reached,
+                    )
+                // Not reachable from this server -- a null target is what makes
+                // `backfillPending` true -- but the two arrive as separate
+                // fields and the screen must not depend on them agreeing.
+                else -> null
+            }
+
+        backfill?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = PlMailTheme.colors.inkMuted,
+            )
         }
     }
 }

@@ -398,17 +398,17 @@ Written down because previous sessions' honesty about exactly this has led direc
 
 ## Server asks
 
-Six are open in `docs/SERVER_REQUESTS.md`, which has the probe evidence for each. In short, and in
-terms of what each unblocks on the client:
+Nothing is open in `docs/SERVER_REQUESTS.md` any more, and as of 2026-08-06 nothing is
+unadopted either:
 
 | Ask | Unblocks | State |
 |---|---|---|
 | `Email/set` update honours `attachments` | Removes the "recreate the draft and bin the old one" workaround, and the stray Trash entry per attachment change | **adopted 2026-08-06** |
 | `EmailSubmission/set` honours `identityId` | The From picker can offer aliases instead of one entry per account | **adopted 2026-08-06** |
 | Scheduled send (`maxDelayedSend` > 0) | "Send tomorrow at 8am"; the undo window used to be seconds and did not survive the process | **adopted 2026-08-06** |
-| A JMAP surface for contact autocomplete | Suggestions for people whose mail is not on this device | landed server-side, not adopted here |
-| `Appearance` over JMAP | The phone honours the theme set on the web; `PlMailAppearance.of` is already the one function the sync will call | landed server-side, not adopted here |
-| Sync window in the session object | The accounts screen could say what the *server* retains rather than inferring it from the oldest message | landed server-side, not adopted here |
+| A JMAP surface for contact autocomplete | Suggestions for people whose mail is not on this device | **adopted 2026-08-06** |
+| `Appearance` over JMAP | The phone honours the theme set on the web; `PlMailAppearance.of` is the one function the sync calls | **adopted 2026-08-06** |
+| Sync window in the session object | The accounts screen says what the *server* retains rather than inferring it from the oldest message | **adopted 2026-08-06** |
 
 ### The compose adoptions — 2026-08-06
 
@@ -445,9 +445,25 @@ and Room is dropped on any schema bump. It follows that a message scheduled on t
 invisible on another device and after a data wipe. The mail still goes; only the ability to call it
 back is lost, and nothing in the UI claims otherwise.
 
-Two have closed, and both are now merged into plMail `main`: **`Mailbox.color`** (`b06b909`),
-adopted here on 2026-08-01, and **the inbox categories** (`84c3f1b`), merged on 2026-08-02. Nothing
-stands between this client's category navigation and a real account any more.
+Two closed earlier and are merged into plMail `main`: **`Mailbox.color`** (`b06b909`), adopted here
+on 2026-08-01, and **the inbox categories** (`84c3f1b`), merged on 2026-08-02. Nothing stands
+between this client's category navigation and a real account any more.
+
+**All seven remaining asks landed in one merge on 2026-08-06** (`cbd27e0`); see the "Landed" section
+of `docs/SERVER_REQUESTS.md` for the wire contract of each. Three of them are adopted here on
+`feat/adopt-settings`:
+
+- **`Contact/autocomplete`** is now the primary suggestion source. The OS address book supplements
+  it and the cached-mail scan has become the *offline* answer rather than the first one.
+- **`Appearance/get` / `Appearance/set`** are wired: the session hint paints the first frame,
+  `Appearance/get` is the authoritative read on sync and foreground, and a local change is a patch
+  of the properties the user touched with `ifInState`. `paper` renders as Light and is never written
+  back. `paneBlur` stays accepted-and-not-drawn, and the appearance screen now says so.
+- **`urn:plmail:params:jmap:sync`** replaced the accounts screen's `Email/query` probe outright.
+  The button, the sweep and `AccountsRepository.oldestOnServer` are gone.
+
+The other four — `attachments` on update, `identityId`, scheduled send, `expandRecurrences` — are
+still unadopted here.
 
 ### Label colour — **adopted 2026-08-01**
 

@@ -4,11 +4,8 @@ import de.plmail.core.database.AccountEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.datastore.AccountPrefsStore
 import de.plmail.core.datastore.CredentialStore
-import de.plmail.jmap.mail.Comparator
-import de.plmail.jmap.methods.EmailGet
-import de.plmail.jmap.methods.EmailQuery
 import de.plmail.jmap.protocol.AccountId
-import de.plmail.jmap.protocol.RequestBuilder
+import de.plmail.jmap.protocol.SyncWindow
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -19,10 +16,15 @@ import kotlinx.coroutines.flow.map
 /**
  * One account, as the settings screen and the From picker see it.
  *
- * The window fields are about *this device*, not about the server, and the wording everywhere they
+ * [cachedMessages] and [oldestCachedAt] are about *this device*, and the wording everywhere they
  * are drawn has to keep saying so. The app pages backwards as the user scrolls, so "the mail I can
  * search" and "the mail that exists" are different sets and the difference is invisible — which is
  * the whole reason search's empty state has to talk about a sync window at all.
+ *
+ * [serverWindow] answers the other half of the same question and is not a substitute for either:
+ * what the server intends to hold, whatever this phone has caught up on. Both are kept because a
+ * mail that is missing because it was never fetched and a mail that is missing because this device
+ * has not paged back that far want opposite reactions from the user.
  */
 data class AccountSummary(
     val accountKey: String,
@@ -37,13 +39,14 @@ data class AccountSummary(
     /** The oldest one's date, or null when the device holds none. */
     val oldestCachedAt: Long?,
     /**
-     * The oldest message the *server* holds, once somebody has asked.
+     * What the *server* intends to hold for this account, straight out of the session.
      *
-     * Null until then, and deliberately: answering costs an `Email/query` per account, and a
-     * settings screen that quietly makes requests when it is opened is the same mistake the
-     * diagnostics screen was written to avoid.
+     * Null on an account that publishes no sync capability. This used to be an `Email/query` per
+     * account behind a button that said it made requests; the session already carries the answer
+     * and carries a better one — a cap and a backfill state rather than a date inferred from the
+     * oldest row the server happened to return.
      */
-    val oldestOnServer: Long? = null,
+    val serverWindow: SyncWindow? = null,
 )
 
 /**
@@ -144,50 +147,29 @@ constructor(
     }
 
     /**
-     * Asks each account for the date of the oldest message the server still holds.
+     * What the server says it holds for each account, keyed by the account's local uid.
      *
-     * One `Email/query` per account — ascending, limit one, ids only — which is the cheapest
-     * question that has an honest answer. Nothing in the JMAP session reports a retention policy:
-     * plMail keeps `sync.message_limit` and `sync.backfill_target` on the account entity and
-     * exposes neither, so the observable boundary is all there is. Filed in
-     * `docs/SERVER_REQUESTS.md`.
+     * A **session read**, not a request: `urn:plmail:params:jmap:sync` sits in each account's
+     * `accountCapabilities`, and the session is already fetched and cached before anything is
+     * drawn. That is what replaced the old probe — one `Email/query` per account, ascending, limit
+     * one — which cost a round trip each, had to sit behind a button that admitted it, and could
+     * only ever report the oldest message the server *happened to have fetched* rather than the
+     * window it intends to keep. The two look the same on a mailbox that has finished backfilling
+     * and disagree on every mailbox that has not, which is exactly the one somebody is asking
+     * about.
      *
-     * Failures are dropped per account rather than failing the sweep. One unreachable mailbox must
-     * not blank the answer for the others, which is the same rule the unified feed is built on.
+     * An empty map means there is no connection, or a server without the extension. Neither is an
+     * error and neither has anything to say.
      */
-    suspend fun oldestOnServer(): Map<String, Long> {
+    suspend fun serverWindows(): Map<String, SyncWindow> {
         val client = clients.current() ?: return emptyMap()
+        val session = runCatching { client.session() }.getOrNull() ?: return emptyMap()
 
         return database
             .accounts()
             .all()
             .mapNotNull { account ->
-                runCatching {
-                    val request = RequestBuilder()
-
-                    val query =
-                        request.add(
-                            EmailQuery(
-                                accountId = AccountId(account.accountId),
-                                sort = listOf(Comparator.OLDEST_FIRST),
-                                limit = 1,
-                            )
-                        )
-
-                    val get =
-                        request.add(
-                            EmailGet.byReference(
-                                AccountId(account.accountId),
-                                query.reference("/ids"),
-                                properties = listOf("id", "receivedAt"),
-                            )
-                        )
-
-                    client.send(request).result(get).list.firstOrNull()?.receivedAt
-                }
-                    .getOrNull()
-                    ?.toEpochMillis()
-                    ?.let { account.uid to it }
+                session.syncWindow(AccountId(account.accountId))?.let { account.uid to it }
             }
             .toMap()
     }

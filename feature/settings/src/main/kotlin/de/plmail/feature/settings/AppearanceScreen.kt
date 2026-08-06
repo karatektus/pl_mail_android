@@ -276,6 +276,21 @@ private fun Layouts(appearance: PlMailAppearance, onChoose: (PlMailLayout) -> Un
             style = MaterialTheme.typography.bodySmall,
             color = PlMailTheme.colors.inkMuted,
         )
+
+        // Said out loud now that appearance actually syncs. Someone who frosted
+        // their panes in the browser will find this phone drawing them solid,
+        // and the difference is worth a sentence rather than a bug report:
+        // Compose blurs a composable's own content and has no backdrop filter,
+        // so a "frosted" pane here would blur the text on it rather than the
+        // list behind it. The value is kept and sent back untouched, so nothing
+        // this app does undoes the choice.
+        if (appearance.layout == PlMailLayout.BOXED) {
+            Text(
+                text = stringResource(R.string.appearance_blur_unsupported),
+                style = MaterialTheme.typography.bodySmall,
+                color = PlMailTheme.colors.inkMuted,
+            )
+        }
     }
 }
 

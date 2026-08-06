@@ -1,0 +1,201 @@
+{
+  "capabilities": {
+    "urn:ietf:params:jmap:core": {
+      "maxSizeUpload": 50000000,
+      "maxConcurrentUpload": 4,
+      "maxSizeRequestObject": 10000000,
+      "maxConcurrentRequests": 4,
+      "maxCallsInRequest": 32,
+      "maxObjectsInGet": 500,
+      "maxObjectsInSet": 500,
+      "collationAlgorithms": [
+        "i;ascii-numeric",
+        "i;ascii-casemap",
+        "i;unicode-casemap"
+      ]
+    },
+    "urn:ietf:params:jmap:mail": {},
+    "urn:ietf:params:jmap:submission": {},
+    "urn:plmail:params:jmap:push": {
+      "vapidPublicKey": "BEHNJ0GsA0-mfHQll1bJQg0NCPwsze1JwpiY6oqJF_x8ywGy9aMouny4L2BpTlulke8JUG00kreEqgTXKQCeuk0"
+    },
+    "urn:plmail:params:jmap:calendars": {},
+    "urn:plmail:params:jmap:appearance": {
+      "appearance": {
+        "theme": "nord",
+        "layout": "boxed",
+        "accent": "#2563eb",
+        "density": "comfortable"
+      },
+      "themes": [
+        "system",
+        "light",
+        "paper",
+        "dark",
+        "nord",
+        "dusk",
+        "solar"
+      ],
+      "layouts": [
+        "flat",
+        "boxed"
+      ],
+      "densities": [
+        "comfortable",
+        "cosy",
+        "compact"
+      ],
+      "backgroundKinds": [
+        "theme",
+        "preset",
+        "custom",
+        "solid"
+      ],
+      "backgroundPresets": [
+        "aurora",
+        "dunes",
+        "fog",
+        "granite",
+        "harbour",
+        "linen",
+        "pine",
+        "tide"
+      ],
+      "layoutDefaults": {
+        "flat": {
+          "radius": 0.75,
+          "paneBlur": 0,
+          "paneAlpha": 1,
+          "density": "comfortable"
+        },
+        "boxed": {
+          "radius": 1,
+          "paneBlur": 24,
+          "paneAlpha": 0.7,
+          "density": "comfortable"
+        }
+      },
+      "ranges": {
+        "paneAlpha": {
+          "min": 0.15,
+          "max": 1
+        },
+        "paneBlur": {
+          "min": 0,
+          "max": 60
+        },
+        "radius": {
+          "min": 0,
+          "max": 2
+        },
+        "scrimAlpha": {
+          "min": 0,
+          "max": 0.7
+        },
+        "mainAlpha": {
+          "min": 0.15,
+          "max": 1
+        }
+      }
+    },
+    "urn:plmail:params:jmap:sync": {},
+    "urn:plmail:params:jmap:contacts": {
+      "maxSuggestions": 50,
+      "defaultSuggestions": 8
+    }
+  },
+  "accounts": {
+    "1": {
+      "name": "E2E Mailbox",
+      "isPersonal": true,
+      "isReadOnly": false,
+      "accountCapabilities": {
+        "urn:ietf:params:jmap:mail": {
+          "maxMailboxesPerEmail": null,
+          "maxMailboxDepth": null,
+          "maxSizeMailboxName": 255,
+          "maxSizeAttachmentsPerEmail": 50000000,
+          "emailQuerySortOptions": [
+            "receivedAt",
+            "from",
+            "to",
+            "subject",
+            "size"
+          ],
+          "mayCreateTopLevelMailbox": true
+        },
+        "urn:ietf:params:jmap:submission": {
+          "maxDelayedSend": 2592000,
+          "submissionExtensions": {
+            "FUTURERELEASE": [
+              "HOLDFOR",
+              "HOLDUNTIL"
+            ]
+          }
+        },
+        "urn:plmail:params:jmap:sync": {
+          "syncLimit": 0,
+          "backfillTarget": null,
+          "backfillPending": true
+        },
+        "urn:plmail:params:jmap:contacts": {},
+        "urn:plmail:params:jmap:calendars": {
+          "maxEventsInGet": 100,
+          "maxEventsInSet": 500,
+          "mayCreateCalendar": false,
+          "materialisedHorizon": {
+            "past": "-1 year",
+            "future": "+2 years"
+          }
+        }
+      }
+    },
+    "2": {
+      "name": "second@e2e.test",
+      "isPersonal": true,
+      "isReadOnly": false,
+      "accountCapabilities": {
+        "urn:ietf:params:jmap:mail": {
+          "maxMailboxesPerEmail": null,
+          "maxMailboxDepth": null,
+          "maxSizeMailboxName": 255,
+          "maxSizeAttachmentsPerEmail": 50000000,
+          "emailQuerySortOptions": [
+            "receivedAt",
+            "from",
+            "to",
+            "subject",
+            "size"
+          ],
+          "mayCreateTopLevelMailbox": true
+        },
+        "urn:ietf:params:jmap:submission": {
+          "maxDelayedSend": 2592000,
+          "submissionExtensions": {
+            "FUTURERELEASE": [
+              "HOLDFOR",
+              "HOLDUNTIL"
+            ]
+          }
+        },
+        "urn:plmail:params:jmap:sync": {
+          "syncLimit": 0,
+          "backfillTarget": null,
+          "backfillPending": true
+        },
+        "urn:plmail:params:jmap:contacts": {}
+      }
+    }
+  },
+  "primaryAccounts": {
+    "urn:ietf:params:jmap:mail": "1",
+    "urn:plmail:params:jmap:contacts": "1",
+    "urn:plmail:params:jmap:calendars": "1"
+  },
+  "username": "e2e@plmail.test",
+  "apiUrl": "http://localhost:8002/jmap/api",
+  "downloadUrl": "http://localhost:8002/jmap/download/{accountId}/{blobId}/{name}?accept={type}",
+  "uploadUrl": "http://localhost:8002/jmap/upload/{accountId}",
+  "eventSourceUrl": "http://localhost:8002/jmap/eventsource?types={types}&closeafter={closeafter}&ping={ping}",
+  "state": "fedd99d33dd77929"
+}

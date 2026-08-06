@@ -45,6 +45,8 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
         fun database(): de.plmail.core.database.PlMailDatabase
 
         fun mailActions(): MailActions
+
+        fun appearance(): AppearanceRepository
     }
 
     override suspend fun doWork(): Result {
@@ -67,6 +69,12 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
         runCatching { dependencies.mailActions().flush() }
 
         val outcomes = accounts.map { dependencies.deltaSync().sync(it.uid) }
+
+        // Appearance has no push and no `/changes`, so this and the foreground
+        // resume are the only two places a theme changed on another device can
+        // be noticed. It swallows its own failures and never decides the run's
+        // result: a sync is not worth retrying over a colour.
+        dependencies.appearance().refresh()
 
         // Retried only when everything failed. One unreachable account among
         // several is not a reason to re-run the whole sync -- the others are

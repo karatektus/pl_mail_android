@@ -1,0 +1,35 @@
+{
+  "methodResponses": [
+    [
+      "Appearance/get",
+      {
+        "state": "28d401877ba7a641",
+        "list": [
+          {
+            "id": "singleton",
+            "theme": "nord",
+            "layout": "boxed",
+            "accent": "#2563eb",
+            "paneAlpha": 0.7,
+            "paneBlur": 24,
+            "radius": 1,
+            "density": "comfortable",
+            "backgroundKind": "theme",
+            "backgroundPreset": null,
+            "backgroundFile": null,
+            "backgroundSolid": null,
+            "scrimAlpha": 0,
+            "inkColor": null,
+            "inkMuted": null,
+            "inkFaint": null,
+            "mainTint": null,
+            "mainAlpha": null
+          }
+        ],
+        "notFound": []
+      },
+      "a0"
+    ]
+  ],
+  "sessionState": "fedd99d33dd77929"
+}
