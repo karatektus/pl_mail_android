@@ -856,10 +856,9 @@ Landed as four commits, each a layer:
   `CalendarRepository`. There is no `/changes` for calendars — the state cannot move — so staying
   current is re-running the windowed query on open, on pull-to-refresh and nothing else. Recurring
   placement never expands rules client-side (forbidden by CLIENT_DEVELOPMENT.md): day membership
-  comes from batched one-day probe queries, ≤31 per request under `maxCallsInRequest`, and
-  time-of-day from the base start plus the published `recurrenceOverrides`. The occurrence-
-  expansion ask that would collapse that to one call is filed in SERVER_REQUESTS.md with the probe
-  evidence.
+  came from batched one-day probe queries, ≤31 per request under `maxCallsInRequest`, and
+  time-of-day from the base start plus the published `recurrenceOverrides`. **Superseded on
+  2026-08-06 — see the `expandRecurrences` note below.**
 - `616f30c` — `:feature:calendar`: agenda, detail, editor, drawer entry gated on the server
   publishing a calendar account. The deliberate cuts (agenda only, series-level edits, one calendar
   per event, no reminders field — `alerts` is not writable) are argued in REMAINING.md.
@@ -868,6 +867,27 @@ Landed as four commits, each a layer:
   mirrored the client's wrong assumption, so the tests agreed with the bug); availability never
   re-probed after pairing; the New editor kept the previous draft. Wire-behaviour item 10 below and
   REMAINING.md's M12 section carry the detail.
+
+**The per-day probing is gone (2026-08-06).** The server landed `CalendarEvent/query`'s
+`expandRecurrences: true` — one id per occurrence in the window, ordered by occurrence start, with
+`CalendarEvent/get` resolving an occurrence id into the series with its override merged in plus
+`seriesId`, `recurrenceId` and its own `start`. A month now costs **one round trip whatever recurs
+in it**, where a month holding a recurring series used to cost the window query plus three or four
+batches of thirty-one one-day probes. Three things decided the shape of the adoption:
+
+- The refresh sends **two** queries in that one request — the expanded one for the days, and the
+  ordinary collapsed one for the series. An occurrence's object is the series with an override
+  merged into it, so its `start` is that Tuesday's; the editor opens on the series row and a form
+  seeded from an occurrence would drag a whole standup onto the day somebody was looking at. Five
+  calls against a `maxCallsInRequest` of 32.
+- An occurrence id is **opaque**. `42_20260304T090000Z` is the series id and the original start, and
+  reading either half back out is client-side expansion by a quieter route — so the series a row
+  hangs off is `seriesId` off the object, and where it goes is `start` off the object. The fake
+  server in the suite mints ids (`o1`, `o2`) that carry neither, so a shortcut fails there.
+- A window past `materialisedHorizon` is refused **outright** (`cannotCalculateOccurrences`), not
+  answered short, so the window is clamped to a year either side of today before it is sent and the
+  agenda's existing "there may be more" footer says what was left out. The horizon is published as
+  PHP relative-date expressions and stays unparsed.
 
 ---
 

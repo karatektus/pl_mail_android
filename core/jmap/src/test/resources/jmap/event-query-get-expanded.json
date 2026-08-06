@@ -1,0 +1,174 @@
+{
+    "methodResponses": [
+        [
+            "CalendarEvent/query",
+            {
+                "accountId": "1",
+                "queryState": "fixed",
+                "canCalculateChanges": false,
+                "position": 0,
+                "ids": [
+                    "10867_20260803T080000Z",
+                    "10867_20260805T080000Z",
+                    "10865",
+                    "10867_20260807T080000Z",
+                    "10866"
+                ],
+                "total": 5,
+                "limit": 500
+            },
+            "q0"
+        ],
+        [
+            "CalendarEvent/get",
+            {
+                "accountId": "1",
+                "state": "fixed",
+                "list": [
+                    {
+                        "uid": "df7a06897f850359167280505e68e0ef@plmail",
+                        "@type": "Event",
+                        "start": "2026-08-03T10:00:00",
+                        "title": "Team-Standup",
+                        "status": "confirmed",
+                        "privacy": "public",
+                        "duration": "PT15M",
+                        "timeZone": "Europe/Berlin",
+                        "recurrenceRules": null,
+                        "recurrenceOverrides": null,
+                        "id": "10867_20260803T080000Z",
+                        "calendarId": "10542",
+                        "sequence": 0,
+                        "created": "2026-08-05T21:10:21Z",
+                        "updated": "2026-08-05T21:18:20Z",
+                        "isRecurring": true,
+                        "kind": null,
+                        "source": "manual",
+                        "seriesId": "10867",
+                        "recurrenceId": "2026-08-03T10:00:00",
+                        "recurrenceIdTimeZone": "Europe/Berlin"
+                    },
+                    {
+                        "uid": "df7a06897f850359167280505e68e0ef@plmail",
+                        "@type": "Event",
+                        "start": "2026-08-05T10:00:00",
+                        "title": "Team-Standup",
+                        "status": "confirmed",
+                        "privacy": "public",
+                        "duration": "PT15M",
+                        "timeZone": "Europe/Berlin",
+                        "recurrenceRules": null,
+                        "recurrenceOverrides": null,
+                        "id": "10867_20260805T080000Z",
+                        "calendarId": "10542",
+                        "sequence": 0,
+                        "created": "2026-08-05T21:10:21Z",
+                        "updated": "2026-08-05T21:18:20Z",
+                        "isRecurring": true,
+                        "kind": null,
+                        "source": "manual",
+                        "seriesId": "10867",
+                        "recurrenceId": "2026-08-05T10:00:00",
+                        "recurrenceIdTimeZone": "Europe/Berlin"
+                    },
+                    {
+                        "uid": "a2b69d2799e0d4e3bbcf91cf88f18bb1@plmail",
+                        "@type": "Event",
+                        "start": "2026-08-06T11:00:00",
+                        "title": "Zahnarzt (verschoben)",
+                        "status": "confirmed",
+                        "privacy": "public",
+                        "duration": "PT45M",
+                        "timeZone": "Europe/Berlin",
+                        "locations": {
+                            "1": {
+                                "name": "Praxis Dr. Weber",
+                                "@type": "Location"
+                            }
+                        },
+                        "description": "Kontrolle",
+                        "id": "10865",
+                        "calendarId": "10542",
+                        "sequence": 0,
+                        "created": "2026-08-05T21:10:21Z",
+                        "updated": "2026-08-05T21:11:02Z",
+                        "isRecurring": false,
+                        "kind": null,
+                        "source": "manual"
+                    },
+                    {
+                        "uid": "df7a06897f850359167280505e68e0ef@plmail",
+                        "@type": "Event",
+                        "start": "2026-08-07T11:00:00",
+                        "title": "Standup (Retro-Woche)",
+                        "status": "confirmed",
+                        "privacy": "public",
+                        "duration": "PT15M",
+                        "timeZone": "Europe/Berlin",
+                        "recurrenceRules": null,
+                        "recurrenceOverrides": null,
+                        "id": "10867_20260807T080000Z",
+                        "calendarId": "10542",
+                        "sequence": 0,
+                        "created": "2026-08-05T21:10:21Z",
+                        "updated": "2026-08-05T21:18:20Z",
+                        "isRecurring": true,
+                        "kind": null,
+                        "source": "manual",
+                        "seriesId": "10867",
+                        "recurrenceId": "2026-08-07T10:00:00",
+                        "recurrenceIdTimeZone": "Europe/Berlin"
+                    },
+                    {
+                        "uid": "5f471c1d3b569b7c7d4861711ce2d8bf@plmail",
+                        "@type": "Event",
+                        "start": "2026-08-08T00:00:00",
+                        "title": "Sommerfest",
+                        "status": "confirmed",
+                        "privacy": "public",
+                        "duration": "P1D",
+                        "showWithoutTime": true,
+                        "id": "10866",
+                        "calendarId": "10542",
+                        "sequence": 0,
+                        "created": "2026-08-05T21:10:21Z",
+                        "updated": "2026-08-05T21:10:21Z",
+                        "isRecurring": false,
+                        "kind": null,
+                        "source": "manual"
+                    }
+                ],
+                "notFound": []
+            },
+            "g0"
+        ],
+        [
+            "error",
+            {
+                "type": "cannotCalculateOccurrences"
+            },
+            "beyond"
+        ],
+        [
+            "CalendarEvent/set",
+            {
+                "accountId": "1",
+                "oldState": "fixed",
+                "newState": "fixed",
+                "created": {},
+                "notCreated": {},
+                "updated": {},
+                "notUpdated": {
+                    "10867_20260807T080000Z": {
+                        "type": "invalidArguments",
+                        "description": "This id names one occurrence of a series, which CalendarEvent/set cannot write. Send the series id \u2014 \"seriesId\" on the instance object \u2014 and patch \"recurrenceOverrides\" under this instance's \"recurrenceId\"."
+                    }
+                },
+                "destroyed": [],
+                "notDestroyed": {}
+            },
+            "instance-set"
+        ]
+    ],
+    "sessionState": "fedd99d33dd77929"
+}

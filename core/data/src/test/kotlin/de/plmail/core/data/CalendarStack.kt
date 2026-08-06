@@ -20,6 +20,7 @@ import java.time.ZoneId
 import java.time.ZoneOffset
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -35,9 +36,9 @@ internal val testCalendarKey: String = "$testAccountKey#$TEST_CALENDAR_ID"
 /**
  * Midweek of the seeded week, so a window either side of it is inside the materialised horizon.
  *
- * Fixed rather than `LocalDate.now()`: the repository compares the refreshed window against today
- * to decide whether the server may have answered part of it from a partial index, and a suite that
- * took the real date would start saying something different on a day nobody chose.
+ * Fixed rather than `LocalDate.now()`: the repository clamps the window it asks about against today
+ * and reports what it had to leave out, and a suite that took the real date would start saying
+ * something different on a day nobody chose.
  *
  * **In Europe/Berlin rather than UTC**, and that is load-bearing rather than local colour: the
  * repository converts every query window out of the clock's zone, so a suite running at UTC would
@@ -52,14 +53,19 @@ internal fun berlinClock(instant: String = "2026-08-05T12:00:00Z"): Clock =
     Clock.fixed(Instant.parse(instant), BERLIN)
 
 /**
- * A calendar server that answers from day membership rather than from a script.
+ * A calendar server that expands recurrences, because the real one does.
  *
- * The one thing the repository is *about* is asking the server which days a recurring series falls
- * on, so a transport keyed on call order — or one returning a canned month — would answer the
- * question the code is supposed to be asking. This one holds the truth as a set of days per event
- * and derives both answers from it: a windowed query returns every series with an occurrence
- * overlapping the window. Which is exactly what the real server does, and it means a test can move
- * a day and watch the placement follow.
+ * The truth it holds is a set of materialised days per event, exactly as
+ * `calendar_event_occurrence` is a table of them — never a rule. Both answers are derived from it:
+ * a **collapsed** `CalendarEvent/query` returns one id per series overlapping the window, and an
+ * **expanded** one returns one id per occurrence, ordered by the occurrence's start, with overrides
+ * applied and excluded and cancelled occurrences left out. A test can therefore move one occurrence
+ * and watch the placement follow, which is the only thing this repository is really about.
+ *
+ * **Occurrence ids here are opaque tokens — `o1`, `o2` — and that is deliberate.** The real server
+ * builds them as `<seriesId>_<recurrenceId>`, which `:core:jmap`'s fixtures pin; this fake builds
+ * them from nothing at all, so any code that reads a date or a series id back out of an id fails
+ * here rather than on somebody's phone the day the format changes.
  *
  * **It compares in UTC, because the real server does.** `CalendarEventQueryRunner::run()` puts
  * `after` and `before` through `utcDate()` — parse, then `setTimezone('UTC')` — and matches them
@@ -79,6 +85,8 @@ internal class FakeCalendarServer(
     var events: MutableList<FakeEvent> = mutableListOf(),
     /** The `CalendarEvent/set` result arguments, when a test exercises a write. */
     var onSet: ((JsonObject) -> String)? = null,
+    /** Refuses an expanded query with the horizon error, whatever the window. */
+    var refuseExpansion: Boolean = false,
 ) {
     /**
      * Every window a `CalendarEvent/query` asked about, in order, **as it arrived on the wire**.
@@ -89,24 +97,31 @@ internal class FakeCalendarServer(
      */
     val windows = mutableListOf<Pair<LocalDateTime, LocalDateTime>>()
 
-    /**
-     * How many one-day windows were asked about, which is what batching is measured in.
-     *
-     * By duration rather than by `from.plusDays(1) == to`, because a local day converted to UTC is
-     * 23 hours long on one Sunday a year and 25 on another — and a probe for the day the clocks go
-     * back is still one probe.
-     */
-    val dayProbes: Int
-        get() = windows.count { (from, to) ->
-            Duration.between(from, to) <= Duration.ofHours(MAX_LOCAL_DAY_HOURS)
-        }
+    /** How many of those asked for occurrences rather than series. */
+    var expandedQueries = 0
+        private set
 
-    private companion object {
-        const val MAX_LOCAL_DAY_HOURS = 25L
+    var collapsedQueries = 0
+        private set
+
+    /**
+     * The id this server hands out for one occurrence, minted on first sight and stable after.
+     *
+     * Carries neither the series id nor the date on purpose. See the class comment.
+     */
+    private val instanceIds = mutableMapOf<Pair<String, LocalDateTime>, String>()
+
+    internal fun instanceId(eventId: String, recurrenceId: LocalDateTime): String =
+        instanceIds.getOrPut(eventId to recurrenceId) { "o${instanceIds.size + 1}" }
+
+    internal fun recordWindow(from: LocalDateTime, to: LocalDateTime, expanded: Boolean) {
+        windows += from to to
+
+        if (expanded) expandedQueries++ else collapsedQueries++
     }
 }
 
-/** One event, and the days the server would report it on. */
+/** One event, and the days the server has materialised occurrences of it on. */
 internal data class FakeEvent(
     val id: String,
     val title: String,
@@ -116,7 +131,14 @@ internal data class FakeEvent(
     val isRecurring: Boolean = false,
     val timeZone: String? = "Europe/Berlin",
     val showWithoutTime: Boolean = false,
-    /** Raw JSON for `recurrenceOverrides`, or null. */
+    /**
+     * Raw JSON for `recurrenceOverrides`, or null.
+     *
+     * Held as the server publishes it — a patch keyed by the occurrence's original start — and
+     * *applied by this fake*, because applying it is the server's job now. The client sees only the
+     * resolved occurrence; the map still reaches it on the series object, where it is what a future
+     * per-occurrence edit patches.
+     */
     val overrides: String? = null,
     val calendarId: String = TEST_CALENDAR_ID,
 )
@@ -140,7 +162,7 @@ internal fun oneOff(
         timeZone = timeZone,
     )
 
-/** A series the server reports on [days], with no rule the client is ever shown. */
+/** A series the server has materialised on [days], with no rule the client is ever shown. */
 internal fun recurring(
     id: String,
     title: String,
@@ -166,9 +188,10 @@ internal fun recurring(
 /**
  * The transport in front of [server].
  *
- * Answers each call in a batch by name, which is what makes the day probes testable at all: a probe
- * request carries up to thirty-one `CalendarEvent/query` calls and every one needs its own answer
- * against its own call id.
+ * Answers each call in a batch by name and resolves `#ids` against the call it names, which is what
+ * makes a request carrying *two* queries and two gets testable: the collapsed pair and the expanded
+ * pair travel together, and a get that took "whatever the last query said" would answer one of them
+ * with the other's ids.
  */
 internal fun calendarTransport(server: FakeCalendarServer): RecordingTransport =
     RecordingTransport { request ->
@@ -183,11 +206,9 @@ private fun answer(server: FakeCalendarServer, requestBody: String): String {
     val calls = Json.parseToJsonElement(requestBody).jsonObject["methodCalls"]!!.jsonArray
     val responses = mutableListOf<String>()
 
-    // The ids the previous call in this batch produced, which is what a
-    // back-referenced `CalendarEvent/get` resolves to. Held rather than parsed
-    // out of the `#ids` argument because the point of the reference is that the
-    // client never names them.
-    var lastQueried = emptyList<String>()
+    // What each query answered, by its call id, so a back-referenced get can be
+    // resolved the way the server resolves it.
+    val queried = mutableMapOf<String, List<String>>()
 
     calls.forEach { call ->
         val entry = call.jsonArray
@@ -199,36 +220,59 @@ private fun answer(server: FakeCalendarServer, requestBody: String): String {
             "Calendar/get" -> responses += """["Calendar/get", $CALENDARS_RESULT, "$callId"]"""
 
             "CalendarEvent/query" -> {
+                val expand = arguments["expandRecurrences"]?.jsonPrimitive?.booleanOrNull ?: false
                 val filter = arguments["filter"]!!.jsonObject
                 val from = LocalDateTime.parse(filter["after"]!!.jsonPrimitive.content)
                 val to = LocalDateTime.parse(filter["before"]!!.jsonPrimitive.content)
 
-                server.windows += from to to
+                server.recordWindow(from, to, expanded = expand)
+
+                if (expand && server.refuseExpansion) {
+                    responses += """["error", {"type":"cannotCalculateOccurrences"}, "$callId"]"""
+
+                    return@forEach
+                }
 
                 val matched =
-                    server.events
-                        .filter { event -> event.spansIn(from, to).isNotEmpty() }
-                        // By the first overlapping occurrence's start, as the
-                        // server orders: a series met in a month-long window is
-                        // placed where a client would meet it.
-                        .sortedBy { event -> event.spansIn(from, to).min() }
+                    if (expand) expandedIds(server, from, to) else seriesIds(server, from, to)
 
-                lastQueried = matched.map { it.id }
+                val position = arguments["position"]?.jsonPrimitive?.content?.toInt() ?: 0
+                val limit = arguments["limit"]?.jsonPrimitive?.content?.toInt() ?: matched.size
+                val page = matched.drop(position).take(limit)
 
-                val ids = lastQueried.joinToString(",") { "\"$it\"" }
+                queried[callId] = page
+
+                val ids = page.joinToString(",") { "\"$it\"" }
 
                 responses +=
                     """
                     ["CalendarEvent/query",
                      {"accountId":"$TEST_ACCOUNT_ID","queryState":"fixed",
-                      "canCalculateChanges":false,"position":0,"ids":[$ids],
-                      "total":${matched.size},"limit":500},"$callId"]
+                      "canCalculateChanges":false,"position":$position,"ids":[$ids],
+                      "total":${matched.size},"limit":$limit},"$callId"]
                     """
             }
 
             "CalendarEvent/get" -> {
-                val list =
-                    server.events.filter { it.id in lastQueried }.joinToString(",") { it.toJson() }
+                val reference =
+                    arguments["#ids"]?.jsonObject?.get("resultOf")?.jsonPrimitive?.content
+
+                // A back-reference to a call that failed is an
+                // `invalidResultReference`, not an empty get -- which matters
+                // here because the refused-expansion case is exactly that, and a
+                // fake answering an empty list would let a client through that
+                // the server would have stopped.
+                if (reference != null && reference !in queried) {
+                    responses += """["error", {"type":"invalidResultReference"}, "$callId"]"""
+
+                    return@forEach
+                }
+
+                val wanted =
+                    reference?.let { queried.getValue(it) }
+                        ?: arguments["ids"]!!.jsonArray.map { it.jsonPrimitive.content }
+
+                val list = wanted.mapNotNull { server.objectFor(it) }.joinToString(",")
 
                 responses +=
                     """
@@ -248,33 +292,124 @@ private fun answer(server: FakeCalendarServer, requestBody: String): String {
     return """{"sessionState":"fixed","methodResponses":[${responses.joinToString(",")}]}"""
 }
 
-/**
- * The starts of this event's occurrences that overlap `[from, to)`, in UTC.
- *
- * The conversion the server performs when it writes an occurrence: an event with a zone is an
- * instant, so its wall clock goes through that zone; one without is a wall clock the server stores
- * verbatim in a UTC column. Half-open at both ends, as Postgres' `tsrange(..., '[)')` is, which is
- * what makes an all-day event's midnight-to-midnight span one day rather than two.
- */
-private fun FakeEvent.spansIn(from: LocalDateTime, to: LocalDateTime): List<LocalDateTime> {
-    val time = LocalDateTime.parse(start).toLocalTime()
-    val length = Duration.parse(duration)
-
-    return days
-        .map { day ->
-            val local = LocalDateTime.of(day, time)
-
-            if (timeZone == null) local
-            else
-                local
-                    .atZone(ZoneId.of(timeZone))
-                    .withZoneSameInstant(ZoneOffset.UTC)
-                    .toLocalDateTime()
+/** One series id per event overlapping the window, ordered by its first occurrence in it. */
+private fun seriesIds(
+    server: FakeCalendarServer,
+    from: LocalDateTime,
+    to: LocalDateTime,
+): List<String> =
+    server.events
+        .mapNotNull { event ->
+            event.visibleIn(from, to).minByOrNull { it.startUtc(event) }?.let { event to it }
         }
-        .filter { starts -> starts < to && starts.plus(length) > from }
-        .sorted()
+        .sortedBy { (event, first) -> first.startUtc(event) }
+        .map { (event, _) -> event.id }
+
+/**
+ * One id per occurrence, ordered by the occurrence's own start.
+ *
+ * A moved override therefore sorts at its moved time, and a one-off keeps its plain series id — its
+ * single occurrence *is* the event, which is why an account with nothing recurring in the window
+ * answers an expanded query exactly as it answers a collapsed one.
+ */
+private fun expandedIds(
+    server: FakeCalendarServer,
+    from: LocalDateTime,
+    to: LocalDateTime,
+): List<String> =
+    server.events
+        .flatMap { event -> event.visibleIn(from, to).map { event to it } }
+        .sortedBy { (event, instance) -> instance.startUtc(event) }
+        .map { (event, instance) ->
+            if (event.isRecurring) server.instanceId(event.id, instance.recurrenceId) else event.id
+        }
+
+/** The object behind one id, series or occurrence, or null for an id this server never issued. */
+private fun FakeCalendarServer.objectFor(id: String): String? {
+    events
+        .firstOrNull { it.id == id }
+        ?.let { series ->
+            return series.toJson()
+        }
+
+    events.forEach { event ->
+        event.instances().forEach { instance ->
+            if (instanceId(event.id, instance.recurrenceId) == id) {
+                return event.toJson(instance, id)
+            }
+        }
+    }
+
+    return null
 }
 
+/**
+ * One materialised occurrence, after its override.
+ *
+ * [recurrenceId] is the occurrence's **original** start and is what an override is keyed by;
+ * [start] is where it actually is.
+ */
+private data class FakeInstance(
+    val recurrenceId: LocalDateTime,
+    val start: LocalDateTime,
+    val duration: String,
+    val title: String,
+    /** `status: cancelled` — the row survives and resolves, but leaves the query. */
+    val cancelled: Boolean,
+)
+
+/** Every occurrence this event has, excluded ones already gone. */
+private fun FakeEvent.instances(): List<FakeInstance> {
+    val time = LocalDateTime.parse(start).toLocalTime()
+    val patches = overrides?.let { Json.parseToJsonElement(it).jsonObject }
+
+    return days.sorted().mapNotNull { day ->
+        val recurrenceId = LocalDateTime.of(day, time)
+        val patch = patches?.get(recurrenceId.toWire())?.jsonObject
+
+        if (patch?.get("excluded")?.jsonPrimitive?.booleanOrNull == true) return@mapNotNull null
+
+        FakeInstance(
+            recurrenceId = recurrenceId,
+            start =
+                patch?.get("start")?.let { LocalDateTime.parse(it.jsonPrimitive.content) }
+                    ?: recurrenceId,
+            duration = patch?.get("duration")?.jsonPrimitive?.content ?: duration,
+            title = patch?.get("title")?.jsonPrimitive?.content ?: title,
+            cancelled = patch?.get("status")?.jsonPrimitive?.content == "cancelled",
+        )
+    }
+}
+
+/** The occurrences a query answers with: overlapping the window, and not called off. */
+private fun FakeEvent.visibleIn(from: LocalDateTime, to: LocalDateTime): List<FakeInstance> {
+    val length = Duration.parse(duration)
+
+    return instances()
+        .filterNot { it.cancelled }
+        .filter { instance ->
+            val starts = instance.startUtc(this)
+
+            starts < to && starts.plus(length) > from
+        }
+}
+
+/**
+ * This occurrence's start as the instant the server stored.
+ *
+ * An event with a zone is an instant, so its wall clock goes through that zone; one without is a
+ * wall clock the server keeps verbatim in a UTC column, which is what it writes for a floating or
+ * all-day event.
+ */
+private fun FakeInstance.startUtc(event: FakeEvent): LocalDateTime =
+    if (event.timeZone == null) start
+    else
+        start
+            .atZone(ZoneId.of(event.timeZone))
+            .withZoneSameInstant(ZoneOffset.UTC)
+            .toLocalDateTime()
+
+/** The series object: its own start, its own title, and the override map published whole. */
 private fun FakeEvent.toJson(): String = buildString {
     append("""{"id":"$id","uid":"$id@plmail","calendarId":"$calendarId",""")
     append(""""title":"$title","start":"$start","duration":"$duration",""")
@@ -282,6 +417,28 @@ private fun FakeEvent.toJson(): String = buildString {
     if (showWithoutTime) append(""""showWithoutTime":true,""")
     overrides?.let { append(""""recurrenceOverrides":$it,""") }
     append(""""status":"confirmed","sequence":0,"isRecurring":$isRecurring}""")
+}
+
+/**
+ * One occurrence as `CalendarEvent/get` resolves it.
+ *
+ * The series with the override merged in, its own `start` and `duration`, `seriesId` and
+ * `recurrenceId` — and `recurrenceRules`/`recurrenceOverrides` explicitly **null**, as the draft
+ * requires, which is also a decoding case worth exercising: an absent key and a null one are not
+ * the same thing to a deserialiser.
+ */
+private fun FakeEvent.toJson(instance: FakeInstance, occurrenceId: String): String = buildString {
+    append("""{"id":"$occurrenceId","seriesId":"$id","uid":"$id@plmail",""")
+    append(""""calendarId":"$calendarId","title":"${instance.title}",""")
+    append(""""start":"${instance.start.toWire()}","duration":"${instance.duration}",""")
+    append(""""recurrenceId":"${instance.recurrenceId.toWire()}",""")
+    timeZone?.let { append(""""timeZone":"$it",""") }
+    if (showWithoutTime) append(""""showWithoutTime":true,""")
+    append(""""recurrenceRules":null,"recurrenceOverrides":null,""")
+    append(
+        """"status":"${if (instance.cancelled) "cancelled" else "confirmed"}",""" +
+            """"sequence":0,"isRecurring":true}"""
+    )
 }
 
 /**
@@ -361,9 +518,10 @@ private val CALENDARS_RESULT =
 /**
  * The session, with the calendars capability where [calendarAccount] says there is one.
  *
- * `maxCallsInRequest` is 32, as the real server publishes, because it is what decides how many
- * one-day probes travel together — a fake that omitted it would take RFC 8620's default of 16 and
- * quietly halve the batch the tests are measuring.
+ * `maxCallsInRequest` is 32, as the real server publishes. A refresh needs five of them —
+ * `Calendar/get`, two queries and two back-referenced gets — so an instance publishing RFC 8620's
+ * default of 16 has room to spare, and a fake that omitted the value would silently be testing that
+ * case instead of this one.
  */
 private fun calendarSession(calendarAccount: String?): String {
     val capability =

@@ -68,7 +68,23 @@ data class CalendarGetResult(
 }
 
 /**
- * `CalendarEvent/query` — which event *series* fall in a window, ordered by first occurrence.
+ * `CalendarEvent/query` — what falls in a window, ordered by start.
+ *
+ * **[expandRecurrences] switches the unit from the series to the occurrence.** False (or absent,
+ * which is what this sends) answers one id per *series* overlapping the window, ordered by each
+ * series' first occurrence inside it. True answers one id per *occurrence*, ordered by the
+ * occurrence's start — a moved override sorting at its moved time, an excluded one absent — with
+ * `position`, `limit` and `total` counting occurrences rather than series. A one-off keeps its
+ * plain series id either way, so a window with nothing recurring in it answers both identically.
+ *
+ * An occurrence id is **opaque**. It looks like `42_20260304T090000Z` and it must be handed
+ * straight back to [CalendarEventGet]; the series it belongs to is that object's `seriesId` and
+ * never something read out of the id.
+ *
+ * Expanding is refused with `cannotCalculateOccurrences` when the window reaches past the account's
+ * `materialisedHorizon` — collapsed, an overrunning window is merely thin, but the expanded answer
+ * *is* the list of occurrences, so a series that stops at the horizon would come back as a series
+ * that ends. Clamp the window rather than discovering this per request.
  *
  * The window is mandatory, which is why it is a constructor parameter of [CalendarEventFilter]
  * rather than an optional condition: omitting either end is a method-level `invalidArguments` with
@@ -83,6 +99,7 @@ class CalendarEventQuery(
     private val filter: CalendarEventFilter,
     private val position: Int = 0,
     private val limit: Int? = null,
+    private val expandRecurrences: Boolean = false,
 ) : JmapMethod<CalendarEventQueryResult> {
 
     init {
@@ -98,6 +115,12 @@ class CalendarEventQuery(
         put("filter", filter.toJson())
         put("position", position)
         limit?.let { put("limit", it) }
+
+        // Omitted rather than sent as false. The two are documented to behave
+        // identically, so sending the argument only when it is wanted keeps a
+        // collapsed query byte-for-byte what an instance without this feature
+        // has always been asked.
+        if (expandRecurrences) put("expandRecurrences", true)
     }
 
     override fun decode(json: Json, arguments: JsonObject): CalendarEventQueryResult =
@@ -113,22 +136,31 @@ data class CalendarEventQueryResult(
     val canCalculateChanges: Boolean = false,
     val position: Int = 0,
     /**
-     * Series ids, ordered by each series' **first occurrence inside the window** — not by id and
-     * not by the series' own start, which for a recurring event is often long before the window.
+     * Ids, ordered by start — not by id, and not by the series' own start, which for a recurring
+     * event is often long before the window.
+     *
+     * What one names depends on the query: a **series**, placed at its first occurrence inside the
+     * window, or — with `expandRecurrences` — one **occurrence**, placed at its own start. An
+     * occurrence id is opaque and belongs in a `CalendarEvent/get`, nowhere else.
      */
     val ids: List<CalendarEventId> = emptyList(),
-    /** Always present, unlike `Mailbox/query`. */
+    /** Always present, unlike `Mailbox/query`. Counts whatever [ids] names. */
     val total: Int? = null,
     /** Echoes the requested limit, not the server's 500 cap. */
     val limit: Int? = null,
 )
 
 /**
- * `CalendarEvent/get`.
+ * `CalendarEvent/get`, which resolves a series id and an occurrence id alike.
  *
- * Pair it with [CalendarEventQuery] in one request through [byReference]. Note the id ceiling is
- * the account's `maxEventsInGet` — **100**, not core's `maxObjectsInGet` of 500 — because expanding
- * a recurring series costs far more than reading a row.
+ * Pair it with [CalendarEventQuery] in one request through [byReference] — the pairing works
+ * unchanged for an expanded query, which is what makes a month one round trip. An occurrence id
+ * answers the series with its override merged in, plus `seriesId`, `recurrenceId` and the
+ * occurrence's own `start`/`duration`; `recurrenceRules` and `recurrenceOverrides` come back null.
+ *
+ * Note the id ceiling is the account's `maxEventsInGet` — **100**, not core's `maxObjectsInGet` of
+ * 500 — because expanding a recurring series costs far more than reading a row. Expanded, that
+ * ceiling counts occurrences, which a busy month reaches far sooner than it reaches 100 series.
  */
 class CalendarEventGet(
     private val accountId: AccountId,
@@ -169,19 +201,28 @@ class CalendarEventGet(
          */
         const val MAX_EVENTS_IN_GET = 100
 
-        /** Enough to draw a month grid without pulling descriptions and rules for every cell. */
-        val AGENDA_PROPERTIES =
+        /**
+         * Enough to *place* one occurrence, and nothing a series row already holds.
+         *
+         * The list an expanded query's back-referenced get asks for. A month of a busy calendar is
+         * a lot of occurrences, and each one is the whole series repeated — description, location,
+         * participants — so asking for the fields a day view draws from the series would move that
+         * text once per occurrence over a domestic uplink.
+         *
+         * `seriesId` earns its place twice over: it is the row an occurrence hangs off and the only
+         * id `CalendarEvent/set` will accept back.
+         */
+        val OCCURRENCE_PROPERTIES =
             listOf(
                 "id",
-                "uid",
-                "calendarId",
+                "seriesId",
+                "recurrenceId",
                 "title",
                 "start",
                 "duration",
                 "timeZone",
                 "showWithoutTime",
                 "status",
-                "isRecurring",
             )
 
         fun byReference(

@@ -17,6 +17,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.jsonObject
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -35,12 +36,12 @@ import org.robolectric.annotation.Config
  * week after it was cancelled from the web, a standup drawn on the Thursday it was never on, an
  * occurrence at the time it used to be at.
  *
- * The other half is the rule that stops the fix costing more than the bug. The client is forbidden
- * from expanding a recurrence rule, so day membership is asked of the server one day at a time —
- * and asking is only allowed when there is a recurring event to ask about, batched, and never on a
- * timer. `requests` and `dayProbes` are asserted for that reason: they are the only visible
- * difference between this design and one that quietly issues thirty-one round trips to draw a month
- * of dentist appointments.
+ * The other half is the rule that decides where the days come from. The client is forbidden from
+ * expanding a recurrence rule, so every occurrence is one the server named, through
+ * `expandRecurrences` — and the ids it names them with are **opaque**, which is asserted here by a
+ * fake that mints ids carrying neither the series nor the date. `requests` is asserted for the same
+ * reason it always was: it is the visible difference between this design and one that quietly
+ * issues a round trip per day to draw a month of dentist appointments.
  *
  * Run against a real database under Robolectric, like the feed suite, because every assertion here
  * is a statement about what is in a table.
@@ -130,13 +131,14 @@ class CalendarRepositoryTest {
     }
 
     /**
-     * The whole reason this class asks the server about days.
+     * The whole reason this class asks the server where the occurrences are.
      *
      * A Mon/Wed/Fri series is on the Monday, the Wednesday and the Friday, and it is **not** on the
      * Thursday — which is the assertion, because a client expanding `byDay` locally would get this
      * one right and get the DST week wrong in a way no test written from a rule would notice.
-     * Verified against the running stack: the Friday and Monday one-day windows return event 10867
-     * and the Thursday one does not.
+     * Verified against the 8002 stack on 2026-08-06: one expanded query over August returns fifteen
+     * ids, and the thirteen recurring ones are exactly the standup's Mondays, Wednesdays and
+     * Fridays.
      */
     @Test
     fun `a recurring series lands only on the days the server reports it on`() = runTest {
@@ -158,9 +160,10 @@ class CalendarRepositoryTest {
     /**
      * An override moves one occurrence, and only that one.
      *
-     * The key is the occurrence's *original* start and the `start` inside is where it went, so a
-     * client matching on the value rather than the key would move the wrong day — and one applying
-     * the override to the series would move all three.
+     * The server resolves it now — the occurrence's object carries the moved `start` and the
+     * override's title, keyed by an id that still names its *original* start — so what this pins is
+     * that the client draws the answer rather than the map: applying `recurrenceOverrides` here as
+     * well would move the occurrence twice, and reading the id would move it back.
      */
     @Test
     fun `an override moves one occurrence's time and renames it`() = runTest {
@@ -199,14 +202,15 @@ class CalendarRepositoryTest {
     }
 
     /**
-     * `{"excluded": true}` cancels one occurrence, and the client honours it.
+     * `{"excluded": true}` cancels one occurrence, and it simply is not there.
      *
-     * The server also drops an excluded occurrence from its own query, so this fake deliberately
-     * still reports the Wednesday — the check has to hold when the two disagree, which is exactly
-     * the state after a local write and before the refresh that would settle it.
+     * The one occurrence with no id: an excluded instance has no occurrence row on the server, so
+     * it is absent from the expanded query and `notFound` from the getter. The client has nothing
+     * to skip and nothing to interpret, which is the point — the old code carried a second
+     * implementation of exclusion for the days a probe answer could not speak to.
      */
     @Test
-    fun `an excluded occurrence is dropped even when the day query still reports it`() = runTest {
+    fun `an excluded occurrence never reaches the cache`() = runTest {
         val server =
             FakeCalendarServer(
                 events =
@@ -263,48 +267,323 @@ class CalendarRepositoryTest {
         }
 
     /**
-     * A window with nothing recurring in it costs one round trip.
+     * A window with nothing recurring in it renders from one query, as it always did.
      *
-     * This is the cost side of the whole design. Day probes are what make a recurring event
-     * placeable at all, and they are also thirty-one method calls — so issuing them for a month of
-     * one-off appointments would spend the entire budget of a Raspberry Pi to learn what `start`
-     * already said.
+     * `expandRecurrences` is the same answer as a collapsed query when nothing recurs — a one-off
+     * keeps its plain series id, because its single occurrence *is* the event — so the argument
+     * costs a month of dentist appointments exactly nothing. Asserted because the opposite would be
+     * invisible: the rows would be identical and only the traffic would differ.
      */
     @Test
-    fun `a window with no recurring events issues no day probes`() = runTest {
+    fun `a window with no recurring events renders from a single expanded query`() = runTest {
         val server =
             FakeCalendarServer(
                 events = mutableListOf(oneOff("10865", "Zahnarzt", "2026-08-06T09:30:00"))
             )
-        val repository = calendarStack(database, calendarTransport(server))
+        val transport = calendarTransport(server)
+        val repository = calendarStack(database, transport)
 
         val result = repository.refresh(week) as CalendarRefresh.Refreshed
 
         assertEquals(1, result.requests)
-        assertEquals(0, server.dayProbes)
+        assertEquals(1, server.expandedQueries, "one expanded query for the window, and one only")
+        assertEquals(
+            1,
+            transport.requests.count { it.url.endsWith("/jmap/api") },
+            "and the transport saw exactly that one, plus discovery",
+        )
+        assertEquals(listOf("2026-08-06 Zahnarzt"), agenda())
     }
 
     /**
-     * And a window with one costs a batch, not a round trip per day.
+     * And a window full of a recurring series costs the same one round trip.
      *
-     * Seven days is seven `CalendarEvent/query` calls; the session says thirty-two calls fit in a
-     * request, so they travel in one. The assertion is on the *requests*, because the number of
-     * probes is fixed by the calendar and the number of round trips is the part a mistake changes.
+     * This is the whole change, stated as the number that used to be five. A week of a Mon/We/Fr
+     * standup used to cost the window query plus a batch of seven one-day probes; a month cost the
+     * window query plus three batches of thirty-one. It now costs one request whatever recurs in
+     * it, because the query that finds the events is the query that places them.
      */
     @Test
-    fun `day probes for a week travel in a single request`() = runTest {
+    fun `a week holding a recurring series costs one round trip`() = runTest {
         val server = FakeCalendarServer(events = seededWeek())
         val transport = calendarTransport(server)
         val repository = calendarStack(database, transport)
 
         val result = repository.refresh(week) as CalendarRefresh.Refreshed
 
-        assertEquals(7, server.dayProbes, "one query per day of the window")
-        assertEquals(2, result.requests, "the window with its get, then one batch of probes")
+        assertEquals(1, result.requests, "the window, expanded, with both gets back-referenced")
+        assertEquals(1, server.expandedQueries)
+        assertEquals(1, server.collapsedQueries, "the series a form is edited through")
         assertEquals(
-            2,
+            1,
             transport.requests.count { it.url.endsWith("/jmap/api") },
-            "and the transport saw exactly those two, plus discovery",
+            "and the transport saw exactly that one, plus discovery",
+        )
+    }
+
+    /**
+     * A month of the same series costs one round trip too, which is the number that was thirty-two.
+     *
+     * The month is the case the old design was worst at and the one a calendar screen actually
+     * opens on: every day in the window cost a `CalendarEvent/query` call once anything in it
+     * recurred, batched into requests but still four or five of them.
+     */
+    @Test
+    fun `a month holding a recurring series still costs one round trip`() = runTest {
+        val august = CalendarWindow(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 9, 1))
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        recurring(
+                            id = "10867",
+                            title = "Team-Standup",
+                            start = "2026-08-03T10:00:00",
+                            days =
+                                generateSequence(LocalDate.of(2026, 8, 3)) { it.plusDays(1) }
+                                    .takeWhile { it < LocalDate.of(2026, 9, 1) }
+                                    .filter { it.dayOfWeek.value in setOf(1, 3, 5) }
+                                    .toSet(),
+                        )
+                    )
+            )
+        val repository = calendarStack(database, calendarTransport(server))
+
+        val result = repository.refresh(august) as CalendarRefresh.Refreshed
+
+        assertEquals(1, result.requests)
+        assertEquals(13, result.occurrences, "every Monday, Wednesday and Friday from the third")
+        assertEquals(1, server.expandedQueries)
+    }
+
+    /**
+     * The occurrence id is opaque, and this is the test that fails if anything reads it.
+     *
+     * The real server builds it as `<seriesId>_<recurrenceId>` — `42_20260304T090000Z` — and it is
+     * documented opaque all the same, because the separator is plMail's own choice and the draft
+     * says so. This fake mints ids that carry **neither** half: `o1`, `o2`, `o3`. Code that placed
+     * an occurrence by parsing a timestamp out of its id, or filed it under a series id parsed out
+     * of the same, has nothing to parse here and draws nothing.
+     *
+     * The dates asserted are therefore only reachable through the object's own `start`, and the
+     * series row is only reachable through its `seriesId`.
+     */
+    @Test
+    fun `occurrences are placed from their objects, never from their ids`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        assertEquals(
+            listOf("2026-08-03", "2026-08-05", "2026-08-07"),
+            database.calendarEvents().occurrencesOf(standupKey).map { it.date },
+            "the ids the server issued were o1, o2 and o3 and say nothing about August",
+        )
+        assertEquals(
+            "10867",
+            database.calendarEvents().byUid(standupKey)?.eventId,
+            "and the series row is keyed by seriesId, which is the id a write is addressed to",
+        )
+    }
+
+    /**
+     * An edit of a recurring series goes to the series id, never to an occurrence's.
+     *
+     * `CalendarEvent/set` refuses an occurrence id by name — `invalidArguments`, pointing at
+     * `seriesId` — so a cache that had filed a standup under `o2` would have an editor that cannot
+     * save. The occurrence ids never reach a row at all, which is what this asserts from the other
+     * end: the id on the wire is the plain one.
+     */
+    @Test
+    fun `an edit of a recurring series is addressed to the series id`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        var updatedId: String? = null
+
+        server.onSet = { arguments ->
+            val id = arguments["update"]!!.jsonObject.keys.single()
+
+            updatedId = id
+
+            updated(id)
+        }
+
+        val result =
+            repository.update(
+                eventKey = standupKey,
+                draft =
+                    EventDraft(
+                        title = "Team-Standup (neu)",
+                        start = LocalDateTime.of(2026, 8, 3, 10, 0),
+                        duration = Duration.ofMinutes(15),
+                    ),
+            )
+
+        assertTrue(result is CalendarWriteResult.Applied, "got $result")
+        assertEquals("10867", updatedId)
+    }
+
+    /**
+     * The series row keeps the series' own start, not the start of whichever occurrence was last.
+     *
+     * The reason the refresh asks a collapsed query as well as an expanded one. An occurrence's
+     * object is the series with its override merged in — its `start` is that Tuesday's — and the
+     * editor opens on this row: a form seeded from an occurrence would send that occurrence's date
+     * as the series' start and drag the whole standup onto the day somebody was looking at. The
+     * moved occurrence is in this fixture on purpose, because it is the one whose start differs
+     * most.
+     */
+    @Test
+    fun `the cached series keeps its own start while its occurrences keep theirs`() = runTest {
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        recurring(
+                            id = "10867",
+                            title = "Team-Standup",
+                            start = "2026-08-03T10:00:00",
+                            days = setOf(monday, wednesday, friday),
+                            overrides =
+                                """
+                                {"2026-08-07T10:00:00":
+                                  {"title":"Standup (Retro-Woche)","start":"2026-08-07T11:00:00"}}
+                                """,
+                        )
+                    )
+            )
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        val series = database.calendarEvents().byUid(standupKey)
+
+        assertEquals("2026-08-03T10:00:00", series?.start)
+        assertEquals("Team-Standup", series?.title)
+        assertTrue(series?.isRecurring == true)
+        assertEquals(
+            listOf("2026-08-03T10:00:00", "2026-08-05T10:00:00", "2026-08-07T11:00:00"),
+            database.calendarEvents().occurrencesOf(standupKey).map { it.startLocal },
+        )
+    }
+
+    /**
+     * A cancelled occurrence is not drawn.
+     *
+     * `status: cancelled` on an override keeps the occurrence row on the server — it still resolves
+     * through `CalendarEvent/get` — and takes it out of the range query the calendar is drawn from,
+     * which is `CalendarEventOccurrenceRepository::findInRange` excluding cancelled rows. So the
+     * client is never handed the id and has nothing to filter. Distinct from `excluded`, which
+     * deletes the row outright; both are invisible here, which is the correct amount of difference
+     * for a day view.
+     */
+    @Test
+    fun `a cancelled occurrence leaves the window`() = runTest {
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        recurring(
+                            id = "10867",
+                            title = "Team-Standup",
+                            start = "2026-08-03T10:00:00",
+                            days = setOf(monday, wednesday, friday),
+                            overrides = """{"2026-08-05T10:00:00":{"status":"cancelled"}}""",
+                        )
+                    )
+            )
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        assertEquals(
+            listOf("2026-08-03", "2026-08-07"),
+            database.calendarEvents().occurrencesOf(standupKey).map { it.date },
+        )
+    }
+
+    /**
+     * A window reaching past the horizon is clamped, and the clamp is reported.
+     *
+     * An expanded query past the account's `materialisedHorizon` is refused **outright** —
+     * `cannotCalculateOccurrences` — rather than answered short, so a client that sent the window
+     * it wanted would draw nothing at all for a month eighteen out. What it sends instead is the
+     * part it can trust, and `mayBeIncomplete` is the sentence the agenda already has a footer for.
+     *
+     * The client's line is a year either side of today while this server materialises two years
+     * forward, so the clamp is conservative on purpose: it asks for less than is there and says so.
+     */
+    @Test
+    fun `a window past the horizon is clamped and reported as possibly incomplete`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        val far = CalendarWindow(LocalDate.of(2027, 7, 1), LocalDate.of(2027, 9, 1))
+        val result = repository.refresh(far) as CalendarRefresh.Refreshed
+
+        assertTrue(result.mayBeIncomplete, "part of that window is past the line the client trusts")
+        assertEquals("+2 years", result.horizon.future, "the server's own words travel with it")
+        assertEquals(
+            LocalDateTime.of(2027, 6, 30, 22, 0) to LocalDateTime.of(2027, 8, 5, 0, 0),
+            server.windows.first(),
+            "asked about up to a year from today and not one day further",
+        )
+    }
+
+    /**
+     * A window entirely past the horizon asks nothing about events and empties nothing.
+     *
+     * The important half is what it does *not* do: the reconcile is skipped. "The server was not
+     * asked" and "the server reports nothing here" are the same empty answer, and deleting a
+     * window's occurrences on the strength of the first would clear a month the phone is holding
+     * for a question nobody put.
+     */
+    @Test
+    fun `a window entirely past the horizon leaves the cache alone`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        val before = agenda()
+        val result =
+            repository.refresh(CalendarWindow(LocalDate.of(2029, 1, 1), LocalDate.of(2029, 2, 1)))
+                as CalendarRefresh.Refreshed
+
+        assertTrue(result.mayBeIncomplete)
+        assertEquals(0, result.occurrences)
+        assertEquals(before, agenda(), "nothing was asked, so nothing was swept")
+        assertEquals(
+            listOf("Feiertage", "Personal"),
+            repository.calendars().first().map { it.name }.sorted(),
+            "the calendar list is not windowed and is still worth the round trip",
+        )
+    }
+
+    /**
+     * A server that refuses the expansion anyway is an honesty gap, not a failure.
+     *
+     * The clamp is the client's own conservative line; an instance materialising less than this one
+     * does would refuse a window the client thought safe. The cache stands, and the screen says the
+     * server cannot promise more — the same sentence a clamped window gets, because it is the same
+     * situation seen from the other side.
+     */
+    @Test
+    fun `an expansion the server refuses is reported as possibly incomplete`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek(), refuseExpansion = true)
+        val repository = calendarStack(database, calendarTransport(server))
+
+        val result = repository.refresh(week)
+
+        assertTrue(result is CalendarRefresh.Refreshed, "got $result")
+        assertTrue(result.mayBeIncomplete)
+        assertEquals(
+            emptyList(),
+            database.calendarEvents().occurrencesBetween("2026-01-01", "2027-01-01"),
         )
     }
 
@@ -652,9 +931,10 @@ class CalendarRepositoryTest {
             server.windows.first(),
         )
         assertEquals(
-            LocalDateTime.of(2026, 8, 5, 22, 0) to LocalDateTime.of(2026, 8, 6, 22, 0),
-            server.windows.first { (from, _) -> from == LocalDateTime.of(2026, 8, 5, 22, 0) },
-            "and so is each day probe: Thursday the sixth in Berlin is 22:00Z on the fifth",
+            setOf(LocalDateTime.of(2026, 8, 2, 22, 0) to LocalDateTime.of(2026, 8, 10, 0, 0)),
+            server.windows.toSet(),
+            "and it is the only window asked about: the collapsed and expanded queries are the " +
+                "same span, and there are no one-day windows any more",
         )
     }
 
@@ -685,16 +965,17 @@ class CalendarRepositoryTest {
     }
 
     /**
-     * And a *recurring* all-day series is asked about in its own wall clock.
+     * And a *recurring* all-day series lands on its own dates, one row per date.
      *
      * A floating event — every all-day one, since the server nulls the zone of one — is stored as
-     * the wall clock it was given, in a column read as UTC. So the window that means "the eleventh"
-     * for it is the naive one, and a converted window would report it on the eleventh *and* the
-     * twelfth. Two rows, one holiday, and the phone disagreeing with the web about which day the
-     * office is shut.
+     * the wall clock it was given, in a column read as UTC. The window that reaches it is therefore
+     * the union of the converted and the naive bounds, and each occurrence is then placed from the
+     * wall clock the server published rather than from which end of the window found it. Getting
+     * that second half wrong draws the holiday twice, on its own day and the morning after: two
+     * rows, one holiday, and the phone disagreeing with the web about when the office is shut.
      */
     @Test
-    fun `a recurring all-day series is probed in its own wall clock`() = runTest {
+    fun `a recurring all-day series lands on its own dates`() = runTest {
         val server =
             FakeCalendarServer(
                 events =
@@ -728,11 +1009,11 @@ class CalendarRepositoryTest {
      * The Sunday the clocks go back is twenty-five hours long, and the window says so.
      *
      * Derived from `ZonedDateTime` day boundaries rather than by adding a day at a time, which is
-     * the difference this pins: an event at 23:30 on 2026-10-25 is 22:30Z, *past* the point a
-     * twenty-four-hour arithmetic would have closed the Sunday at — so the standup would be drawn
-     * on the Monday, an hour into a day it is not on. The client is forbidden from expanding a
-     * recurrence rule for exactly this reason; getting the window wrong reintroduces the same
-     * disagreement from the other end.
+     * the difference this pins: an event at 23:30 on 2026-10-25 is 22:30Z, and a window closed by
+     * twenty-four-hour arithmetic would end an hour before it. The client is forbidden from
+     * expanding a recurrence rule for exactly this reason, and the server now does that part — but
+     * the window is still the client's, and a window an hour short is a night shift nobody is told
+     * about.
      */
     @Test
     fun `a local day across the autumn clock change is twenty-five hours long`() = runTest {
@@ -765,8 +1046,11 @@ class CalendarRepositoryTest {
             "the 23:30 of the long Sunday belongs to the Sunday",
         )
         assertEquals(
-            LocalDateTime.of(2026, 10, 24, 22, 0) to LocalDateTime.of(2026, 10, 25, 23, 0),
-            server.windows.first { (from, _) -> from == LocalDateTime.of(2026, 10, 24, 22, 0) },
+            // 2026-10-24T00:00 in Berlin is 22:00Z on the 23rd; the 27th's start
+            // is an hour later in UTC than the 24th's, because an hour was given
+            // back in between.
+            LocalDateTime.of(2026, 10, 23, 22, 0) to LocalDateTime.of(2026, 10, 27, 0, 0),
+            server.windows.first(),
         )
     }
 

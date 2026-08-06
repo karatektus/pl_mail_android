@@ -122,7 +122,8 @@ constructor(
      * Re-runs the visible window against the server.
      *
      * Guarded rather than restarted: a second pull while the first is in flight would ask a machine
-     * that is already busy for the same month again, and up to thirty-one day probes with it.
+     * that is already busy for the same month again, and this surface has no delta to make the
+     * second answer any cheaper than the first.
      */
     fun refresh() {
         if (status.value.isRefreshing) return

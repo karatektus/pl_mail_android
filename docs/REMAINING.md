@@ -171,7 +171,10 @@ each as a bug:
 - **No "this occurrence or all of them".** Every edit and every delete is the **series**. The editor
   therefore opens on the series' own times rather than on the occurrence that was tapped, which is
   the only shape that cannot silently drag a whole series onto the day somebody happened to be
-  looking at. Cancelling one occurrence is an `excluded` override and has no control yet.
+  looking at. Cancelling one occurrence is an `excluded` override and has no control yet. The server
+  now hands out an id per occurrence, and `CalendarEvent/set` refuses one by name — so the way in
+  when this is built is `seriesId` plus a `recurrenceOverrides` patch keyed by `recurrenceId`, both
+  of which the occurrence object carries and neither of which may be read out of the id.
 - **One calendar per event.** The web's editor is a checkbox per calendar, with rules about what
   unticking one means that take two paragraphs of its own documentation. One calendar is the honest
   subset: it never produces a state this editor cannot describe.
@@ -222,14 +225,15 @@ with the bug. All three are fixed and each now has a test that fails without its
    shifted by the device's offset. On a UTC+2 phone an event created at 01:00 was stored correctly
    at 23:00Z, the agenda then asked about `2026-08-06T00:00:00` onwards, the server honestly
    answered that the day was empty, and the reconcile swept the just-saved event out of the cache:
-   gone from the phone, still on the server. `CalendarRepository` now converts the main window and
-   every one-day probe out of the injected `Clock`'s zone, from `ZonedDateTime` day boundaries so a
-   23- or 25-hour day is that long. Two consequences worth keeping in mind before touching that
+   gone from the phone, still on the server. `CalendarRepository` now converts the window out of the
+   injected `Clock`'s zone, from `ZonedDateTime` day boundaries so a 23- or 25-hour day is that
+   long. Two consequences worth keeping in mind before touching that
    code: the fetch window is the **union** of the converted and naive bounds, because a floating
-   event at the edge is only reachable by the latter; and floating or all-day events — every all-day
-   one, since the server nulls the zone of an all-day event — are probed with **naive** windows,
-   because that is the wall clock the server stored them as. A converted probe returns an all-day
-   event for two days running.
+   event at the edge is only reachable by the latter; and an occurrence is placed from its own
+   published wall clock rather than from which end of the window found it, because an all-day
+   event's midnight-to-midnight span overlaps two UTC-converted day windows on a UTC+2 phone. (The
+   one-day probes this originally described are gone — see PLAN.md's `expandRecurrences` note — but
+   both halves still apply to the window the refresh sends.)
 2. **The drawer's Calendar row needed a process restart after pairing.** `isAvailable()` probed the
    session once per collection; the drawer collects before pairing has written a credential, and
    nothing re-asked. It now re-probes on the stored connection and on the account rows changing —

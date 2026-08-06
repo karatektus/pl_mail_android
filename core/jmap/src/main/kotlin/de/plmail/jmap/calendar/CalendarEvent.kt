@@ -7,7 +7,14 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 
 /**
- * One event *series*, as JSCalendar (RFC 8984) plus plMail's envelope.
+ * One event, as JSCalendar (RFC 8984) plus plMail's envelope — a series, or **one occurrence of
+ * one**.
+ *
+ * Which of the two it is, is [seriesId]: present means this object came back for an occurrence id,
+ * and then [start], [duration] and [status] are that occurrence's own, its override already merged
+ * in, with [recurrenceRules] and [recurrenceOverrides] nulled by the server. Absent means the
+ * series, and a one-off event is always the series — its single occurrence *is* the event, so an
+ * expanded query names it by its plain id.
  *
  * Every property but [id] is optional, and for the same reason [de.plmail.jmap.mail.Email]'s are:
  * `CalendarEvent/get` returns exactly the properties asked for, so a `properties` filter comes back
@@ -88,7 +95,41 @@ data class CalendarEvent(
     val kind: String? = null,
     /** plMail's extension: where the event came from. Seen: `manual`. */
     val source: String? = null,
-)
+    /**
+     * plMail's extension, and the only way back from an occurrence to something writable.
+     *
+     * Present exactly when [id] names one occurrence rather than a series. `CalendarEvent/set`
+     * **refuses an occurrence id by name** — `invalidArguments`, pointing at this property — so
+     * every write goes to this id with a `recurrenceOverrides` patch keyed by [recurrenceId].
+     *
+     * This is also the only sanctioned way to learn which series an occurrence belongs to. The id
+     * happens to be built from the series id and the occurrence's original start, and reading it
+     * back out is client-side expansion through the back door: the draft calls the id opaque, the
+     * separator is plMail's own choice, and a client that parsed it would be deciding for itself
+     * where an occurrence goes.
+     */
+    val seriesId: CalendarEventId? = null,
+    /**
+     * The occurrence's **original** start, as a LocalDateTime — never where an override moved it.
+     *
+     * The key a `recurrenceOverrides` patch has to be filed under, which is what makes it worth
+     * keeping beside [start]. Read in [recurrenceIdTimeZone] where the server sends one.
+     */
+    val recurrenceId: String? = null,
+    val recurrenceIdTimeZone: String? = null,
+) {
+    /** Whether this object is one occurrence of a series rather than the series itself. */
+    val isOccurrence: Boolean
+        get() = seriesId != null
+
+    /**
+     * The id an edit is addressed to: the series', which for a one-off is its own.
+     *
+     * Never derived from [id]. See [seriesId] for why that matters.
+     */
+    val writableId: CalendarEventId
+        get() = seriesId ?: id
+}
 
 @Serializable
 data class EventLocation(

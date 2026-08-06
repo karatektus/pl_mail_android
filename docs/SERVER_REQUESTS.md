@@ -135,6 +135,12 @@ merged in, plus `seriesId` (plMail extension), `recurrenceId`, its own `start`/`
 instance id by name, pointing at `seriesId` + `recurrenceOverrides`. A window past the advertised
 `materialisedHorizon` is `cannotCalculateOccurrences`; `timeZone` alongside expansion is refused.
 **Client action: the 31-one-day-queries-per-month machinery reduces to one query per window.**
+**Adopted 2026-08-06** — the probe machinery is deleted. A month is one round trip whatever recurs
+in it. Two notes for whoever reads this next: the refresh sends the expanded query *and* a collapsed
+one in the same request, because an occurrence's object is the series with its override merged in
+and the editor must open on the series' own start; and the window is clamped to a year either side
+of today before it is sent, because the horizon refusal takes down the whole month rather than
+trimming it.
 
 ### `Mailbox.color` — **merged into plMail `main`** (`b06b909`), adopted 2026-08-01
 

@@ -157,6 +157,111 @@ class CalendarMethodResultsTest {
         )
     }
 
+    // --- expandRecurrences ---
+
+    /**
+     * The expanded query answers occurrences, and the pairing that draws a month is unchanged.
+     *
+     * Two things at once because they are one behaviour: the ids count occurrences rather than
+     * series — the standup appears three times where a collapsed query names it once — and the
+     * one-off keeps its **plain** id in among them, which is what makes a window with nothing
+     * recurring in it cost exactly what it used to.
+     */
+    @Test
+    fun `an expanded query answers one id per occurrence and resolves each of them`() {
+        val results = results("event-query-get-expanded.json")
+        val query =
+            results.result(
+                handle(CalendarEventQuery(account, window, expandRecurrences = true), "q0")
+            )
+        val events = results.result(handle(CalendarEventGet(account), "g0"))
+
+        assertEquals(5, query.total, "three standups, a dentist and an all-day party")
+        assertEquals(query.ids, events.list.map { it.id })
+
+        val standups = events.list.filter { it.isOccurrence }
+        val oneOffs = events.list.filterNot { it.isOccurrence }
+
+        assertEquals(3, standups.size)
+        assertEquals(
+            listOf("2026-08-03T10:00:00", "2026-08-05T10:00:00", "2026-08-07T11:00:00"),
+            standups.map { it.start },
+            "each occurrence carries its own start, the third at the time an override moved it to",
+        )
+        assertEquals(
+            listOf(CalendarEventId("10867")),
+            standups.map { it.writableId }.distinct(),
+            "and all three write through one series id, read off seriesId and not out of the id",
+        )
+        assertEquals(
+            listOf("2026-08-03T10:00:00", "2026-08-05T10:00:00", "2026-08-07T10:00:00"),
+            standups.map { it.recurrenceId },
+            "the recurrence id stays the occurrence's *original* start after it has been moved",
+        )
+        assertEquals(
+            listOf(CalendarEventId("10865"), CalendarEventId("10866")),
+            oneOffs.map { it.writableId },
+            "a one-off keeps its plain series id even in an expanded response",
+        )
+    }
+
+    @Test
+    fun `an occurrence comes back with its rules and overrides explicitly nulled`() {
+        // Explicit null rather than an omitted key, which a decoder configured
+        // without `coerceInputValues` fails on -- and it fails for the whole
+        // response, so a month would draw nothing.
+        val occurrence =
+            results("event-query-get-expanded.json")
+                .result(handle(CalendarEventGet(account), "g0"))
+                .list
+                .first { it.isOccurrence }
+
+        assertEquals(emptyList(), occurrence.recurrenceRules)
+        assertEquals(emptyMap(), occurrence.recurrenceOverrides)
+    }
+
+    @Test
+    fun `expandRecurrences is sent only when it is wanted`() {
+        // Absent and false are documented to behave identically, so a collapsed
+        // query stays byte-for-byte what it always was.
+        assertFalse(
+            CalendarEventQuery(account, window).arguments().containsKey("expandRecurrences")
+        )
+        assertEquals(
+            true,
+            CalendarEventQuery(account, window, expandRecurrences = true)
+                .arguments()["expandRecurrences"]
+                ?.jsonPrimitive
+                ?.content
+                ?.toBoolean(),
+        )
+    }
+
+    @Test
+    fun `a window past the materialised horizon is refused rather than answered short`() {
+        // The whole reason the client clamps: refused *outright*, so a month
+        // eighteen out draws nothing at all unless the window is trimmed first.
+        val failure =
+            results("event-query-get-expanded.json")
+                .failure(
+                    handle(CalendarEventQuery(account, window, expandRecurrences = true), "beyond")
+                )
+
+        assertEquals("cannotCalculateOccurrences", failure?.type)
+    }
+
+    @Test
+    fun `an occurrence id is refused by set, per object, naming seriesId`() {
+        val set =
+            results("event-query-get-expanded.json")
+                .result(handle(CalendarEventSet(account), "instance-set"))
+
+        val error = set.notUpdated.getValue("10867_20260807T080000Z")
+
+        assertEquals("invalidArguments", error.type)
+        assertContains(error.description!!, "seriesId")
+    }
+
     // --- The event object ---
 
     @Test
