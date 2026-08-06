@@ -16,6 +16,7 @@ import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.CalendarEventGet
 import de.plmail.jmap.methods.CalendarEventPatch
 import de.plmail.jmap.methods.CalendarEventQuery
+import de.plmail.jmap.methods.CalendarEventQueryResult
 import de.plmail.jmap.methods.CalendarEventSet
 import de.plmail.jmap.methods.CalendarGet
 import de.plmail.jmap.methods.EventTimeZone
@@ -50,8 +51,6 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 
 /**
  * A span of days, half-open: [from] is shown, [to] is the first day that is not.
@@ -65,13 +64,33 @@ data class CalendarWindow(val from: LocalDate, val to: LocalDate) {
     init {
         require(to.isAfter(from)) { "A calendar window has to contain at least one day." }
         require(from.plusDays(MAX_DAYS) >= to) {
-            "A window of more than $MAX_DAYS days would cost more than $MAX_DAYS one-day probe " +
-                "queries to place its recurring events. Refresh what is on screen."
+            "A window of more than $MAX_DAYS days is more occurrences than a screen can draw and " +
+                "more pages than one refresh should spend. Refresh what is on screen."
         }
     }
 
-    val days: List<LocalDate>
-        get() = generateSequence(from) { it.plusDays(1) }.takeWhile { it < to }.toList()
+    /**
+     * This window, narrowed to the span the server will expand occurrences over, or null when none
+     * of it is.
+     *
+     * An expanded `CalendarEvent/query` past the account's `materialisedHorizon` is refused
+     * outright with `cannotCalculateOccurrences` rather than answered short — the answer *is* the
+     * list of occurrences, so a series that stops at the horizon would come back as a series that
+     * ends. So the window is clamped before it is sent, and a caller that got back less than it
+     * asked for is told the client cannot promise the rest.
+     *
+     * Clamped against the client's **own** conservative line rather than the server's words,
+     * because `materialisedHorizon` is published as PHP relative-date expressions — `-1 year`, `+2
+     * years` — which are opaque strings nothing here may parse. [GUARANTEED_DAYS] is inside the
+     * horizon this server actually keeps in both directions, so the error is always in the
+     * direction of asking for less than is there and saying so.
+     */
+    internal fun clampedTo(today: LocalDate): CalendarWindow? {
+        val start = maxOf(from, today.minusDays(GUARANTEED_DAYS))
+        val end = minOf(to, today.plusDays(GUARANTEED_DAYS))
+
+        return if (end.isAfter(start)) CalendarWindow(start, end) else null
+    }
 
     /**
      * The wire's inclusive lower bound for *fetching* this window, in UTC — see [startOfDayUtc].
@@ -82,8 +101,8 @@ data class CalendarWindow(val from: LocalDate, val to: LocalDate) {
      * anything imported with an explicit null zone — by the naive one. A single query has to reach
      * both, and the two disagree by the device's offset, so the fetch takes their union and lets
      * placement decide which local day each event is actually on. The cost is at most a day's
-     * events at each edge, which `placeSeries` drops; the alternative is a floating event at 23:00
-     * on the window's last day never being asked for at all.
+     * events at each edge, which `place` drops; the alternative is a floating event at 23:00 on the
+     * window's last day never being asked for at all.
      */
     internal fun fetchAfter(zone: ZoneId): String =
         minOf(from.startOfDayUtc(zone), from.atStartOfDay()).toWire()
@@ -96,12 +115,21 @@ data class CalendarWindow(val from: LocalDate, val to: LocalDate) {
         /**
          * A year and a day.
          *
-         * Not a performance cap so much as an honesty one: every day in a window costs a probe
-         * query once the window holds a recurring event, so a caller asking for a decade is asking
-         * for thousands of method calls against a machine that advertises four concurrent requests.
-         * A calendar shows a month.
+         * Not a performance cap so much as an honesty one: an expanded query counts *occurrences*,
+         * so a daily standup over a decade is thousands of ids paged a hundred at a time against a
+         * machine that advertises four concurrent requests. A calendar shows a month.
          */
         const val MAX_DAYS = 366L
+
+        /**
+         * How far either side of today a window may reach before it is clamped. See [clampedTo].
+         *
+         * The client's own line rather than the server's, drawn conservatively: this server
+         * materialises a year back and two years forward, so a window in the second year is clamped
+         * and reported as possibly incomplete when it was in fact answerable. Saying "there may be
+         * more" about a full month is a smaller lie than a month that silently stops.
+         */
+        const val GUARANTEED_DAYS = 365L
 
         /** The span a month grid needs, including the leading and trailing part-weeks. */
         fun around(day: LocalDate, before: Long = 7, after: Long = 42): CalendarWindow =
@@ -114,14 +142,14 @@ sealed interface CalendarRefresh {
     data class Refreshed(
         val events: Int,
         val occurrences: Int,
-        /** Round trips spent. The number that says the day probes were batched, not fanned out. */
+        /** Round trips spent. One for a window inside the horizon, however much recurs in it. */
         val requests: Int,
         /**
-         * Whether the server may have answered part of this window from a partial index.
+         * Whether part of this window was outside what the server will answer for.
          *
          * True does not mean anything is missing; it means the client cannot promise nothing is,
          * which is a different sentence and the only honest one available. See
-         * `CalendarRepository.mayBeOutsideHorizon`.
+         * [CalendarWindow.clampedTo].
          */
         val mayBeIncomplete: Boolean,
         /** The server's own words for how far it materialises. Opaque — display, never parse. */
@@ -241,12 +269,17 @@ interface EventEditing {
  * Raspberry Pi with a single PHP worker pool, and a calendar polling in the background is the one
  * thing in this app that could make the server slow for the person who owns it.
  *
- * Recurring events are placed by asking the server which days they fall on, one query per day,
- * batched. That is deliberately more traffic than expanding the rule on the device would cost:
- * client-side expansion is forbidden by the client specification, and the reason is that the phone
- * and the web UI would then disagree at a DST boundary — the same event, an hour apart, on two
- * screens of the same product. `docs/SERVER_REQUESTS.md` carries the ask that would make one query
- * do it.
+ * Recurring events are placed by the **server**, from `CalendarEvent/query`'s `expandRecurrences`:
+ * one id per occurrence in the window, and a `CalendarEvent/get` back-referenced onto it says where
+ * each of them is. Expanding a rule on the device is forbidden by the client specification, and the
+ * reason is that the phone and the web UI would then disagree at a DST boundary — the same event,
+ * an hour apart, on two screens of the same product. Until 2026-08-06 obeying that cost one one-day
+ * probe query per day of the window; it now costs one argument.
+ *
+ * An occurrence id is **opaque** — `42_20260304T090000Z` is the series id and the occurrence's
+ * original start, and reading either half back out is the same client-side expansion by a quieter
+ * route. Which series an occurrence belongs to is its object's `seriesId`, and where it goes is its
+ * object's `start`.
  */
 @Singleton
 class CalendarRepository
@@ -356,13 +389,15 @@ constructor(
     /**
      * Re-runs the window and reconciles the cache to the answer.
      *
-     * Four steps, and for a window with no recurring events in it, one round trip:
-     * 1. `Calendar/get` and the first page of `CalendarEvent/query`, back-referenced into one
-     *    `CalendarEvent/get`, in a single request.
-     * 2. Further query pages while the reported `total` says there are more, chunked by the
-     *    account's `maxEventsInGet` — **100**, not core's `maxObjectsInGet` of 500.
-     * 3. One-day probe queries, for the recurring series only, batched into a request each.
-     * 4. One transaction: replace the calendars, upsert the series, replace the window's
+     * **One round trip**, for a month, whatever recurs in it — three steps:
+     * 1. One request carrying `Calendar/get` and *two* windowed `CalendarEvent/query` calls, each
+     *    back-referenced into its own `CalendarEvent/get`: the collapsed query answers the series a
+     *    form is edited through, the expanded one answers the occurrences a day view draws. See
+     *    [fetch] for why both are needed and why they travel together.
+     * 2. Further pages of either while its reported `total` says there are more, chunked by the
+     *    account's `maxEventsInGet` — **100**, not core's `maxObjectsInGet` of 500, and counted in
+     *    occurrences on the expanded side.
+     * 3. One transaction: replace the calendars, upsert the series, replace the window's
      *    occurrences, sweep the series nothing places any more.
      */
     suspend fun refresh(window: CalendarWindow): CalendarRefresh {
@@ -397,103 +432,77 @@ constructor(
         // chunking by the wrong number has every request refused.
         val limits = session.calendars(accountId)
         val pageSize = limits?.maxEventsInGet ?: CalendarEventGet.MAX_EVENTS_IN_GET
+        val horizon = limits?.materialisedHorizon ?: MaterialisedHorizon()
 
-        var requests = 0
-
-        // Read once, so a window and the day probes that place events inside it
-        // cannot be built against two different zones if the device's changes
-        // mid-refresh -- which is a flight landing, not a hypothetical.
+        // Read once, so the window and everything derived from it cannot be
+        // built against two different zones if the device's changes mid-refresh
+        // -- which is a flight landing, not a hypothetical.
         val deviceZone = zone
 
-        val first = request(session)
-        val calendarsHandle = first.add(CalendarGet(accountId))
-        val queryHandle =
-            first.add(
-                query(
-                    accountId,
-                    window.fetchAfter(deviceZone),
-                    window.fetchBefore(deviceZone),
-                    0,
-                    pageSize,
-                )
-            )
-        val eventsHandle = first.add(hydrate(accountId, queryHandle.reference("/ids")))
-
-        val answers = client.send(first).also { requests++ }
-        val calendars = answers.result(calendarsHandle).list
-        val firstPage = answers.result(queryHandle)
-        val events = answers.result(eventsHandle).list.toMutableList()
-
-        var position = firstPage.ids.size
-        val total = firstPage.total ?: position
-
-        // Paged rather than asked for in one go, because the get is capped at
-        // a hundred ids and a back-referenced get handed three hundred is
-        // refused outright -- the refusal being of the whole call, so a busy
-        // month would draw nothing rather than drawing its first hundred.
-        while (position < total) {
-            val page = request(session)
-            val pageQuery =
-                page.add(
-                    query(
-                        accountId,
-                        window.fetchAfter(deviceZone),
-                        window.fetchBefore(deviceZone),
-                        position,
-                        pageSize,
-                    )
-                )
-            val pageGet = page.add(hydrate(accountId, pageQuery.reference("/ids")))
-
-            val paged = client.send(page).also { requests++ }
-            val ids = paged.result(pageQuery).ids
-
-            events += paged.result(pageGet).list
-
-            if (ids.isEmpty()) break
-
-            position += ids.size
-        }
-
-        // Only when there is something recurring to place. A month of one-off
-        // appointments has to cost the one request above and no more; spending
-        // thirty-one queries to learn what `start` already said would be the
-        // whole cost of this design with none of its reason.
-        val recurring = events.filter { it.isRecurring }
-        val membership =
-            if (recurring.isEmpty()) emptyMap()
-            else
-                probeDays(
-                    client = client,
-                    session = session,
-                    accountId = accountId,
-                    window = window,
-                    zone = deviceZone,
-                    // Split by how the server is holding the event's start,
-                    // because that decides which window finds it. See
-                    // `probeDays`.
-                    zoned = recurring.filterNot { it.isFloating }.map { it.id }.toSet(),
-                    floating = recurring.filter { it.isFloating }.map { it.id }.toSet(),
-                    onRequest = { requests++ },
+        // Clamped rather than sent as asked: an expanded query past the horizon
+        // is refused outright, and the refusal would take the whole month down
+        // with it. What is left is asked about honestly and the rest is reported
+        // as something the server cannot answer for.
+        val asked =
+            window.clampedTo(LocalDate.now(clock))
+                ?: return CalendarRefresh.Refreshed(
+                    events = 0,
+                    occurrences = 0,
+                    requests = refreshCalendarsOnly(client, session, accountId, accountKey),
+                    // Nothing was asked about this window, so nothing may be
+                    // written about it either -- in particular the reconcile is
+                    // skipped, because "the server was not asked" and "the
+                    // server reports nothing here" are the same empty answer and
+                    // only one of them means the days are empty.
+                    mayBeIncomplete = true,
+                    horizon = horizon,
                 )
 
-        val calendarRows = calendars.map { it.toEntity(accountKey) }
-        val zones = calendars.associate { it.id.value to it.timeZone }
-        val eventRows = events.map { it.toEntity(accountKey) }
+        val fetched =
+            try {
+                fetch(client, session, accountId, asked, deviceZone, pageSize)
+            } catch (beyond: JmapError.MethodFailed) {
+                if (beyond.type != CANNOT_CALCULATE_OCCURRENCES) throw beyond
 
-        val occurrences = events.flatMap { event ->
-            placeSeries(
-                event = event,
-                accountKey = accountKey,
-                window = window,
-                // The event's own zone, then the calendar's. A get cannot
-                // tell an absent zone from an explicit null, so a genuinely
-                // floating event inherits here -- see
-                // `CalendarEventEntity.timeZone`.
-                zone = event.timeZone ?: event.calendarId?.let { zones[it.value] },
-                days = if (event.isRecurring) membership[event.id].orEmpty() else null,
-            )
-        }
+                // The clamp above is the client's own conservative line, so this
+                // is an instance materialising less than this one does. Same
+                // answer as a window entirely outside it: the cache stands and
+                // the screen says the server cannot promise more.
+                return CalendarRefresh.Refreshed(
+                    events = 0,
+                    occurrences = 0,
+                    requests = 1,
+                    mayBeIncomplete = true,
+                    horizon = horizon,
+                )
+            }
+
+        val calendarRows = fetched.calendars.map { it.toEntity(accountKey) }
+        val zones = fetched.calendars.associate { it.id.value to it.timeZone }
+        val eventRows = fetched.series.map { it.toEntity(accountKey) }
+        val seriesByKey = fetched.series.associateBy { StoreKey.objectKey(accountKey, it.id.value) }
+
+        val occurrences =
+            fetched.occurrences.flatMap { occurrence ->
+                val eventKey = StoreKey.objectKey(accountKey, occurrence.writableId.value)
+
+                place(
+                    occurrence = occurrence,
+                    // Read from `seriesId`, never from the occurrence id. The
+                    // two agree on this server and the id is documented opaque,
+                    // which is exactly the combination that lets a shortcut go
+                    // unnoticed until an id shape changes.
+                    series = seriesByKey[eventKey],
+                    eventKey = eventKey,
+                    accountKey = accountKey,
+                    window = asked,
+                    // The occurrence's own zone, then the calendar's. A get
+                    // cannot tell an absent zone from an explicit null, so a
+                    // genuinely floating event inherits here -- see
+                    // `CalendarEventEntity.timeZone`.
+                    calendarZone = seriesByKey[eventKey]?.calendarId?.let { zones[it.value] },
+                )
+            }
 
         database.withTransaction {
             val stale =
@@ -509,9 +518,13 @@ constructor(
             // only thing that can tell the cache an occurrence is gone -- moved,
             // excluded by an override, or the whole event deleted from another
             // client -- is that the re-run query no longer reports it.
+            //
+            // Bounded by the window that was *asked about* rather than the one
+            // requested, so a clamped tail is left as it was instead of being
+            // emptied on the strength of a question nobody put.
             database
                 .calendarEvents()
-                .clearOccurrencesBetween(window.from.toString(), window.to.toString())
+                .clearOccurrencesBetween(asked.from.toString(), asked.to.toString())
             database.calendarEvents().upsertOccurrences(occurrences)
 
             database.calendarEvents().deleteUnplacedEvents()
@@ -522,109 +535,187 @@ constructor(
         return CalendarRefresh.Refreshed(
             events = eventRows.size,
             occurrences = occurrences.size,
-            requests = requests,
-            mayBeIncomplete = window.mayBeOutsideHorizon(),
-            horizon = limits?.materialisedHorizon ?: MaterialisedHorizon(),
+            requests = fetched.requests,
+            mayBeIncomplete = asked != window,
+            horizon = horizon,
         )
     }
 
+    /** What one refresh read off the server before any of it reached a table. */
+    private class Fetched(
+        val calendars: List<Calendar>,
+        /** The series, as an editor reads them: whole objects, their own start, their own rule. */
+        val series: List<CalendarEvent>,
+        /** One per occurrence in the window, each already resolved against its override. */
+        val occurrences: List<CalendarEvent>,
+        val requests: Int,
+    )
+
     /**
-     * Which days each recurring series actually falls on, asked one day at a time.
+     * The window, as two queries in one request.
      *
-     * The one thing this client may not do is expand a recurrence rule, so day membership is the
-     * server's answer: a one-day window either returns the series or it does not. Verified against
-     * the running stack on 2026-08-05 — a Mon/Wed/Fri weekly event comes back in the Friday and the
-     * Monday windows and not in the Thursday one.
+     * **Both are needed, and the second is not the first with extra rows.** `expandRecurrences`
+     * answers one id per occurrence, and the object behind an occurrence id is the series with that
+     * occurrence's override merged into it — its `start` is that Tuesday's, its `title` may be that
+     * Tuesday's, and `recurrenceRules` comes back null. Those are exactly the properties an editor
+     * must *not* see: a form seeded from one of them would send that occurrence's date as the
+     * series' start and drag a whole standup onto the day somebody happened to be looking at. So
+     * the collapsed query answers the series, the expanded one answers the days, and the cache
+     * keeps them in the two tables it already had.
      *
-     * Batched at one call short of the session's `maxCallsInRequest` rather than exactly at it. The
-     * spare slot is not politeness: a request sitting on the ceiling is refused *entirely* the day
-     * anything else has to travel with it, and the refusal is of the whole batch rather than of the
-     * one extra call.
+     * They travel in one request because a JMAP request is a batch — `Calendar/get`, two queries
+     * and two back-referenced gets is five calls against a `maxCallsInRequest` of 32 — and because
+     * the series a collapsed query names are a superset of the series the occurrences belong to,
+     * both being the same range query underneath. Learning the series ids from the expanded answer
+     * instead would cost a second round trip *and* would still not be free of the temptation to
+     * read them out of the occurrence ids.
      *
-     * **A day is asked about in the terms the event is stored in**, which is why [zoned] and
-     * [floating] are separate sets rather than one. A zoned event is an instant, so its day is the
-     * local day converted to UTC; a floating one — every all-day event, since the server nulls the
-     * zone of one, plus anything imported with an explicit null — is a wall clock the server wrote
-     * into a UTC column, so the window that means "this day" for it is the naive local one. Asking
-     * about a floating event with a UTC-converted window returns it for two days running and would
-     * draw every all-day event twice, on its own day and the day after; asking about a zoned event
-     * with a naive window is the defect this whole conversion exists for. Both kinds share the
-     * batch, so a week with one of each still travels in a single request.
+     * Paged rather than asked for in one go, because a get is capped at the account's
+     * `maxEventsInGet` and a back-referenced get handed three hundred ids is refused outright — the
+     * refusal being of the whole call, so a busy month would draw nothing rather than its first
+     * hundred. The two sides page independently: a month of one weekly meeting is one series and
+     * five occurrences, and a daily standup reaches a hundred occurrences in a quarter.
      */
-    private suspend fun probeDays(
+    private suspend fun fetch(
         client: JmapClient,
         session: Session,
         accountId: AccountId,
         window: CalendarWindow,
         zone: ZoneId,
-        zoned: Set<CalendarEventId>,
-        floating: Set<CalendarEventId>,
-        onRequest: () -> Unit,
-    ): Map<CalendarEventId, Set<LocalDate>> {
-        val perRequest = (session.core.maxCallsInRequest - 1).coerceAtLeast(1)
-        val membership = mutableMapOf<CalendarEventId, MutableSet<LocalDate>>()
+        pageSize: Int,
+    ): Fetched {
+        val after = window.fetchAfter(zone)
+        val before = window.fetchBefore(zone)
 
-        val probes =
-            window.days.flatMap { day ->
-                buildList {
-                    if (zoned.isNotEmpty()) {
-                        add(
-                            DayProbe(
-                                day = day,
-                                wanted = zoned,
-                                after = day.startOfDayUtc(zone),
-                                before = day.plusDays(1).startOfDayUtc(zone),
-                            )
-                        )
-                    }
+        val seriesPaging = Paging()
+        val occurrencePaging = Paging()
 
-                    if (floating.isNotEmpty()) {
-                        add(
-                            DayProbe(
-                                day = day,
-                                wanted = floating,
-                                after = day.atStartOfDay(),
-                                before = day.plusDays(1).atStartOfDay(),
-                            )
-                        )
-                    }
-                }
-            }
+        var calendars = emptyList<Calendar>()
+        val series = mutableListOf<CalendarEvent>()
+        val occurrences = mutableListOf<CalendarEvent>()
+        var requests = 0
 
-        probes.chunked(perRequest).forEach { chunk ->
+        while (seriesPaging.hasMore || occurrencePaging.hasMore) {
             val batch = request(session)
-            val handles = chunk.map { probe ->
-                probe to
-                    batch.add(
-                        query(
-                            accountId = accountId,
-                            after = probe.after.toWire(),
-                            before = probe.before.toWire(),
-                        )
-                    )
-            }
+
+            // Only on the first pass. The calendar list is not windowed and does
+            // not page, and re-reading it per page would be traffic that answers
+            // the same question every time.
+            val calendarsHandle = if (requests == 0) batch.add(CalendarGet(accountId)) else null
+
+            val seriesHandles =
+                seriesPaging
+                    .takeIf { it.hasMore }
+                    ?.let { paging ->
+                        val q =
+                            batch.add(query(accountId, after, before, paging.position, pageSize))
+
+                        q to batch.add(hydrate(accountId, q.reference("/ids"), CACHED_PROPERTIES))
+                    }
+
+            val occurrenceHandles =
+                occurrencePaging
+                    .takeIf { it.hasMore }
+                    ?.let { paging ->
+                        val q =
+                            batch.add(
+                                query(
+                                    accountId,
+                                    after,
+                                    before,
+                                    paging.position,
+                                    pageSize,
+                                    expandRecurrences = true,
+                                )
+                            )
+
+                        q to
+                            batch.add(
+                                hydrate(
+                                    accountId,
+                                    q.reference("/ids"),
+                                    CalendarEventGet.OCCURRENCE_PROPERTIES,
+                                )
+                            )
+                    }
 
             val answers = client.send(batch)
 
-            onRequest()
+            requests++
 
-            handles.forEach { (probe, handle) ->
-                answers.result(handle).ids.forEach { id ->
-                    if (id in probe.wanted) membership.getOrPut(id) { mutableSetOf() } += probe.day
-                }
+            calendarsHandle?.let { calendars = answers.result(it).list }
+
+            seriesHandles?.let { (queryHandle, getHandle) ->
+                seriesPaging.advance(answers.result(queryHandle))
+                series += answers.result(getHandle).list
+            }
+
+            occurrenceHandles?.let { (queryHandle, getHandle) ->
+                occurrencePaging.advance(answers.result(queryHandle))
+                occurrences += answers.result(getHandle).list
             }
         }
 
-        return membership
+        return Fetched(calendars, series, occurrences, requests)
     }
 
-    /** One day, the window that means that day for a kind of event, and who the answer is about. */
-    private data class DayProbe(
-        val day: LocalDate,
-        val wanted: Set<CalendarEventId>,
-        val after: LocalDateTime,
-        val before: LocalDateTime,
-    )
+    /**
+     * One query's place in its own answer.
+     *
+     * Two of these rather than one because the collapsed and expanded queries count different
+     * things — series against occurrences — so one cursor over both would page whichever ran out
+     * first past its end.
+     */
+    private class Paging {
+        var position = 0
+            private set
+
+        private var total: Int? = null
+
+        /** True before anything has been read, which is what makes the first page unconditional. */
+        val hasMore: Boolean
+            get() = total?.let { position < it } ?: true
+
+        /**
+         * Advances by one page.
+         *
+         * A page that reported nothing ends the paging whatever `total` said: this surface has no
+         * `queryState` to detect a window changing underneath, so trusting a total that never
+         * arrives is a loop with no way out.
+         */
+        fun advance(page: CalendarEventQueryResult) {
+            position += page.ids.size
+            total = if (page.ids.isEmpty()) position else page.total ?: position
+        }
+    }
+
+    /**
+     * The calendars alone, for a window the server will not expand.
+     *
+     * Worth the round trip on its own: the calendar list is what gives a row its colour and its
+     * name, it is not windowed, and a screen scrolled past the horizon still draws the cache.
+     */
+    private suspend fun refreshCalendarsOnly(
+        client: JmapClient,
+        session: Session,
+        accountId: AccountId,
+        accountKey: String,
+    ): Int {
+        val batch = request(session)
+        val handle = batch.add(CalendarGet(accountId))
+        val calendarRows = client.send(batch).result(handle).list.map { it.toEntity(accountKey) }
+
+        database.withTransaction {
+            val stale =
+                database.calendars().forAccount(accountKey).map { it.uid } -
+                    calendarRows.map { it.uid }.toSet()
+
+            database.calendars().upsert(calendarRows)
+            database.calendars().delete(stale)
+        }
+
+        return 1
+    }
 
     /**
      * Creates an event and writes what the server made of it.
@@ -899,83 +990,64 @@ constructor(
     }
 
     /**
-     * Places one series' occurrences inside [window].
+     * Places one occurrence inside [window], on the days its **own** start and duration cover.
      *
-     * [days] is null for a one-off — its days come from its own `start` and `duration`, which is
-     * reading published data rather than expanding anything — and is the server's answer for a
-     * recurring series.
+     * Which days those are is read off the object the server answered for this occurrence id and
+     * from nothing else: its `start` is already resolved against whatever override moved it, so
+     * there is no rule to expand, no override map to interpret, and no timestamp to lift out of an
+     * id. [series] is the row it hangs off — [CalendarEvent.seriesId]'s object, never a prefix of
+     * the occurrence id — and an occurrence whose series did not come back is dropped rather than
+     * orphaned, because nothing joins to a series row that is not there.
      *
-     * Either way the day an occurrence lands on is the event's **own wall clock**, never the device
-     * offset the window was converted by: a one-off is placed from its `start` here, and a
-     * recurring series' probe windows are built in the terms it is stored in so that its answer
-     * *is* a wall clock day — see `probeDays`. An all-day event dated the eighth belongs to the
-     * eighth in every zone, which is the whole reason all-day events exist.
+     * The day an occurrence lands on is its own wall clock, never the device offset the window was
+     * converted by. An all-day event dated the eighth belongs to the eighth in every zone, which is
+     * the whole reason all-day events exist.
      */
-    private fun placeSeries(
-        event: CalendarEvent,
+    private fun place(
+        occurrence: CalendarEvent,
+        series: CalendarEvent?,
+        eventKey: String,
         accountKey: String,
         window: CalendarWindow,
-        zone: String?,
-        days: Set<LocalDate>?,
+        calendarZone: String?,
     ): List<CalendarOccurrenceEntity> {
-        val start = event.start?.asLocalDateTime() ?: return emptyList()
-        val eventKey = StoreKey.objectKey(accountKey, event.id.value)
-        val calendarKey = StoreKey.objectKey(accountKey, event.calendarId?.value.orEmpty())
+        if (series == null) return emptyList()
 
-        fun row(day: LocalDate, at: LocalDateTime, duration: String?, title: String?) =
-            CalendarOccurrenceEntity(
-                uid = StoreKey.occurrence(eventKey, day.toString()),
-                eventKey = eventKey,
-                accountKey = accountKey,
-                calendarKey = calendarKey,
-                date = day.toString(),
-                startLocal = at.toWire(),
-                endLocal = at.plusWireDuration(duration)?.toWire(),
-                // An all-day event has no zone on the wire and is given none
-                // here either. Inheriting the calendar's would let a reader in
-                // another zone resolve midnight-in-Berlin to the previous
-                // evening -- which is the whole thing all-day events exist to
-                // not do.
-                zoneId = zone.takeUnless { event.showWithoutTime },
-                isAllDay = event.showWithoutTime,
-                titleOverride = title,
-            )
+        val start = occurrence.start?.asLocalDateTime() ?: return emptyList()
+        val calendarKey = StoreKey.objectKey(accountKey, series.calendarId?.value.orEmpty())
 
-        if (days == null) {
-            return daysSpanned(start, event.duration)
-                .filter { it in window }
-                .map {
-                    row(it, start, event.duration, title = null)
-                }
-        }
-
-        val overrides = Overrides.of(event.recurrenceOverrides)
-
-        return days.sorted().mapNotNull { day ->
-            val resolved = overrides.resolve(day, start.toLocalTime()) ?: return@mapNotNull null
-
-            row(day, resolved.at, resolved.duration ?: event.duration, resolved.title)
-        }
-    }
-
-    /**
-     * Whether the client can promise this window is complete.
-     *
-     * It cannot say more than "maybe not", and that is the server's shape rather than a shortcut:
-     * `materialisedHorizon` is published as PHP relative-date expressions — `-1 year`, `+2 years` —
-     * which are opaque strings the client is forbidden from parsing. So this is the client's *own*
-     * line, drawn conservatively at a year either side of today, and the server's words travel
-     * beside it so the UI can quote those rather than this constant.
-     *
-     * The direction of the error is deliberate. On this server the future horizon is two years, so
-     * a window in the second year is flagged as possibly-incomplete when it is in fact complete —
-     * and saying "there may be more" about a full month is a smaller lie than saying nothing about
-     * an empty one.
-     */
-    private fun CalendarWindow.mayBeOutsideHorizon(): Boolean {
-        val today = LocalDate.now(clock)
-
-        return from < today.minusDays(GUARANTEED_DAYS) || to > today.plusDays(GUARANTEED_DAYS)
+        return daysSpanned(start, occurrence.duration)
+            .filter { it in window }
+            .map { day ->
+                CalendarOccurrenceEntity(
+                    // The start is part of the key, not decoration: two occurrences
+                    // of one series can share a day -- an hourly meeting, or an
+                    // override moved onto a day that already had one -- and a key of
+                    // event-and-date would silently keep whichever was written last.
+                    uid = StoreKey.occurrence(eventKey, day.toString(), start.toWire()),
+                    eventKey = eventKey,
+                    accountKey = accountKey,
+                    calendarKey = calendarKey,
+                    date = day.toString(),
+                    startLocal = start.toWire(),
+                    endLocal = start.plusWireDuration(occurrence.duration)?.toWire(),
+                    // An all-day event has no zone on the wire and is given none
+                    // here either. Inheriting the calendar's would let a reader in
+                    // another zone resolve midnight-in-Berlin to the previous
+                    // evening -- which is the whole thing all-day events exist to
+                    // not do.
+                    zoneId =
+                        (occurrence.timeZone ?: calendarZone).takeUnless {
+                            occurrence.showWithoutTime
+                        },
+                    isAllDay = occurrence.showWithoutTime,
+                    // Only when this occurrence's title is not the series'. Storing
+                    // it unconditionally would work until a rename on the web left
+                    // every cached occurrence carrying the old name until its own
+                    // window was refreshed -- the reason the colour is a join too.
+                    titleOverride = occurrence.title?.takeIf { it != series.title },
+                )
+            }
     }
 
     private fun query(
@@ -984,19 +1056,21 @@ constructor(
         before: String,
         position: Int = 0,
         limit: Int? = null,
+        expandRecurrences: Boolean = false,
     ) =
         CalendarEventQuery(
             accountId = accountId,
             filter = CalendarEventFilter(after = after, before = before),
             position = position,
             limit = limit,
+            expandRecurrences = expandRecurrences,
         )
 
-    private fun hydrate(accountId: AccountId, ids: ResultReference) =
+    private fun hydrate(accountId: AccountId, ids: ResultReference, properties: List<String>) =
         CalendarEventGet.byReference(
             accountId = accountId,
             queryReference = ids,
-            properties = CACHED_PROPERTIES,
+            properties = properties,
         )
 
     /**
@@ -1020,17 +1094,21 @@ constructor(
         /** Enough rows to scroll a season without holding a year in memory. */
         const val AGENDA_LIMIT = 500
 
-        /** See `mayBeOutsideHorizon`. The client's own conservative line, not the server's. */
-        const val GUARANTEED_DAYS = 365L
+        /** The server's own name for a window it will not expand occurrences over. */
+        const val CANNOT_CALCULATE_OCCURRENCES = "cannotCalculateOccurrences"
 
         /**
-         * Exactly the properties the cache keeps.
+         * Exactly the properties the cache keeps of a **series**.
          *
          * Asked for by name rather than taking the whole object: an event carries arbitrary
          * JSCalendar — participants, alerts, links, whatever an import brought — and a month of a
          * busy calendar is a lot of JSON to move over a domestic uplink in order to store none of
-         * it. `recurrenceOverrides` is on the list because it is what says an occurrence moved or
-         * was cancelled, which is the one thing a day-probe answer cannot say on its own.
+         * it. `recurrenceOverrides` is on the list because it is what a per-occurrence edit patches
+         * — cancelling one occurrence is an `excluded` override on the series — and a patch built
+         * without the map it is amending would drop every other occurrence's override.
+         *
+         * What a *day* needs is deliberately a shorter list; see
+         * `CalendarEventGet.OCCURRENCE_PROPERTIES`.
          */
         val CACHED_PROPERTIES =
             listOf(
@@ -1051,86 +1129,6 @@ constructor(
             )
     }
 }
-
-/**
- * The overrides of one series, indexed the two ways a day can be asked about.
- *
- * An override is keyed by the occurrence's **original** start and may carry a `start` that moves it
- * — possibly onto a different day. So a day matches either because an override was keyed on it, or
- * because an override moved an occurrence onto it, and those answer different questions about the
- * same day. Reading these is reading published data; nothing here derives an occurrence the server
- * did not report.
- */
-private class Overrides(
-    private val byOriginalDate: Map<LocalDate, JsonObject>,
-    private val movedOntoDate: Map<LocalDate, JsonObject>,
-) {
-
-    /** Where this day's occurrence actually is, or null when there is not one. */
-    fun resolve(day: LocalDate, baseTime: LocalTime): Resolved? {
-        byOriginalDate[day]?.let { keyed ->
-            // `{"excluded": true}` is the only way to cancel one occurrence of a
-            // series, and it round-trips. The server also drops an excluded
-            // occurrence from the query, so this is the second line of defence
-            // -- and the one that matters after a local write, when the cache
-            // holds the new override and no refresh has run yet.
-            if (keyed.excluded) return null
-
-            val moved = keyed.startAt
-
-            // Moved onto a different day. This day has nothing on it; the day it
-            // moved to has its own probe answer and picks it up below.
-            if (moved != null && moved.toLocalDate() != day) return null
-
-            return Resolved(moved ?: day.atTime(baseTime), keyed.overriddenDuration, keyed.title)
-        }
-
-        movedOntoDate[day]?.let { arrived ->
-            return Resolved(
-                arrived.startAt ?: day.atTime(baseTime),
-                arrived.overriddenDuration,
-                arrived.title,
-            )
-        }
-
-        return Resolved(day.atTime(baseTime), duration = null, title = null)
-    }
-
-    data class Resolved(val at: LocalDateTime, val duration: String?, val title: String?)
-
-    companion object {
-        fun of(raw: Map<String, JsonObject>): Overrides {
-            val byOriginal = mutableMapOf<LocalDate, JsonObject>()
-            val movedOnto = mutableMapOf<LocalDate, JsonObject>()
-
-            raw.forEach { (recurrenceId, patch) ->
-                val original = recurrenceId.asLocalDateTime() ?: return@forEach
-
-                byOriginal[original.toLocalDate()] = patch
-
-                patch.startAt
-                    ?.takeIf { it.toLocalDate() != original.toLocalDate() }
-                    ?.let {
-                        movedOnto[it.toLocalDate()] = patch
-                    }
-            }
-
-            return Overrides(byOriginal, movedOnto)
-        }
-    }
-}
-
-private val JsonObject.excluded: Boolean
-    get() = (this["excluded"] as? JsonPrimitive)?.booleanOrNull == true
-
-private val JsonObject.startAt: LocalDateTime?
-    get() = (this["start"] as? JsonPrimitive)?.content?.asLocalDateTime()
-
-private val JsonObject.overriddenDuration: String?
-    get() = (this["duration"] as? JsonPrimitive)?.content
-
-private val JsonObject.title: String?
-    get() = (this["title"] as? JsonPrimitive)?.content
 
 /**
  * The wire's LocalDateTime spelling: `2026-08-03T10:00:00`, no offset and no trailing `Z`.
@@ -1275,14 +1273,14 @@ private fun CalendarEventEntity.placeFromItself(): List<CalendarOccurrenceEntity
 
     return daysSpanned(at, duration).map { day ->
         CalendarOccurrenceEntity(
-            uid = StoreKey.occurrence(uid, day.toString()),
+            uid = StoreKey.occurrence(uid, day.toString(), at.toWire()),
             eventKey = uid,
             accountKey = accountKey,
             calendarKey = calendarKey,
             date = day.toString(),
             startLocal = at.toWire(),
             endLocal = at.plusWireDuration(duration)?.toWire(),
-            // See the same line in `placeSeries`: an all-day occurrence is
+            // See the same line in `place`: an all-day occurrence is
             // deliberately zone-less.
             zoneId = timeZone.takeUnless { isAllDay },
             isAllDay = isAllDay,

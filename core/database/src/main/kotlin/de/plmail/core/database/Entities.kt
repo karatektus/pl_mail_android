@@ -33,14 +33,21 @@ object StoreKey {
     fun objectKey(accountKey: String, id: String): String = "$accountKey#$id"
 
     /**
-     * One day of one event series.
+     * One day of one occurrence of one event series.
      *
      * `@` rather than a second `#`, because [objectKey] has already spent that character and a key
      * reading `.../13#10867#2026-08-07` cannot be split back apart by anything that does not
      * already know how many parts to expect. Nothing parses these — the separator is chosen so that
      * a human reading a row in a database browser can see where the series id ends.
+     *
+     * [at] is the occurrence's own start, and it is part of the key rather than a detail: one
+     * series can land twice on one day — an hourly meeting, or an override moved onto a day that
+     * already had one — and a key of series-and-date would keep whichever row was written last and
+     * lose the other without any error. Not the server's occurrence id, deliberately: that id is
+     * opaque, it only exists for a *recurring* series, and this key also has to name the days of a
+     * one-off the phone has just created and not yet re-read.
      */
-    fun occurrence(eventKey: String, date: String): String = "$eventKey@$date"
+    fun occurrence(eventKey: String, date: String, at: String): String = "$eventKey@$date/$at"
 }
 
 @Entity(tableName = "accounts")
@@ -388,8 +395,9 @@ data class CalendarEventEntity(
      * Derived server-side, and **not** `recurrenceRules != null`.
      *
      * An imported rule plMail cannot convert is stored verbatim and expands to a single occurrence,
-     * so an event can carry a rule and still not recur. This is what decides whether the refresh
-     * spends a day-probe batch on it.
+     * so an event can carry a rule and still not recur. What a screen does with it: an editor shows
+     * a read-only repeat line rather than the dropdown, and a delete warns that it takes the
+     * series.
      */
     val isRecurring: Boolean = false,
     val sequence: Int = 0,
