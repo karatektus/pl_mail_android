@@ -1,6 +1,7 @@
 package de.plmail.core.data
 
 import de.plmail.core.datastore.PushStateStore
+import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.NewPushSubscription
 import de.plmail.jmap.methods.PushSubscriptionGet
 import de.plmail.jmap.methods.PushSubscriptionInfo
@@ -12,6 +13,7 @@ import de.plmail.jmap.protocol.MethodResults
 import de.plmail.jmap.protocol.RequestBuilder
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.jsonObject
 
@@ -281,6 +283,11 @@ constructor(
     private suspend fun create(subscription: NewPushSubscription): SubscribeOutcome {
         val client = clients.current() ?: return SubscribeOutcome.NoServer
 
+        // Before registering under this device's own id, and never instead of
+        // it. See the method for what it removes and why it cannot remove
+        // anything a working install depends on.
+        sweepLegacySubscriptions(client, deviceClientId = subscription.deviceClientId)
+
         val request = RequestBuilder()
         val set = request.add(PushSubscriptionSet(create = mapOf(CREATE_ID to subscription)))
 
@@ -296,6 +303,131 @@ constructor(
             type = refusal?.type.orEmpty().ifBlank { UNKNOWN_REFUSAL },
             description = refusal?.description,
         )
+    }
+
+    /**
+     * Destroys the subscription left behind by the builds whose `deviceClientId` was the constant
+     * `"plmail"`. Once per install, and never in place of the registration that follows it.
+     *
+     * ## Why there is an orphan at all
+     *
+     * The server's radio semantics are *per device id*: re-registering **replaces** the row
+     * matching `deviceClientId`, which is what makes moving from a distributor to Firebase produce
+     * one subscription rather than two. Until recently that id was the literal `"plmail"` on every
+     * install. Fixing it to a per-install hash also moved this device out from under its own old
+     * row — so the phone now holds a Firebase subscription under `plmail-<hash>` while the server
+     * still holds a Web Push one under `plmail`, and delivers to **both**. The transport picker
+     * cannot help: it enforces one-of by relying on the replace, and the replace only ever looks at
+     * one id.
+     *
+     * ## Why destroying it is safe
+     *
+     * Every install of the broken builds shared that one id and therefore replaced each other's
+     * rows anyway — whichever registered last owned it and the rest were already silent. So no
+     * working setup can depend on the `plmail` row: destroying it removes either a duplicate of
+     * this device's real subscription or a corpse belonging to an install that lost the race years
+     * ago. The one install for which it is *not* a corpse is one still running the old scheme, and
+     * that install is asking for `plmail` here — which is why [deviceClientId] is checked first.
+     *
+     * That check is not theoretical: `DeviceClientId` falls back to the bare constant on a device
+     * that answers neither `ANDROID_ID` nor `Build.MODEL`, and such a device destroying the row it
+     * is about to create under is a phone that deletes its own push on every registration.
+     *
+     * ## Why a failure is not the caller's problem
+     *
+     * A server that refuses the destroy is a server the device still has to register with. The
+     * refusal goes in the push log — where the user is already looking when push misbehaves — and
+     * the flag stays unset, so the next registration tries again.
+     *
+     * ## Why this is also called from outside a registration
+     *
+     * [create] is not enough on its own, and the device it misses is exactly the one this was
+     * written for. A phone that upgraded, re-registered once, and has been happily live on Firebase
+     * ever since never creates again: `PushTransportManager.reapply` returns early on a live
+     * subscription and `tokenRotated` answers `Unchanged` for a token that has not moved. It would
+     * go on receiving over both transports forever. So the sweep is also made at push-state
+     * initialisation, where a device that is doing nothing at all still passes through.
+     */
+    suspend fun sweepLegacySubscriptions(deviceClientId: String) {
+        // Null on a device that is not paired yet, which is where the app spends
+        // its first launch. The flag stays unset and the next connection tries.
+        val client = clients.current() ?: return
+
+        sweepLegacySubscriptions(client, deviceClientId)
+    }
+
+    private suspend fun sweepLegacySubscriptions(client: JmapClient, deviceClientId: String) {
+        if (deviceClientId == LEGACY_DEVICE_CLIENT_ID) return
+        if (state.state.first().hasSweptLegacySubscriptions) return
+
+        val refusal = runCatching {
+            destroyLegacySubscriptions(client)
+        }
+            .getOrElse { failure -> failure.message ?: failure::class.simpleName.orEmpty() }
+
+        if (refusal == null) {
+            state.sweptLegacySubscriptions()
+            return
+        }
+
+        log.record(
+            ReceivedPush(
+                at = System.currentTimeMillis(),
+                transport = LOCAL_EVENT,
+                type = LEGACY_SWEEP_TYPE,
+                note = "$NOTE_SWEEP_REFUSED $refusal",
+            )
+        )
+    }
+
+    /**
+     * Null when there is nothing left to remove; the refusal, in the server's words, when there is.
+     */
+    private suspend fun destroyLegacySubscriptions(client: JmapClient): String? {
+        val lookup = RequestBuilder()
+        // Every subscription this user has, not this device's: the whole point
+        // is the row registered under an id this device no longer uses, so
+        // there is nothing to ask for by id.
+        val all = lookup.add(PushSubscriptionGet())
+
+        val legacy =
+            client
+                .send(lookup)
+                .result(all)
+                .list
+                .filter { it.deviceClientId == LEGACY_DEVICE_CLIENT_ID }
+                .map { it.id }
+
+        // The ordinary case on a clean install, and on every device that has
+        // already been swept by a build that then failed to record it.
+        if (legacy.isEmpty()) return null
+
+        val request = RequestBuilder()
+        val set = request.add(PushSubscriptionSet(destroy = legacy))
+        val result = client.send(request).result(set)
+
+        // A row that is not there is the outcome this wanted. Racing another
+        // install of the old build, or running twice because the flag never
+        // landed, both end here -- and neither is worth a line in the user's
+        // log.
+        val refused = result.notDestroyed.filterValues { it.type != NOT_FOUND }
+
+        if (refused.isNotEmpty()) {
+            return refused.entries.joinToString { (id, error) ->
+                "$id: ${error.type} ${error.description.orEmpty()}".trim()
+            }
+        }
+
+        log.record(
+            ReceivedPush(
+                at = System.currentTimeMillis(),
+                transport = LOCAL_EVENT,
+                type = LEGACY_SWEEP_TYPE,
+                note = "$NOTE_SWEPT ${result.destroyed.ifEmpty { legacy }.joinToString()}",
+            )
+        )
+
+        return null
     }
 
     private fun parse(payload: String): PushPayload =
@@ -348,11 +480,41 @@ constructor(
         const val UNKNOWN_REFUSAL = "unknownError"
 
         /**
+         * The `deviceClientId` every install of the broken builds registered under.
+         *
+         * The same string as `PushSetup.INSTANCE` in `:app`, which is where the live id is built
+         * and which this module cannot see. Written out rather than shared because it is a *wire
+         * value already in server tables*: it must not follow the app's constant if that ever
+         * changes again, and it is a literal in the request this sends either way.
+         */
+        const val LEGACY_DEVICE_CLIENT_ID = "plmail"
+
+        /** RFC 8620's `SetError` for a destroy naming a row that is not there. */
+        const val NOT_FOUND = "notFound"
+
+        /**
+         * The badge for a log line that is not a delivery.
+         *
+         * No [PushDelivery] matches, on purpose — nothing arrived. The screen draws an unrecognised
+         * transport in its faintest colour and prints the wire string, which is exactly the
+         * treatment a note about the app's own housekeeping should get beside real deliveries.
+         */
+        const val LOCAL_EVENT = "local"
+
+        const val LEGACY_SWEEP_TYPE = "LegacySubscriptionSweep"
+
+        /**
          * Notes in the app's own words, not translated. They sit beside a server log the reader is
          * going to grep, and a translated string is one they cannot search for.
          */
         const val NOTE_VERIFIED = "Verification code echoed back; the subscription is now live."
         const val NOTE_VERIFY_FAILED = "Verification code could not be echoed back."
         const val NOTE_UNPARSEABLE = "Payload could not be parsed; delivery itself worked."
+        const val NOTE_SWEPT =
+            "Destroyed the pre-upgrade subscription registered under deviceClientId " +
+                "\"$LEGACY_DEVICE_CLIENT_ID\", which was delivering alongside this device's own:"
+        const val NOTE_SWEEP_REFUSED =
+            "Could not remove the pre-upgrade \"$LEGACY_DEVICE_CLIENT_ID\" subscription; " +
+                "registration went ahead and this will be retried. The server said:"
     }
 }
