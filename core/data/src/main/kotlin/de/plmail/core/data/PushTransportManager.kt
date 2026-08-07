@@ -194,6 +194,14 @@ constructor(
      * treats as a replace rather than a duplicate.
      */
     suspend fun reapply() {
+        // First, and before every early return below, because the device the
+        // sweep exists for is one that takes them. A phone that upgraded, moved
+        // to Firebase once and has been live ever since never registers again --
+        // and it is the phone still receiving over the abandoned `plmail` Web
+        // Push row as well as its own. This is the only seam it passes through.
+        // Once it succeeds it is a no-op; see PushRepository for why.
+        push.sweepLegacySubscriptions(deviceClientId.value)
+
         val stored = state.state.first()
         val choice = PushChoice.of(stored.choice) ?: PushChoice.WEB_PUSH
 

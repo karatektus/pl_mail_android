@@ -2,6 +2,7 @@ package de.plmail.core.datastore
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -52,6 +53,7 @@ class PushStateStore @Inject constructor(private val preferences: DataStore<Pref
                 lastMessageAt = stored[LAST_MESSAGE_AT],
                 lastMessageTransport = stored[LAST_MESSAGE_TRANSPORT],
                 lastError = stored[LAST_ERROR],
+                hasSweptLegacySubscriptions = stored[LEGACY_SWEPT] == true,
             )
         }
 
@@ -129,10 +131,24 @@ class PushStateStore @Inject constructor(private val preferences: DataStore<Pref
     }
 
     /**
+     * The one-time sweep of the legacy `plmail` subscription has been made against this server.
+     *
+     * Recorded so the sweep costs one extra `PushSubscription/get` in the life of an install rather
+     * than one per registration — and **only ever set after the sweep succeeded**, because the
+     * alternative is a device that asked once, was refused, and never asks again. See
+     * `PushRepository` for what is being swept and why destroying it cannot lose anything.
+     */
+    suspend fun sweptLegacySubscriptions() {
+        preferences.edit { it[LEGACY_SWEPT] = true }
+    }
+
+    /**
      * Forgets the registration, for when the transport drops us or the account is signed out.
      *
      * The user's [chose] preference deliberately survives: signing back into the same server should
-     * not silently move somebody off the transport they picked.
+     * not silently move somebody off the transport they picked. So does
+     * [PushState.hasSweptLegacySubscriptions], because the row it describes is *the server's* and a
+     * device dropping its own registration has not put the legacy one back.
      */
     suspend fun cleared() {
         preferences.edit { store ->
@@ -151,6 +167,9 @@ class PushStateStore @Inject constructor(private val preferences: DataStore<Pref
         preferences.edit { store ->
             store.remove(CHOICE)
             store.remove(LAST_ERROR)
+            // The sweep is a fact about one server's subscription table, and the
+            // next sign-in may be a different server holding its own legacy row.
+            store.remove(LEGACY_SWEPT)
         }
     }
 
@@ -165,6 +184,7 @@ class PushStateStore @Inject constructor(private val preferences: DataStore<Pref
         val LAST_MESSAGE_AT = longPreferencesKey("push_last_message_at")
         val LAST_MESSAGE_TRANSPORT = stringPreferencesKey("push_last_message_transport")
         val LAST_ERROR = stringPreferencesKey("push_last_error")
+        val LEGACY_SWEPT = booleanPreferencesKey("push_legacy_subscription_swept")
     }
 }
 
@@ -182,6 +202,14 @@ data class PushState(
     val lastMessageAt: Long? = null,
     val lastMessageTransport: String? = null,
     val lastError: String? = null,
+    /**
+     * Whether the one-time cleanup of the pre-hash `plmail` subscription has already been made.
+     *
+     * Not a diagnostic — nothing draws it — but stored beside the rest because it is part of what
+     * the app knows about its registration, and because the alternative to remembering is a
+     * `PushSubscription/get` before every single create.
+     */
+    val hasSweptLegacySubscriptions: Boolean = false,
 ) {
     /**
      * Registered as far as this device can tell. Whether the *server* agrees needs a round trip.

@@ -60,10 +60,16 @@ class AppPushTransport @Inject constructor(@param:ApplicationContext private val
              * correlate. It is hashed anyway and truncated, because the id ends up in a table the
              * user reads and its only job is to differ.
              *
-             * One consequence, stated rather than hidden: a device upgrading from a build that used
-             * `plmail` registers under a new id, so the old row lingers server-side until its
-             * address stops resolving — which happens on the first delivery after this build
-             * unregisters the distributor or drops the token.
+             * One consequence, which turned out to be a bug rather than a footnote: a device
+             * upgrading from a build that used `plmail` registers under a new id, and the server's
+             * replace only ever looks at one id — so the old row does *not* go away, and a phone
+             * that moved to Firebase kept receiving over the abandoned Web Push subscription as
+             * well. `PushRepository` sweeps that row once, before the first registration under the
+             * hashed id; the note there is why destroying it cannot cost anybody anything.
+             *
+             * Note that the fallback below can still produce the bare constant, on a device that
+             * answers neither `ANDROID_ID` nor `Build.MODEL`. The sweep checks for exactly that and
+             * declines, rather than deleting the subscription it is about to create.
              */
             @Provides
             @Singleton
