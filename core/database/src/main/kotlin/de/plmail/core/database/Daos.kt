@@ -386,7 +386,8 @@ interface CalendarEventDao {
         """
         SELECT o.date AS date, o.startLocal AS startLocal, o.endLocal AS endLocal,
                o.zoneId AS zoneId, o.isAllDay AS isAllDay, o.eventKey AS eventKey,
-               e.eventId AS eventId, COALESCE(o.titleOverride, e.title) AS title,
+               e.eventId AS eventId, e.eventUid AS eventUid,
+               COALESCE(o.titleOverride, e.title) AS title,
                e.location AS location, e.description AS description, e.status AS status,
                e.isRecurring AS isRecurring, e.calendarKey AS calendarKey,
                c.name AS calendarName, c.color AS calendarColor, c.isVisible AS calendarIsVisible
@@ -394,7 +395,7 @@ interface CalendarEventDao {
         JOIN calendar_events e ON e.uid = o.eventKey
         LEFT JOIN calendars c ON c.uid = o.calendarKey
         WHERE o.date >= :from
-        ORDER BY o.date, o.isAllDay DESC, o.startLocal
+        ORDER BY o.date, o.isAllDay DESC, o.startLocal, e.eventId
         LIMIT :limit
         """
     )
@@ -405,7 +406,8 @@ interface CalendarEventDao {
         """
         SELECT o.date AS date, o.startLocal AS startLocal, o.endLocal AS endLocal,
                o.zoneId AS zoneId, o.isAllDay AS isAllDay, o.eventKey AS eventKey,
-               e.eventId AS eventId, COALESCE(o.titleOverride, e.title) AS title,
+               e.eventId AS eventId, e.eventUid AS eventUid,
+               COALESCE(o.titleOverride, e.title) AS title,
                e.location AS location, e.description AS description, e.status AS status,
                e.isRecurring AS isRecurring, e.calendarKey AS calendarKey,
                c.name AS calendarName, c.color AS calendarColor, c.isVisible AS calendarIsVisible
@@ -413,7 +415,7 @@ interface CalendarEventDao {
         JOIN calendar_events e ON e.uid = o.eventKey
         LEFT JOIN calendars c ON c.uid = o.calendarKey
         WHERE o.date >= :from AND o.date < :to
-        ORDER BY o.date, o.isAllDay DESC, o.startLocal
+        ORDER BY o.date, o.isAllDay DESC, o.startLocal, e.eventId
         """
     )
     fun observeBetween(from: String, to: String): Flow<List<AgendaRow>>
@@ -499,6 +501,26 @@ data class AgendaRow(
     val calendarName: String?,
     val calendarColor: String?,
     val calendarIsVisible: Boolean?,
+    /**
+     * JMAP's own `uid` off the **series**, and what tells two rows they are one meeting.
+     *
+     * One meeting reaches plMail twice by two honest routes at once — extracted from its invitation
+     * onto the account's own calendar, and mirrored from a provider onto a connected one — and both
+     * rows are correct. `CalendarEvent/query` deliberately does not collapse them (a protocol
+     * answers with the ids of the rows it holds, and collapsing would hand a client ids it cannot
+     * then `get`), so the collapse is the app's, and this is the only key it may be done on. See
+     * `EventCluster` in `:feature:calendar`, and `App\Service\Calendar\EventClusterer` on the
+     * server, which is the same rule.
+     *
+     * Nullable because a `properties`-filtered get may never have asked for it, and because the
+     * cache predates this column being read by anything. A row without one is never merged with
+     * anything — see `EventCluster`.
+     *
+     * Last in the list rather than beside [eventId] so every existing construction site still
+     * compiles positionally; the two are different identities and only this one is stable across
+     * servers.
+     */
+    val eventUid: String? = null,
 )
 
 @Dao

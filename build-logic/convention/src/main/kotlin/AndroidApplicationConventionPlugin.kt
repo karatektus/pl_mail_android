@@ -81,6 +81,22 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     // commit that says so, not in whichever build happens to
                     // run the morning after a release.
                     disable += "AndroidGradlePluginVersion"
+
+                    // The same finding about a different file, and disabled for
+                    // exactly the same reason. `NewerVersionAvailable` compares
+                    // `gradle/libs.versions.toml` against whatever Maven Central
+                    // holds *today*, so `./gradlew build` went red on this
+                    // branch citing line 47 -- a line nothing in the branch had
+                    // touched -- because junit-bom 6.1.3 had been published
+                    // since the last green build. With `warningsAsErrors` on
+                    // that stops the build, and it says nothing whatever about
+                    // the code being built.
+                    //
+                    // Bumping a dependency is a decision with a diff behind it
+                    // and belongs in a commit that says so. What is lost is a
+                    // nudge; what is bought is a build whose colour depends on
+                    // this repository rather than on the release calendar.
+                    disable += "NewerVersionAvailable"
                 }
 
                 testOptions.unitTests {

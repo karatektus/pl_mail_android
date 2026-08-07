@@ -191,6 +191,61 @@ class EventFormTest {
             calendarKey = "https://nas.local/13#c1",
         )
 
+    /**
+     * A long press on the grid proposes the slot it landed in, and nothing else.
+     *
+     * The end-to-end statement of the create-from-the-grid gesture: `slotAt` snaps the touch to the
+     * quarter hour, and the form has to carry *that* through to the wire. Rounding a second time
+     * here would quietly move a press on the 14:15 line to 15:00, which is the one thing the
+     * gesture promises not to do — and the promise is invisible until somebody looks at the saved
+     * event.
+     */
+    @Test
+    fun `a slot fills the form with its own time and an hour's length`() {
+        val slot = slotAt(LocalDate.parse("2026-08-06"), fractionOf(14, 22))
+        val form = EventFormState.forNewEventAt(slot).copy(calendarKey = "https://nas.local/13#c1")
+
+        assertEquals(LocalDate.parse("2026-08-06"), form.startDate)
+        assertEquals(LocalTime.of(14, 15), form.startTime)
+        assertEquals(LocalTime.of(15, 15), form.endTime)
+
+        val draft = form.toDraft(UNTITLED, isCreating = true)
+
+        assertEquals(LocalDateTime.parse("2026-08-06T14:15"), draft.start)
+        assertEquals(Duration.ofHours(1), draft.duration)
+        assertFalse(draft.isAllDay)
+    }
+
+    /**
+     * A slot at the end of the day still ends on a real time.
+     *
+     * 23:45 plus an hour is 00:45 the next morning, and the *duration* is what goes on the wire —
+     * so the event is an hour long and crosses midnight, which is a real thing to create and not
+     * something to refuse.
+     */
+    @Test
+    fun `a slot in the last quarter of the day runs into the next one`() {
+        val slot = slotAt(LocalDate.parse("2026-08-06"), 1f)
+        val draft =
+            EventFormState.forNewEventAt(slot)
+                .copy(calendarKey = "https://nas.local/13#c1")
+                .toDraft(UNTITLED, isCreating = true)
+
+        assertEquals(LocalDateTime.parse("2026-08-06T23:45"), draft.start)
+        assertEquals(Duration.ofHours(1), draft.duration)
+    }
+
+    /** The `+` button's proposal is unchanged: the next whole hour, never the awkward one now. */
+    @Test
+    fun `the plus button still proposes the next whole hour`() {
+        val form = EventFormState.forNewEvent(clock)
+
+        assertEquals(LocalTime.of(15, 0), form.startTime)
+        assertEquals(LocalTime.of(16, 0), form.endTime)
+    }
+
+    private fun fractionOf(hour: Int, minute: Int): Float = (hour * 60 + minute) / 1440f
+
     private fun allDay(from: String, to: String) =
         EventFormState(
             title = "Sommerfest",

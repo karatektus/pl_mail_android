@@ -92,6 +92,36 @@ class AgendaScreenshotTest {
         )
     }
 
+    /**
+     * The day grid, with the two things that only exist there.
+     *
+     * An all-day row in the band above the axis, and two meetings at once drawn side by side —
+     * which is the whole of `DayGridLayout` made visible. The now line is on it too, because the
+     * state says today is the day being drawn.
+     */
+    @Test
+    fun day() {
+        capture("day", state(days = twoDays()).copy(view = CalendarViewMode.DAY))
+    }
+
+    /**
+     * The week, at the width this repo tests German on.
+     *
+     * The case the file's own header calls tight and does not solve: seven columns sharing 411dp
+     * minus an hour gutter. It is captured precisely so that "tight" stays a known quantity rather
+     * than a thing somebody discovers on a device.
+     */
+    @Test
+    fun week() {
+        capture("week", state(days = twoDays()).copy(view = CalendarViewMode.WEEK))
+    }
+
+    /** The month: six weeks that do not reflow, and a cell whose meetings are dots. */
+    @Test
+    fun month() {
+        capture("month", state(days = twoDays()).copy(view = CalendarViewMode.MONTH))
+    }
+
     private fun capture(name: String, state: CalendarState) {
         // The scheme is state inside one composition rather than two calls to
         // setContent: the rule allows exactly one per test.
@@ -118,19 +148,33 @@ class AgendaScreenshotTest {
         // screenshot has nothing to animate anyway.
         PlMailTheme(theme = scheme, reduceMotion = true) {
             Surface(modifier = Modifier.fillMaxSize(), color = PlMailTheme.colors.surface) {
-                AgendaScreen(
+                CalendarBoard(
                     state = state,
                     onBack = {},
                     onRefresh = {},
+                    onWindowShown = {},
+                    onChoose = {},
+                    onPage = {},
+                    onToday = {},
                     onOpen = {},
+                    onOpenDay = {},
                     onNew = {},
+                    onCreateAt = {},
                 )
             }
         }
     }
 
     private fun state(days: List<AgendaDay>, status: CalendarStatus = settled()) =
-        CalendarState(days = days, calendars = emptyList(), status = status)
+        CalendarState(
+            days = days,
+            calendars = emptyList(),
+            status = status,
+            view = CalendarViewMode.AGENDA,
+            anchor = LocalDate.parse("2026-08-06"),
+            today = LocalDate.parse("2026-08-06"),
+            now = java.time.LocalTime.of(10, 30),
+        )
 
     private fun settled() = CalendarStatus(hasSettled = true)
 
@@ -138,41 +182,64 @@ class AgendaScreenshotTest {
         listOf(
             AgendaDay(
                 date = LocalDate.parse("2026-08-06"),
-                rows =
-                    listOf(
-                        // All-day first, as the DAO orders it: these have no
-                        // time to sort by, and interleaving them with timed
-                        // events by a start of 00:00 puts a festival above an
-                        // 08:00 meeting for a reason that reads as a bug.
-                        row(
-                            title = "Sommerfest der Nachbarschaft",
-                            isAllDay = true,
-                            calendarName = "Persönlich",
-                            color = "#a855f7",
-                        ),
-                        row(
-                            title = "Standup",
-                            start = "2026-08-06T09:00:00",
-                            end = "2026-08-06T09:15:00",
-                            location = "Küche",
-                        ),
-                        row(
-                            title = "Quarterly figures, and everything that came with them",
-                            start = "2026-08-06T14:30:00",
-                            end = "2026-08-06T16:00:00",
-                        ),
+                clusters =
+                    clusterRows(
+                        listOf(
+                            // All-day first, as the DAO orders it: these have no
+                            // time to sort by, and interleaving them with timed
+                            // events by a start of 00:00 puts a festival above an
+                            // 08:00 meeting for a reason that reads as a bug.
+                            row(
+                                title = "Sommerfest der Nachbarschaft",
+                                isAllDay = true,
+                                calendarName = "Persönlich",
+                                color = "#a855f7",
+                            ),
+                            row(
+                                title = "Standup",
+                                start = "2026-08-06T09:00:00",
+                                end = "2026-08-06T09:15:00",
+                                location = "Küche",
+                            ),
+                            row(
+                                title = "Quarterly figures, and everything that came with them",
+                                start = "2026-08-06T14:30:00",
+                                end = "2026-08-06T16:00:00",
+                            ),
+                            // One meeting held on two calendars, which the server
+                            // deliberately keeps as two rows -- this is the pair
+                            // that used to draw twice. Through `clusterRows` so the
+                            // baseline is of the collapse rather than of a hand-made
+                            // cluster, and the multicolour dot is the visible proof.
+                            row(
+                                title = "Elternabend",
+                                start = "2026-08-06T18:00:00",
+                                end = "2026-08-06T19:30:00",
+                                uid = "elternabend@plmail",
+                            ),
+                            row(
+                                title = "Elternabend",
+                                start = "2026-08-06T18:00:00",
+                                end = "2026-08-06T19:30:00",
+                                calendarName = "Persönlich",
+                                color = "#a855f7",
+                                uid = "elternabend@plmail",
+                            ),
+                        )
                     ),
             ),
             AgendaDay(
                 date = LocalDate.parse("2026-08-09"),
-                rows =
-                    listOf(
-                        row(
-                            title = "Zahnarzt",
-                            start = "2026-08-09T11:45:00",
-                            end = "2026-08-09T12:15:00",
-                            calendarName = "Persönlich",
-                            color = "#a855f7",
+                clusters =
+                    clusterRows(
+                        listOf(
+                            row(
+                                title = "Zahnarzt",
+                                start = "2026-08-09T11:45:00",
+                                end = "2026-08-09T12:15:00",
+                                calendarName = "Persönlich",
+                                color = "#a855f7",
+                            )
                         )
                     ),
             ),
@@ -186,6 +253,7 @@ class AgendaScreenshotTest {
         location: String? = null,
         calendarName: String = "Arbeit",
         color: String = "#3b82f6",
+        uid: String? = null,
     ) =
         AgendaRow(
             date = start?.substringBefore('T') ?: "2026-08-06",
@@ -204,5 +272,8 @@ class AgendaScreenshotTest {
             calendarName = calendarName,
             calendarColor = color,
             calendarIsVisible = true,
+            // Null unless a case is about the collapse, so nothing merges by
+            // accident.
+            eventUid = uid,
         )
 }

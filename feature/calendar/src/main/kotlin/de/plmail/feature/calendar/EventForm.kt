@@ -112,14 +112,31 @@ data class EventFormState(
          * user to correct a time nobody would ever choose, and every calendar on every platform
          * rounds for the same reason.
          */
-        fun forNewEvent(clock: Clock): EventFormState {
-            val at = LocalDateTime.now(clock).truncatedTo(ChronoUnit.HOURS).plusHours(1)
+        fun forNewEvent(clock: Clock): EventFormState =
+            at(LocalDateTime.now(clock).truncatedTo(ChronoUnit.HOURS).plusHours(1))
+
+        /**
+         * A new event at a slot the user pointed at, lasting an hour.
+         *
+         * The whole gesture is "an event *here*", so the proposed time is the slot and nothing is
+         * rounded a second time — the slot arrived already snapped to the quarter hour by `slotAt`,
+         * which is where that decision belongs and where it is tested. Rounding again here would
+         * quietly move a long press on the 14:15 line to 15:00, which is the one thing the gesture
+         * promises not to do.
+         *
+         * An hour long, like every other new event, because the grid says where a meeting starts
+         * and has no way to say how long it is — a drag would, and drag is not in this milestone.
+         */
+        fun forNewEventAt(start: LocalDateTime): EventFormState = at(start)
+
+        private fun at(start: LocalDateTime): EventFormState {
+            val end = start.plusHours(1)
 
             return EventFormState(
-                startDate = at.toLocalDate(),
-                startTime = at.toLocalTime(),
-                endDate = at.plusHours(1).toLocalDate(),
-                endTime = at.plusHours(1).toLocalTime(),
+                startDate = start.toLocalDate(),
+                startTime = start.toLocalTime(),
+                endDate = end.toLocalDate(),
+                endTime = end.toLocalTime(),
             )
         }
 

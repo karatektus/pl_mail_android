@@ -1,16 +1,12 @@
 package de.plmail.feature.calendar
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -65,12 +61,19 @@ import java.time.ZoneId
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun EventDetailScreen(
-    row: AgendaRow,
+    cluster: EventCluster,
     calendars: List<CalendarEntity>,
     onBack: () -> Unit,
     onEdit: () -> Unit,
     viewModel: EventEditorViewModel = hiltViewModel(),
 ) {
+    // The cluster's representative, which is the copy every single-valued
+    // question is answered from -- and the copy Edit and Delete act on. A merged
+    // meeting exists only while its members agree about everything a user would
+    // notice, so there is no second answer here to choose between; what they do
+    // NOT agree about is which calendars they are on, which is why the calendar
+    // line below names all of them.
+    val row = cluster.primary
     val calendar = calendars.firstOrNull { it.uid == row.calendarKey }
     val mayChange = calendar?.mayUpdateAll == true
     val mayDelete = calendar?.mayRemoveItems == true
@@ -186,7 +189,7 @@ internal fun EventDetailScreen(
                     Field(label = stringResource(R.string.calendar_field_location), value = it)
                 }
 
-            CalendarLine(row)
+            CalendarLine(cluster)
 
             if (row.isRecurring) {
                 Field(
@@ -293,23 +296,35 @@ private fun Times(row: AgendaRow) {
     }
 }
 
-/** Which calendar this is on, with its own colour beside the name. */
+/**
+ * Which calendar — or calendars — this is on, with the colours beside the names.
+ *
+ * **Plural, and that is the point of this screen taking a cluster.** A meeting held on two
+ * calendars is one meeting and is drawn once everywhere else in the app; the one place a user
+ * should be able to find out that there are two stored copies of it is here, where there is room to
+ * say so. The dot is the same pie the row carried, so the two readings agree, and the label
+ * switches to the plural word rather than listing "Calendar: A, B" under a singular heading.
+ */
 @Composable
-private fun CalendarLine(row: AgendaRow) {
+private fun CalendarLine(cluster: EventCluster) {
     val theme = PlMailTheme.values
-    val color = calendarColor(row.calendarColor) ?: theme.colors.inkFaint
 
     Column(verticalArrangement = Arrangement.spacedBy(theme.spacing.tiny)) {
-        Label(stringResource(R.string.calendar_field_calendar))
+        Label(
+            stringResource(
+                if (cluster.isMerged) R.string.calendar_field_calendars
+                else R.string.calendar_field_calendar
+            )
+        )
 
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(theme.spacing.small),
         ) {
-            Box(modifier = Modifier.size(DOT).background(color = color, shape = CircleShape))
+            CalendarDot(colors = cluster.dotColors(), size = DOT)
 
             Text(
-                text = row.calendarName.orEmpty(),
+                text = cluster.calendarNames.joinToString(", "),
                 style = MaterialTheme.typography.bodyLarge,
                 color = theme.colors.ink,
             )
@@ -448,6 +463,7 @@ private fun statusWord(status: String): String =
 
 private const val STATUS_CONFIRMED = "confirmed"
 private const val STATUS_TENTATIVE = "tentative"
-private const val STATUS_CANCELLED = "cancelled"
+// STATUS_CANCELLED lives in EventCluster.kt: the clusterer needs the same word,
+// and two spellings of it would agree until one of them was corrected.
 
 private val DOT = 10.dp

@@ -9,25 +9,32 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
 /**
- * One day of the agenda, with everything on it.
+ * One day, with everything on it, already collapsed into the rows a person reads.
  *
- * Days with nothing on them are not represented at all, which is what an agenda *is*: the web's
- * agenda skips the empty time between entries, and a rolling list that drew "Tuesday — nothing"
- * thirty times would be a month of furniture around four appointments.
+ * [clusters] rather than raw occurrence rows, because one meeting can be held in two of them — see
+ * [clusterRows] — and every view in this app, the agenda included, has to draw it once.
  */
-data class AgendaDay(val date: LocalDate, val rows: List<AgendaRow>)
+data class AgendaDay(val date: LocalDate, val clusters: List<EventCluster>)
 
 /**
- * Groups occurrence rows into days.
+ * Groups occurrence rows into days, collapsing duplicates as it goes.
  *
- * The DAO has already ordered them — by date, all-day first, then start — so this preserves the
- * order it was given rather than sorting again. Re-sorting here would be a second opinion about a
- * question the query has already answered, and the two would disagree the day one of them changed.
+ * The DAO has already ordered them — by date, all-day first, then start, then id — so this
+ * preserves the order it was given rather than sorting again. Re-sorting here would be a second
+ * opinion about a question the query has already answered, and the two would disagree the day one
+ * of them changed. (The `id` tiebreak is new and is what makes [clusterRows]'s choice of
+ * representative stable; see that function.)
+ *
+ * **The collapse happens per day rather than over the whole window.** A cluster's members share a
+ * start, so they share a day, and clustering inside the day is the same answer for less work — it
+ * is also what the web does, where `CalendarRangeReader` clusters before the day walk.
  *
  * Rows on a calendar the user has hidden are dropped **here rather than in SQL**, because
  * `isVisible` is a display preference the server does not act on: `CalendarEvent/query` returns
  * events from hidden calendars just the same, so filtering at sync time would leave a calendar
- * ticked back on empty until the next refresh.
+ * ticked back on empty until the next refresh. Dropped **before** clustering, deliberately: a copy
+ * on a hidden calendar was never drawn, so counting its colour into a merged dot would say the
+ * meeting is on a calendar the user cannot see.
  */
 fun groupByDay(rows: List<AgendaRow>): List<AgendaDay> =
     rows
@@ -37,7 +44,7 @@ fun groupByDay(rows: List<AgendaRow>): List<AgendaDay> =
             // A date the cache cannot parse is a row nothing can place. Dropped
             // rather than shown under a header saying "null": the occurrence
             // table is derived from a query the client can simply re-run.
-            date.toLocalDateOrNull()?.let { AgendaDay(it, onThatDay) }
+            date.toLocalDateOrNull()?.let { AgendaDay(it, clusterRows(onThatDay)) }
         }
         .sortedBy { it.date }
 

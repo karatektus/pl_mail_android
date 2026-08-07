@@ -75,4 +75,29 @@
     <string name="calendar_write_unreachable">plMail konnte %1$s nicht erreichen. Es wurde nichts geändert.</string>
     <string name="calendar_write_unreachable_unnamed">plMail konnte den Server nicht erreichen. Es wurde nichts geändert.</string>
     <string name="calendar_gone">Dieser Server bietet keinen Kalender mehr an.</string>
+
+    <string name="calendar_view_switcher">Kalenderansicht</string>
+    <string name="calendar_view_agenda">Agenda</string>
+    <string name="calendar_view_day">Tag</string>
+    <string name="calendar_view_week">Woche</string>
+    <string name="calendar_view_month">Monat</string>
+
+    <string name="calendar_previous">Zurück</string>
+    <string name="calendar_next">Weiter</string>
+
+    <string name="calendar_row_a11y_merged">%1$s, %2$s, in %3$s (derselbe Termin in mehreren Kalendern)</string>
+    <string name="calendar_row_a11y_merged_located">%1$s, %2$s, Ort %3$s, in %4$s (derselbe Termin in mehreren Kalendern)</string>
+
+    <string name="calendar_field_calendars">Kalender</string>
+
+    <string name="calendar_day_a11y_empty">%1$s, nichts eingetragen</string>
+    <plurals name="calendar_day_a11y">
+        <item quantity="one">%1$s, %2$d Termin: %3$s</item>
+        <item quantity="other">%1$s, %2$d Termine: %3$s</item>
+    </plurals>
+
+    <plurals name="calendar_more_count">
+        <item quantity="one">%1$d weiterer</item>
+        <item quantity="other">%1$d weitere</item>
+    </plurals>
 </resources>

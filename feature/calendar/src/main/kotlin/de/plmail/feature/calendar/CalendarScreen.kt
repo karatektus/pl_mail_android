@@ -11,6 +11,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import java.time.LocalDateTime
 
 /** Which occurrence a detail screen is showing. */
 data class OccurrenceKey(val eventKey: String, val date: String)
@@ -18,6 +19,22 @@ data class OccurrenceKey(val eventKey: String, val date: String)
 /** What the editor was opened for. */
 sealed interface EditorRequest {
     data object New : EditorRequest
+
+    /**
+     * A new event at a time the user pointed at — the grid's long press, and the month cell's.
+     *
+     * A separate case rather than `New` carrying a nullable start, so the editor cannot forget to
+     * distinguish them: `New` means "some time soon, rounded up", which is the right proposal from
+     * a `+` button and is exactly the wrong one from a finger held over the 14:30 line.
+     *
+     * The time is carried as a wire string rather than as a `LocalDateTime`, so
+     * [EditorSessionSaver] stays primitives — a saved bundle must not change meaning because a type
+     * was renamed.
+     */
+    data class NewAt(val startWire: String) : EditorRequest {
+        val start: LocalDateTime?
+            get() = startWire.toLocalDateTimeOrNull()
+    }
 
     /**
      * By key rather than by value.
@@ -53,7 +70,7 @@ data class EditorSession(val serial: Int, val request: EditorRequest)
  * by both the `when` that draws and the [BackHandler] that dismisses. One handler per flag is how
  * back ends up closing a screen nobody can see.
  *
- * Opening the editor closes the detail underneath it, so back from the editor lands on the agenda
+ * Opening the editor closes the detail underneath it, so back from the editor lands on the board
  * rather than on a detail describing an event that has just been renamed or deleted.
  */
 @Composable
@@ -73,28 +90,32 @@ fun CalendarScreen(onBack: () -> Unit, viewModel: CalendarViewModel = hiltViewMo
         when {
             editing != null -> CalendarPage.EDITOR
             open != null -> CalendarPage.DETAIL
-            else -> CalendarPage.AGENDA
+            else -> CalendarPage.BOARD
         }
 
-    // The agenda's own back is :app's to handle -- it is the step out of the
+    // The board's own back is :app's to handle -- it is the step out of the
     // calendar and into the mail -- so this handler is disabled there and the
     // one above it takes the gesture.
-    BackHandler(enabled = screen != CalendarPage.AGENDA) {
+    BackHandler(enabled = screen != CalendarPage.BOARD) {
         when (screen) {
             CalendarPage.EDITOR -> editing = null
             CalendarPage.DETAIL -> open = null
-            CalendarPage.AGENDA -> Unit
+            CalendarPage.BOARD -> Unit
         }
     }
 
     // Resolved from the list rather than captured at the tap, so an event that a
     // refresh has moved out of the window closes its own detail instead of
-    // describing a day it is no longer on.
+    // describing a day it is no longer on. The cluster is re-derived too, which
+    // is deliberate: a cluster is a fact about the data at the moment it was
+    // read, and holding one across a refresh would be a claim the next write can
+    // silently falsify -- the same argument the web makes for not threading a
+    // cluster id through a URL.
     val showing = open?.let { key ->
         state.days
             .firstOrNull { it.date.toString() == key.date }
-            ?.rows
-            ?.firstOrNull { it.eventKey == key.eventKey }
+            ?.clusters
+            ?.firstOrNull { cluster -> cluster.members.any { it.eventKey == key.eventKey } }
     }
 
     fun openEditor(request: EditorRequest) {
@@ -114,7 +135,7 @@ fun CalendarScreen(onBack: () -> Unit, viewModel: CalendarViewModel = hiltViewMo
                 // The row has gone -- deleted here, or moved out of the window by
                 // a refresh -- so the detail closes itself. In an effect rather
                 // than in the branch: writing state while composing is what makes
-                // a screen recompose forever, and the agenda underneath already
+                // a screen recompose forever, and the board underneath already
                 // says what is there now.
                 //
                 // Keyed on the *state* as well, so the frame in which the list is
@@ -123,29 +144,42 @@ fun CalendarScreen(onBack: () -> Unit, viewModel: CalendarViewModel = hiltViewMo
                 LaunchedEffect(open, state.days) { if (state.days.isNotEmpty()) open = null }
             } else {
                 EventDetailScreen(
-                    row = showing,
+                    cluster = showing,
                     calendars = state.calendars,
                     onBack = { open = null },
                     onEdit = {
                         open = null
-                        openEditor(EditorRequest.Edit(showing.eventKey))
+                        // The cluster's representative, which is the member the
+                        // detail was already describing. Opening a merged
+                        // meeting edits one of its copies and says which --
+                        // exactly what the web does, where the chip's URL names
+                        // the primary member's event and only that one.
+                        openEditor(EditorRequest.Edit(showing.primary.eventKey))
                     },
                 )
             }
-        CalendarPage.AGENDA ->
-            AgendaScreen(
+        CalendarPage.BOARD ->
+            CalendarBoard(
                 state = state,
                 onBack = onBack,
                 onRefresh = viewModel::refresh,
-                onOpen = { row -> open = OccurrenceKey(row.eventKey, row.date) },
+                onWindowShown = viewModel::refreshIfNeeded,
+                onChoose = viewModel::choose,
+                onPage = viewModel::page,
+                onToday = viewModel::goToToday,
+                onOpen = { cluster ->
+                    open = OccurrenceKey(cluster.primary.eventKey, cluster.primary.date)
+                },
+                onOpenDay = viewModel::openDay,
                 onNew = { openEditor(EditorRequest.New) },
+                onCreateAt = { at -> openEditor(EditorRequest.NewAt(at.toString())) },
             )
     }
 }
 
 /** Which of the calendar's own screens is on top. See [CalendarScreen]. */
 private enum class CalendarPage {
-    AGENDA,
+    BOARD,
     DETAIL,
     EDITOR,
 }
@@ -165,6 +199,7 @@ private val EditorSessionSaver: Saver<EditorSession?, Any> =
             when (val request = it?.request) {
                 null -> emptyList()
                 EditorRequest.New -> listOf(it.serial.toString(), "new")
+                is EditorRequest.NewAt -> listOf(it.serial.toString(), "newAt", request.startWire)
                 is EditorRequest.Edit -> listOf(it.serial.toString(), "edit", request.eventKey)
             }
         },
@@ -174,6 +209,7 @@ private val EditorSessionSaver: Saver<EditorSession?, Any> =
             when {
                 serial == null -> null
                 it.getOrNull(1) == "new" -> EditorSession(serial, EditorRequest.New)
+                it.getOrNull(1) == "newAt" -> EditorSession(serial, EditorRequest.NewAt(it[2]))
                 it.getOrNull(1) == "edit" -> EditorSession(serial, EditorRequest.Edit(it[2]))
                 else -> null
             }

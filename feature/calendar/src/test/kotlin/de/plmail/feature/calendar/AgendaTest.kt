@@ -33,7 +33,7 @@ class AgendaTest {
             listOf(LocalDate.parse("2026-08-06"), LocalDate.parse("2026-08-09")),
             days.map { it.date },
         )
-        assertEquals(listOf("Standup", "Lunch"), days.first().rows.map { it.title })
+        assertEquals(listOf("Standup", "Lunch"), days.first().clusters.map { it.primary.title })
     }
 
     /**
@@ -61,7 +61,7 @@ class AgendaTest {
 
         assertEquals(
             listOf("Sommerfest", "Standup"),
-            groupByDay(rows).single().rows.map { it.title },
+            groupByDay(rows).single().clusters.map { it.primary.title },
         )
     }
 
@@ -80,7 +80,7 @@ class AgendaTest {
                 row(date = "2026-08-06", title = "Hidden", isVisible = false),
             )
 
-        assertEquals(listOf("Shown"), groupByDay(rows).single().rows.map { it.title })
+        assertEquals(listOf("Shown"), groupByDay(rows).single().clusters.map { it.primary.title })
     }
 
     /** A date nothing can parse is a row nothing can place. Dropped, not drawn under "null". */
@@ -161,5 +161,9 @@ class AgendaTest {
             calendarName = "Work",
             calendarColor = "#3b82f6",
             calendarIsVisible = isVisible,
+            // Distinct per row, so nothing here merges by accident: what the
+            // clusterer does is EventClusterTest's subject, and a helper that
+            // quietly folded two rows would make every count in this file lie.
+            eventUid = "$title@plmail",
         )
 }

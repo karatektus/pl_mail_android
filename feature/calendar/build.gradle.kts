@@ -22,6 +22,10 @@ dependencies {
     // would only add a mapping to keep in sync.
     implementation(projects.core.database)
     implementation(projects.core.designsystem)
+    // The chosen view is persisted, and a preference belongs in DataStore
+    // rather than in Room -- see CalendarPrefsStore. Same shape as
+    // SearchViewModel holding RecentSearchStore.
+    implementation(projects.core.datastore)
 
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)

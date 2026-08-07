@@ -80,6 +80,20 @@ constructor(private val calendar: EventEditing, private val clock: Clock) : View
                                 .copy(calendarKey = defaultCalendarKey),
                         loadedFor = session,
                     )
+            // The slot the user pointed at, or the ordinary proposal when the
+            // time could not be read back. Falling back rather than refusing to
+            // open: a form that will not appear is worse than one whose start
+            // has to be corrected, and the only way to a bad string here is a
+            // saved bundle from another build.
+            is EditorRequest.NewAt ->
+                _state.value =
+                    EditorState(
+                        form =
+                            (request.start?.let { EventFormState.forNewEventAt(it) }
+                                    ?: EventFormState.forNewEvent(clock))
+                                .copy(calendarKey = defaultCalendarKey),
+                        loadedFor = session,
+                    )
             is EditorRequest.Edit -> {
                 _state.value = EditorState(loadedFor = session)
 

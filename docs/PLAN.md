@@ -859,7 +859,7 @@ where "the other accounts are still up to date" is false. One known defect remai
 up in REMAINING.md: the failure banner is **sticky**, because `_failures` is only rewritten by a
 page load, so it survives the network coming back until something re-pages.
 
-### M12 · The calendar — **done, verified on device 2026-08-06**
+### M12 · The calendar — **done, verified on device 2026-08-06; four views added 2026-08-07, not yet on a device**
 
 plMail serves a vendor JMAP calendar surface (`urn:plmail:params:jmap:calendars`: `Calendar/get`,
 `CalendarEvent/get`, `CalendarEvent/query`, `CalendarEvent/set`) and until this milestone the app
@@ -907,6 +907,31 @@ batches of thirty-one one-day probes. Three things decided the shape of the adop
   answered short, so the window is clamped to a year either side of today before it is sent and the
   agenda's existing "there may be more" footer says what was left out. The horizon is published as
   PHP relative-date expressions and stays unparsed.
+
+**The agenda-only cut is lifted (2026-08-07), on `feat/calendar-views`.** The app has the web's four
+views — Agenda, Day, Week, Month — behind a segmented switcher whose chosen value is persisted in
+`CalendarPrefsStore`, and it collapses one meeting held on two calendars into one row. Three things
+about the shape are decisions rather than transcription and are argued at length in REMAINING.md's
+M12 section:
+
+- **One window per view, and therefore one request.** A week is a seven-day window and a month is a
+  42-day one; nothing here asks per day. That is the whole return on the `expandRecurrences`
+  adoption, and `CalendarViewModeTest` asserts the *windows* rather than what is drawn from them so
+  the discipline cannot quietly regress into seven round trips.
+- **`DayGridLayout` and `EventCluster` are ports**, rule for rule, of
+  `App\Service\Calendar\DayGridLayout` and `App\Service\Calendar\EventClusterer`. Overlap is
+  lanes assigned in runs; a cluster is UID plus start, merged only while its members agree on start,
+  end, title, all-day and cancelled, with disagreement splitting the whole group. The one thing the
+  client had to *add* is a deterministic representative: the web gets one from `ORDER BY startsAt,
+  id` and Room's query had no id tiebreak, so `AgendaRow` gained `eventUid` and the DAO gained the
+  tiebreak.
+- **Creating from a grid is a long press.** The web double-clicks, for the stated reason that a
+  single click has to be told apart from the end of a drag; Android has no double-tap idiom for
+  "act here" and does have a long press, and the `+` in the app bar stays as the accessible route.
+
+Drag-to-move and resize are **deferred**, and the blocker is not the gesture: every edit in this
+milestone is the series, so a drag would need per-occurrence writes (`seriesId` plus a
+`recurrenceOverrides` patch keyed by `recurrenceId`) built first.
 
 ---
 

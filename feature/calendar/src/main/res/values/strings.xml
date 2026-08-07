@@ -101,4 +101,47 @@
     <string name="calendar_write_unreachable">plMail could not reach %1$s. Nothing was changed.</string>
     <string name="calendar_write_unreachable_unnamed">plMail could not reach your server. Nothing was changed.</string>
     <string name="calendar_gone">This server is no longer offering a calendar.</string>
+
+    <!--
+      The switcher. Four words rather than four icons, and on their own row:
+      the whole reason this feature exists is somebody tapping the Today icon
+      expecting a view switcher, so hiding the views behind a fifth icon would
+      have answered a discoverability complaint with less discoverability.
+    -->
+    <string name="calendar_view_switcher">Calendar view</string>
+    <string name="calendar_view_agenda">Agenda</string>
+    <string name="calendar_view_day">Day</string>
+    <string name="calendar_view_week">Week</string>
+    <string name="calendar_view_month">Month</string>
+
+    <string name="calendar_previous">Previous</string>
+    <string name="calendar_next">Next</string>
+
+    <!--
+      A meeting held on two calendars at once is one row with a two-colour dot.
+      Two colours say "more than one" and nothing else, which for a screen
+      reader is nothing at all, so the row names the calendars instead.
+    -->
+    <string name="calendar_row_a11y_merged">%1$s, %2$s, on %3$s (the same event on more than one calendar)</string>
+    <string name="calendar_row_a11y_merged_located">%1$s, %2$s, at %3$s, on %4$s (the same event on more than one calendar)</string>
+
+    <string name="calendar_field_calendars">Calendars</string>
+
+    <!--
+      A month cell is one target and one sentence: four dots read out as four
+      unlabelled graphics is 168 stops in a month. An empty day says it is
+      empty rather than saying nothing, or a listener cannot tell "nothing on"
+      from "not read out".
+    -->
+    <string name="calendar_day_a11y_empty">%1$s, nothing on</string>
+    <plurals name="calendar_day_a11y">
+        <item quantity="one">%1$s, %2$d event: %3$s</item>
+        <item quantity="other">%1$s, %2$d events: %3$s</item>
+    </plurals>
+
+    <!-- What a cell or an all-day band could not fit. Never "+0". -->
+    <plurals name="calendar_more_count">
+        <item quantity="one">%1$d more</item>
+        <item quantity="other">%1$d more</item>
+    </plurals>
 </resources>

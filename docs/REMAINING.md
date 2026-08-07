@@ -32,7 +32,7 @@ Read this first, then `PLAN.md` for why anything is the way it is.
 | Design system | **done** | six themes, two layouts, three densities |
 | **M10 Appearance and settings** | **done** | see below |
 | **M11 Polish and ship-readiness** | **partial — roughly a third** | see below |
-| M12 Calendar (protocol, cache, UI) | **done for what it claims**, and three on-device defects fixed 2026-08-06 | the cuts are listed below and are deliberate; the defects were not |
+| M12 Calendar (protocol, cache, UI) | **done, and the agenda-only cut is lifted** (2026-08-07) — four views, client-side UID dedup | what is still cut is listed below and is a shorter list than it was; **not yet watched on a device** |
 
 ### M6 — marked done long ago, and only true as of 2026-08-02
 
@@ -149,21 +149,139 @@ Everything below is untouched. Rough order of value:
 
 ### M12 — the calendar, and what is deliberately not in it
 
-Three commits: the vendor wire surface in `:core:jmap`, the cache and repository in `:core:data`,
-and `:feature:calendar` — an agenda, an event detail and an editor, reached from a drawer entry that
-only appears where the server publishes a calendar account at all.
+Three commits landed the milestone: the vendor wire surface in `:core:jmap`, the cache and repository
+in `:core:data`, and `:feature:calendar` — an agenda, an event detail and an editor, reached from a
+drawer entry that only appears where the server publishes a calendar account at all. A fourth, on
+2026-08-07, lifted the agenda-only cut and added the day, week and month views and the client-side
+UID collapse; it is the first section below.
 
-**What the phone does not do, and why each one is a decision rather than a gap.** These are written
-down because the web does all of them and somebody comparing the two surfaces will otherwise read
-each as a bug:
+#### The views — added 2026-08-07 on `feat/calendar-views`
 
-- **Only the agenda.** No day, week or month view. The web has four and its own docked pane opens on
-  the agenda for the same reason a phone should: a month grid at 380px, or at 411dp, is a lot of
-  empty cells. Day view is the one worth adding next, and it is the one the web says a phone
-  actually reaches for.
-- **Thirty rolling days, and no paging.** The window drawn is the window refreshed, deliberately:
-  the unbounded `CalendarRepository.agenda()` would draw days out of whatever some earlier window
-  left in the cache — rows nothing has re-run and nothing will correct.
+**The agenda-only cut is lifted.** The app now has all four of the web's views behind a segmented
+switcher, and it collapses one meeting held on two calendars into one row. What follows replaces the
+first two bullets of the cut list that used to be here; the rest of that list still stands and is
+below.
+
+The report this came from is worth keeping, because it is the whole argument for the switcher's
+shape: the user tapped the agenda's Today action — `Icons.Outlined.Today`, which draws a calendar
+page — expecting a **view switcher**, because that is what the mark looks like. There was no
+switcher to find. So the answer could not be a menu behind a fifth icon of the same size beside it:
+
+- **The switcher is a segmented control on its own row**, four words, below the app bar. Four
+  segments plus back, Today and New do not fit 320dp, and the first thing a squeezed row does is
+  ellipsise the labels — which turns the switcher back into four unlabelled marks. Not Material's
+  `SegmentedButton`, for the reason `AppearanceScreen`'s own row of choices is not: it takes its
+  shape from the Material shape scale, which here is the *pane* radius, so the boxed layout would
+  round a control the tokens say must never be rounded.
+- **Today is now a word rather than an icon**, which is what the web's toolbar has always spelled it,
+  and it means "show me now" in whichever view is open rather than "scroll this list to the top" —
+  which was the only thing there was to mean when there was only a list.
+- **The chosen view is persisted** in `CalendarPrefsStore`, as a raw wire string. Not in Room: the
+  database's recovery strategy is "drop it and re-sync", which is only safe while every row is
+  reconstructible from the server, and nothing on the server knows how somebody reads their calendar.
+  Decoding is the caller's, so a value written by a newer build degrades to the default instead of
+  crashing on the first frame.
+
+**Day and week are one composable**, because a day is a week of one column. An hour axis, events
+placed by their own start and duration, an all-day band that is always drawn (showing it only on days
+that have one makes the grid jump by a row as you page), a current-time line on today, chevrons and a
+horizontal swipe to page. Overlap is `DayGridLayout`, ported rule for rule from
+`App\Service\Calendar\DayGridLayout`: lanes assigned greedily in **runs**, so everything in one
+unbroken run of the day shares a lane count and the block edges line up down the whole run. Sizing
+each pair independently is the cheaper thing and produces a column where a two-wide block sits beside
+a three-wide one, which reads as a rendering fault rather than as information.
+
+**The month is six weeks, always** — never five-or-six, so the grid does not change height under the
+finger as you page. It departs from the web in one place, deliberately: **dots rather than titled
+chips**. A month cell at 411dp is about 55dp wide and a chip there fits four characters, so a column
+of them says "Stan…", "Quar…", "Zahn…" — three marks carrying no more than three dots and reading as
+broken text. What a dot does carry at that size is the calendar's own colour, which is what a month
+grid is scanned for. Tapping a day opens **Day view** on it rather than an agenda scoped to it: the
+day view is where a month's ambiguity actually resolves, it is where the web's own "+n" link goes,
+and it leaves the switcher telling the truth about where the user now is.
+
+**Creating from a grid is a long press**, not a tap, and that is a platform choice rather than a
+transcription of the web's double-click — though the reasoning is the web's: a single tap on the
+background has to be told apart from the end of a scroll fling on every release, and getting that
+wrong opens an editor every time somebody scrolls to the evening. The slot is snapped **down** to the
+quarter hour, because a tap just above the 10:00 line meaning "ten" is the same gesture as one just
+below it. A month cell's long press creates at 09:00, matching the web's per-cell `+`. The `+` action
+in the app bar stays and is the **accessible** route: a long press is not a gesture TalkBack's
+explore-by-touch offers.
+
+**Every view is one window and therefore one request.** A week is a seven-day window, not seven
+day-windows; a month is one 42-day window. That is the whole return on the `expandRecurrences`
+adoption and `CalendarViewModeTest` is written to keep it — the assertions there are about the
+*window*, not about what is drawn from it. `refreshIfNeeded` is separate from `refresh` so a cold
+open, whose first frame carries a placeholder window, does not cost two round trips; a pull always
+asks.
+
+#### UID-cluster dedup, client-side — 2026-08-07
+
+The user's screenshot showed one meeting twice: two colours, identical title and time. That is
+**correct data** — plMail legitimately holds one meeting on two calendars, extracted from its
+invitation onto the account's own and mirrored from a provider onto a connected one — and
+`calendar-model.md` lists `CalendarEvent/query` as the one reader deliberately left uncollapsed,
+because a protocol that merged them would hand a client ids it cannot then `get`. So the collapse is
+the app's, and `EventCluster` is `App\Service\Calendar\EventClusterer` ported rather than
+reinvented. The contract as implemented:
+
+- **The key is start plus UID.** Matching on title and time would collapse a weekly 1:1 held with two
+  different people at the same hour into one row, and a meeting quietly disappearing from a calendar
+  is the worst shape a calendar bug takes. Start is in the key because two occurrences of one series
+  are the same *event* and not the same *meeting*.
+- **A group merges only while its members agree**, on start, end, title, all-day and cancelled — and
+  **disagreement splits the whole group**, not the minority, because a majority is a winner picked
+  with extra steps. Recurrence is deliberately not compared.
+- **Two rows on one calendar never merge**: a UID is unique within a calendar server-side, so a
+  repeat there is two occurrences at one instant and merging them would erase one.
+- **Times compare as instants** where a zone is published and as bare wall clocks where none is, so
+  the same moment written in two zones still merges and a floating copy never merges with a zoned
+  one.
+- **All the member colours ride into one row**, drawn as a pie of equal slices — the phone's reading
+  of the web chip's `conic-gradient`, at the same size as an ordinary dot, in **every** view
+  including the agenda. Two colours say "more than one" and nothing else, so the row's TalkBack
+  sentence names the calendars and the detail screen's calendar line goes plural.
+- **Opening a merged row opens the representative**, which is the same member the web's chip URL
+  names. The one thing that had to be *added* rather than ported: the web gets a stable primary from
+  `ORDER BY startsAt, id`, and a Room query ordered only by start hands ties back in whatever order
+  SQLite found them — so the members are sorted by id (numerically where the ids are numbers) and the
+  DAO's own `ORDER BY` gained an `e.eventId` tiebreak.
+
+The one wire-adjacent change: `AgendaRow` gained `eventUid`, projected from the series row that
+already stored it. No schema change and no new request — the collapsed query has always fetched
+`uid`.
+
+**Not verified on the live stack.** The 8002 project (`docker compose -p pl_mail_android`) had no
+containers running during this session and starting one is out of scope, so no fixture was captured
+and no duplicate pair was seeded. Everything here is against the captured fixtures, the web's own
+source, and the Roborazzi baselines — which now include day, week and month in both schemes, and an
+agenda whose 18:00 row is a genuine merge produced by `clusterRows` rather than a hand-built cluster.
+
+#### What the phone still does not do
+
+**Each of these is a decision rather than a gap**, written down because the web does all of them and
+somebody comparing the two surfaces will otherwise read each as a bug:
+
+- **No drag to move, and no resize.** Deferred, and the biggest single thing still missing from the
+  grid. The web has both, plus the "this occurrence or all of them" prompt that a drag needs — and
+  that prompt is the blocker rather than the gesture: every edit this app makes is the **series**
+  (see below), so a drag would either move a whole standup onto the day somebody was looking at or
+  need per-occurrence writes built first. `CalendarEvent/set` refuses an occurrence id by name, so
+  the way in is `seriesId` plus a `recurrenceOverrides` patch keyed by `recurrenceId`. Until that
+  exists the honest gesture set is tap-to-open and long-press-to-create, which is what shipped.
+- **Thirty rolling days on the agenda, and no paging on it.** The window drawn is the window
+  refreshed, deliberately: the unbounded `CalendarRepository.agenda()` would draw days out of
+  whatever some earlier window left in the cache — rows nothing has re-run and nothing will correct.
+  The three grid views *do* page, because each of them has a window it can name.
+- **A seven-day week is tight on a phone**, and it is stated in `TimeGrid`'s own header rather than
+  hidden: seven columns share 411dp minus the hour gutter, so a block says its colour, its time and
+  very little else. Not solved by a horizontal scroll, which would need the headings, the all-day
+  band and the hours kept in step. What answers it is that Day view is one tap away and is a single
+  full-width column. The week baseline is recorded precisely so "tight" stays a known quantity.
+- **The now line does not tick.** Drawn at the minute the view was composed, like the web's. A
+  recomposition a minute forever on a screen somebody has left open is exactly the background work
+  the rest of this app refuses; every navigation redraws it.
 - **No recurrence editor.** Create offers the web's five choices; an *edit* shows a read-only line
   instead of the dropdown, and that is what keeps a foreign "every second Tuesday" intact.
   `EventDraft.recurrenceRule` is create-only because the cache stores *whether* a series recurs and
@@ -185,8 +303,8 @@ each as a bug:
   does. A floating event is drawn exactly as stored and says so; an event in another zone names its
   zone rather than being converted, because a conversion the phone did and the web did not is two
   surfaces disagreeing about one meeting.
-- **No `.ics` download, no "Not an event", no drag or resize.** The last of those has no gesture on
-  an agenda list at all.
+- **No `.ics` download and no "Not an event".** Drag and resize have moved up into the list above,
+  where they are now a deferral with a named blocker rather than "there is no gesture for it".
 
 Two additions to `:core:data` were needed by the UI and are in the same commit: `isAvailable()`,
 which answers whether to draw the drawer entry from the cache *or* the session (either alone is
@@ -204,8 +322,17 @@ empty after the save; and delete via the confirmation dialog, confirmed gone fro
 (`notFound` on re-get). The rows' TalkBack sentences were read out of the accessibility tree and are
 complete ("11:00 AM, Zahnarzt (verschoben), at Praxis Dr. Weber, on Personal").
 
+**Nothing added on 2026-08-07 has been watched on a device at all**, and that is the largest single
+gap in this section. The 8002 stack was down for the whole session and starting it was out of scope,
+so the four views, the switcher, the swipe, the long-press create and the UID collapse are covered by
+JVM tests and Roborazzi baselines and by nothing else. Everything below was already unwatched before
+that.
+
 Still not watched: the German agenda at 320dp, where "Ganztägig" has to fit a fixed 72dp time
-column; a read-only calendar, where Edit and Delete are drawn disabled with their reason in the
+column; the German **switcher** at 320dp, where four segments share the width and "Agenda" is the
+longest word; the week grid on a real device, where seven columns of about fifty pixels is a claim
+made from a Robolectric canvas; the long-press create, whose haptic tick is the only thing making it
+discoverable; the swipe threshold against a real finger; a read-only calendar, where Edit and Delete are drawn disabled with their reason in the
 content description (no read-only calendar can be seeded without a connected remote); the horizon
 footer against a live window (the 30-day agenda cannot reach it); a floating recurring series; a
 window holding more than 100 events, which is where the `maxEventsInGet` chunking first matters;
@@ -378,6 +505,14 @@ Written down because previous sessions' honesty about exactly this has led direc
   the mail list now, and `FeedRepository` implements `ReachableAccounts`, so `DeltaSync` withdraws
   the claim as soon as an account answers — including the whole-server entry, because a successful
   sync is proof the session can be fetched and there is no narrower fact to withdraw.
+- **`./gradlew build` went red overnight on a dependency nobody had touched.** Lint's
+  `NewerVersionAvailable` compares `gradle/libs.versions.toml` against Maven Central *today*, so the
+  first build on `feat/calendar-views` failed citing line 47 — junit-bom 6.1.3 had been published
+  since the last green build. With `warningsAsErrors` on that stops the build and it says nothing
+  about the code. Disabled in `AndroidApplicationConventionPlugin` beside `AndroidGradlePluginVersion`,
+  which was disabled for exactly the same reason and whose comment already makes the argument. What
+  is lost is a nudge; **bumping a dependency is now something somebody has to decide to do**, so it
+  is worth a periodic look at the catalog rather than trusting the build to nag.
 - **`./gradlew build` intermittently fails a `lintAnalyze*` task.** Seen three times this session,
   on `:feature:search:lintAnalyzeDebugUnitTest`, `:feature:onboarding:lintAnalyze*` and
   `:core:notifications:lintAnalyzeDebugUnitTest`. Each succeeded when run alone immediately
