@@ -111,6 +111,10 @@
     <string name="appearance_pane_alpha">Deckkraft der Flächen</string>
     <string name="appearance_pane_sample">So sieht eine Fläche aus.</string>
 
+    <string name="appearance_home_screen">Startbildschirm</string>
+    <string name="appearance_calendar_icon">Kalender als eigene App anzeigen</string>
+    <string name="appearance_calendar_icon_body">Fügt ein zweites Symbol hinzu, das den Kalender für sich öffnet, mit einem eigenen Eintrag unter den zuletzt verwendeten Apps. Es kann einen Moment dauern, bis es erscheint – manche Startbildschirme bemerken es erst beim nächsten Neuladen. Der Kalender bleibt in beiden Fällen im Menü, und die Einstellung gilt nur für dieses Gerät.</string>
+
     <string name="accounts">Konten</string>
     <string name="accounts_title">Konten</string>
     <string name="accounts_none">Es wurden noch keine Konten synchronisiert.</string>

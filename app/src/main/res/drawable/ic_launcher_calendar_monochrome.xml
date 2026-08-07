@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The themed layer for the calendar icon: the same page with its colour taken
+  out, for the same reason ic_launcher_monochrome is a separate file and not the
+  foreground reused. The launcher tints this wholesale, so handing it four brand
+  colours would mean their hues fighting a filter that overwrites them anyway,
+  and the result differs per launcher.
+
+  Geometry, scale and translate are identical to
+  ic_launcher_calendar_foreground, so the themed and the coloured icon sit at
+  exactly the same size and place. See that file for why the numbers are what
+  they are. Black is a placeholder the system replaces.
+
+  One departure from the coloured version, and it is the whole reason a
+  monochrome layer gets looked at separately. Tinted to a single colour, the
+  header rule and the three dates stop being two kinds of mark and become five
+  bars inside a box, which reads as a form rather than a calendar. The dates are
+  therefore dropped here and only the rings, the page and the header survive.
+  That silhouette is what says "calendar" when there is one colour to say it in.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.2"
+        android:scaleY="1.2"
+        android:translateX="18.6"
+        android:translateY="25.2">
+
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M17,10 L42,10 Q47.5,10 47.5,15.5 L47.5,33.5 Q47.5,39 42,39 L17,39 Q11.5,39 11.5,33.5 L11.5,15.5 Q11.5,10 17,10 Z"
+            android:strokeColor="#000000"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M14.25,18.5 L44.75,18.5"
+            android:strokeColor="#000000"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M21,4.5 L21,10"
+            android:strokeColor="#000000"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M38,4.5 L38,10"
+            android:strokeColor="#000000"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+    </group>
+
+</vector>

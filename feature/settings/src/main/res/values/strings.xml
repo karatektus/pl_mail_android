@@ -151,6 +151,23 @@
     <string name="appearance_pane_alpha">Pane solidity</string>
     <string name="appearance_pane_sample">This is what a pane looks like.</string>
 
+    <!--
+      The calendar's own launcher icon. Titled for the home screen rather than
+      for the calendar, because that is where the change shows up and where
+      somebody looking for it will have been looking.
+    -->
+    <string name="appearance_home_screen">Home screen</string>
+    <string name="appearance_calendar_icon">Show calendar as its own app</string>
+    <!--
+      Long, and every clause of it is there to stop a support question. The
+      delay is real and is the launcher\'s rather than ours; the separate
+      recents entry is the point of the feature and surprises people who
+      expected one card; and the setting cannot follow them to a second device
+      because it is this phone\'s package manager that holds it, unlike
+      everything else on this screen.
+    -->
+    <string name="appearance_calendar_icon_body">Adds a second icon that opens the calendar on its own, with its own entry in your recent apps. It can take a moment to appear — some launchers only notice after they next reload. The calendar stays in the menu either way, and this applies to this device only.</string>
+
     <string name="accounts">Accounts</string>
     <string name="accounts_title">Accounts</string>
     <string name="accounts_none">No accounts have been synced yet.</string>

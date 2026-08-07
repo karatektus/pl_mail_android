@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The calendar app's mark: plMail's own logo language, saying "calendar".
+
+  It has to do two things at once. At launcher size, next to the mail icon on
+  the same home screen, it has to be told apart at a glance; up close it has to
+  read as the same family rather than as a second app that happens to be
+  installed. So nothing here is borrowed from a generic calendar glyph. The
+  stroke width, the round caps and joins, the four brand colours and the paper
+  behind it are all exactly ic_launcher_foreground's, and only the geometry is
+  new: a page with two binder rings, a header rule and a row of date dots.
+
+  THE COORDINATE SYSTEM is ic_launcher_foreground's, deliberately, so the two
+  icons sit at the same visual weight and the same size under the launcher's
+  mask. The art is drawn in a 48 unit square and the group scales it by 1.2 and
+  translates by (18.6, 25.2), which maps the design origin (29.5, 24) onto the
+  centre of the 108 canvas. A stroke of 5.5 here therefore paints 6.6 canvas
+  units, which is what the mail mark paints.
+
+  THE SAFE CIRCLE, and the arithmetic that must be redone rather than nudged if
+  this art is ever rescaled. Only a circle of radius 33 about the canvas centre
+  survives every launcher mask. Divided by the group's scale that is 27.5 design
+  units about (29.5, 24), and half a stroke has to come off it, so every painted
+  centreline must sit within 24.75 of (29.5, 24). The furthest ones are the
+  page's bottom corners at (11.5, 39) and (47.5, 39), 23.4 out, and the tops of
+  the two rings at (21, 4.5) and (38, 4.5), 23.8 out. There is about a unit in
+  hand and no more.
+
+  THE COLOURS are the four the mail mark uses, assigned so that no single one
+  carries the whole shape: the page is blue, the header rule and the date dots
+  are red, and the two rings are the yellow and the green. Yellow was kept off
+  the dots on purpose, because #FBBC04 on the off-white background is the one
+  pairing in this palette that a 4dp mark disappears into.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.2"
+        android:scaleY="1.2"
+        android:translateX="18.6"
+        android:translateY="25.2">
+
+        <!-- The page. One closed path, so the corners join rather than meet. -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M17,10 L42,10 Q47.5,10 47.5,15.5 L47.5,33.5 Q47.5,39 42,39 L17,39 Q11.5,39 11.5,33.5 L11.5,15.5 Q11.5,10 17,10 Z"
+            android:strokeColor="#4285F4"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+        <!--
+          The header rule, ending on the page's own centrelines so its round
+          caps close against the frame instead of stopping short of it.
+        -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M14.25,18.5 L44.75,18.5"
+            android:strokeColor="#EA4335"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+        <!--
+          The binder rings. They start on the top edge's centreline and run up,
+          so what shows above the page is one stroke width of each: at launcher
+          size two nubs, which is what a wall calendar looks like from across a
+          room.
+        -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M21,4.5 L21,10"
+            android:strokeColor="#FBBC04"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M38,4.5 L38,10"
+            android:strokeColor="#34A853"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+        <!--
+          Three dates. Round caps on near zero length segments rather than
+          circles, so they carry the same edge as everything else. Not a real
+          grid: at 48dp a grid is a smudge, and three marks in a row is the most
+          a page this size can say and still be read.
+        -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M21,29 L21.01,29"
+            android:strokeColor="#EA4335"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M29.5,29 L29.51,29"
+            android:strokeColor="#EA4335"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M38,29 L38.01,29"
+            android:strokeColor="#EA4335"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:strokeWidth="5.5" />
+
+    </group>
+
+</vector>

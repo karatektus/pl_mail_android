@@ -81,6 +81,86 @@
             </intent-filter>
         </activity>
         <!--
+          The calendar as its own app, off unless the user asks for it.
+
+          THE TASK MODEL, which is the whole reason this is an activity of its
+          own rather than an extra door into MainActivity.
+
+          What was wanted: a second launcher icon that forms a SEPARATE task, so
+          the calendar gets its own card in Recents, its own back stack, and can
+          sit beside the mail in split screen. Back out of the calendar app
+          leaves it, rather than revealing an inbox the user never opened.
+
+          What an activity-alias can and cannot do. Its attribute set is a
+          subset of an activity's: name, targetActivity, label, icon, roundIcon,
+          permission, exported, enabled. Everything outside that subset is
+          inherited from the target and CANNOT be overridden on the alias, and
+          taskAffinity and launchMode are both outside it. An alias pointed at
+          MainActivity therefore inherits MainActivity's affinity and its
+          singleTask, which means the launcher icon would reach the mail task
+          that is already running and hand it an onNewIntent. One card in
+          Recents, one back stack, no split screen: exactly what was not wanted,
+          and it would have looked like it worked on the first tap.
+
+          So the affinity is declared where it is legal, on a second activity,
+          and the alias inherits it from there. That inheritance is the
+          mechanism rather than a workaround: the alias exists to carry the
+          icon, the label and the enabled flag the settings toggle writes, and
+          the activity behind it exists to own the task.
+
+          taskAffinity=":calendar" and not a spelled-out name. A leading colon
+          is expanded at install time against the applicationId, so this is
+          "de.plmail:calendar" in the foss build and "de.plmail.google:calendar"
+          in the other, with ".debug" folded in for a debug build. Two flavours
+          installed side by side, which this project does while it compares the
+          push paths, therefore cannot end up sharing a calendar task.
+
+          launchMode="singleTask" for the same reason MainActivity has it, and
+          with the same effect confined to this affinity: tapping the calendar
+          icon while the calendar is already open brings that task forward
+          rather than stacking a second calendar. The two activities never
+          contend for one instance, because there is no one instance to contend
+          for. That is the part an alias over MainActivity could not have given.
+
+          exported="false" on the activity is correct and is not the mistake it
+          would look like. The launcher resolves the ALIAS, and it is the
+          alias's exported flag that the permission check reads; the target is
+          then instantiated inside our own process. Nothing outside the app can
+          name this activity directly.
+
+          enabled="false" on the alias is the default state, and it is the fact
+          the settings toggle flips through PackageManager. It is deliberately
+          not mirrored into DataStore: the system owns this, and a second copy
+          would be a second copy that can be wrong.
+        -->
+        <activity
+            android:name=".CalendarActivity"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity=":calendar"
+            android:theme="@style/Theme.PlMail" />
+
+        <!--
+          Its own label and its own icon, both in resources so German gets the
+          word it actually uses. Declared here in src/main rather than per
+          flavour, so foss and google both have it without either being able to
+          drift from the other.
+        -->
+        <activity-alias
+            android:name=".CalendarLauncher"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_calendar"
+            android:label="@string/calendar_app_name"
+            android:roundIcon="@mipmap/ic_launcher_calendar_round"
+            android:targetActivity=".CalendarActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!--
           UnifiedPush delivery, and it must be exported.
           
           A distributor is a *different app*, so it delivers by broadcast across

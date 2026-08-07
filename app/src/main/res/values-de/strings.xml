@@ -6,4 +6,6 @@
       longer than English, so every layout is measured against the longer of
       the two from the start rather than discovering the overflow at the end.
     -->
+
+    <string name="calendar_app_name">plMail Kalender</string>
 </resources>

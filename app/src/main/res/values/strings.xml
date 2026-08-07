@@ -2,4 +2,13 @@
 <resources>
     <!-- The product's name, not a word. It reads the same in every locale. -->
     <string name="app_name" translatable="false">plMail</string>
+
+    <!--
+      What the calendar's own launcher icon is called, when the user has asked
+      for one. Translatable, unlike app_name, because half of it is a word: the
+      product's name stays put and "Calendar" is the part a German home screen
+      has to say in German. Kept short on purpose; a launcher gives a label
+      about twelve characters before it ellipsises.
+    -->
+    <string name="calendar_app_name">plMail Calendar</string>
 </resources>

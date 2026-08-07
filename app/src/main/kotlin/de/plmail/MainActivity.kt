@@ -338,9 +338,13 @@ private fun PlMailApp(
  *
  * Above the whole app rather than inside a screen, which is what makes the settings screen its own
  * preview: choosing a theme re-themes the thing being chosen from, live.
+ *
+ * Internal rather than private so [CalendarActivity] can wear it too. The calendar app is a second
+ * window onto the same install and has to be the same app to look at; a copy of these four lines
+ * over there is how one of the two ends up not following a theme change.
  */
 @Composable
-private fun PlMailAppTheme(
+internal fun PlMailAppTheme(
     viewModel: AppearanceViewModel = hiltViewModel(),
     content: @Composable () -> Unit,
 ) {

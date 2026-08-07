@@ -47,6 +47,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailAppearance
@@ -122,7 +123,54 @@ fun AppearanceScreen(onBack: () -> Unit, viewModel: AppearanceViewModel = hiltVi
                 onReduceTransparency = viewModel::setReduceTransparency,
                 onPaneAlpha = viewModel::setPaneAlpha,
             )
+            HomeScreen()
         }
+    }
+}
+
+/**
+ * The calendar's own launcher icon.
+ *
+ * **Here rather than on a settings screen of its own**, and the choice is worth stating because
+ * this is not a theme. There is no general settings screen in this app — the drawer opens Accounts,
+ * Appearance, Push and Diagnostics, each of which is one subject — so a screen for one switch would
+ * have added a fifth drawer row that says "Miscellaneous". What this switch actually changes is
+ * what the product looks like from outside itself, which is the same question as the icon's
+ * colours, and it is last on the screen because it is the only control here that leaves the app.
+ *
+ * Hidden outright where the server publishes no calendar, exactly as the drawer's Calendar row is:
+ * a switch offering a home-screen icon for a calendar that does not exist is worse than no switch.
+ *
+ * Its own view model, and not a field bolted onto [AppearanceViewModel]. Everything else on this
+ * screen is a preference that syncs to the server and comes back to every device; this one is a
+ * fact held by this phone's package manager, and mixing the two would put a value that cannot sync
+ * into the object whose whole contract is that it does.
+ */
+@Composable
+private fun HomeScreen(viewModel: CalendarLauncherViewModel = hiltViewModel()) {
+    val hasCalendar by viewModel.hasCalendar.collectAsStateWithLifecycle()
+
+    if (!hasCalendar) return
+
+    // On resume rather than once, because the answer is the system's and the
+    // system can have been asked by somebody else while this screen was in the
+    // background. See CalendarLauncherViewModel.refresh.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refresh()
+        onPauseOrDispose {}
+    }
+
+    Section(stringResource(R.string.appearance_home_screen)) {
+        Toggle(
+            title = stringResource(R.string.appearance_calendar_icon),
+            // Three separate honesties, and every one of them is something a
+            // user would otherwise report as a fault: the icon may not appear
+            // at once, the calendar becomes a second entry in the recent-apps
+            // list, and none of this follows them to another device.
+            body = stringResource(R.string.appearance_calendar_icon_body),
+            isOn = viewModel.isOn,
+            onChange = viewModel::setEnabled,
+        )
     }
 }
 
@@ -467,6 +515,14 @@ private fun Toggle(title: String, body: String, isOn: Boolean, onChange: (Boolea
         Switch(
             checked = isOn,
             onCheckedChange = onChange,
+            // The title again, on the switch itself. Without it TalkBack
+            // announces the row as "Keep panes solid" and then, as a separate
+            // stop, "off, switch" -- and somebody who reached the control by
+            // swiping to it, or who is scrubbing the screen with a finger, gets
+            // only the second half. Naming the switch costs a repetition for
+            // anybody reading the screen top to bottom and is the difference
+            // between a usable control and a guess for anybody who is not.
+            modifier = Modifier.semantics { contentDescription = title },
             colors =
                 SwitchDefaults.colors(
                     checkedThumbColor = theme.colors.onAccent,

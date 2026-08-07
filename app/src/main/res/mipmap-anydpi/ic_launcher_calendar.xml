@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The calendar app's adaptive icon, built exactly as ic_launcher is: the same
+  three layers, and the same background colour resource rather than a second
+  one. Same paper, different mark, which is what makes two icons on one home
+  screen read as one product.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_calendar_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_calendar_monochrome" />
+</adaptive-icon>

@@ -33,6 +33,7 @@ Read this first, then `PLAN.md` for why anything is the way it is.
 | **M10 Appearance and settings** | **done** | see below |
 | **M11 Polish and ship-readiness** | **partial — roughly a third** | see below |
 | M12 Calendar (protocol, cache, UI) | **done, and the agenda-only cut is lifted** (2026-08-07) — four views, client-side UID dedup | what is still cut is listed below and is a shorter list than it was; **not yet watched on a device** |
+| Calendar as its own launcher app | **built** (2026-08-07), `feat/calendar-launcher` | opt-in second icon, separate task; **no part of it has been seen on a device** — see below |
 
 ### M6 — marked done long ago, and only true as of 2026-08-02
 
@@ -396,6 +397,87 @@ both were looked at rather than forgotten:
   server started reporting held and cancelled submissions, which is precisely the user-visible
   thing, and both methods are adopted on `chore/hardening`. See the scheduled-send section above.
   The `Identity/set` deferral beside it still stands.
+
+### The calendar as its own app — 2026-08-07, `feat/calendar-launcher`
+
+A settings toggle that puts a second icon on the home screen. It opens the calendar directly, in a
+task of its own: its own card in Recents, its own back stack, and it can sit beside the mail in split
+screen. Off for everybody until they find the switch, and the drawer's Calendar row is untouched —
+this is a second door and not a replacement.
+
+**The task model is the whole of it, and the mechanism everybody reaches for first cannot deliver
+it.** An `<activity-alias>` is how a second launcher icon is done, and its attributes are a *subset*
+of an activity's: name, targetActivity, label, icon, roundIcon, permission, exported, enabled.
+Everything outside that subset is inherited from the target and cannot be overridden on the alias —
+and `taskAffinity` and `launchMode` are both outside it. An alias over `MainActivity` therefore
+inherits its default affinity and its `singleTask`, so the calendar icon would have brought the mail
+task forward and handed it an `onNewIntent`. One recents card, one back stack, no split screen. It
+would have looked like it worked on the first tap, which is why this is written down.
+
+So the affinity is declared where it is legal, on a `CalendarActivity` of its own, and the alias
+inherits it from there. That inheritance is the mechanism rather than a workaround:
+
+| | |
+|---|---|
+| `.CalendarActivity` | `exported="false"`, `launchMode="singleTask"`, `taskAffinity=":calendar"` |
+| `.CalendarLauncher` (alias) | `enabled="false"`, `exported="true"`, own `label`/`icon`/`roundIcon`, MAIN + LAUNCHER, `targetActivity=".CalendarActivity"` |
+
+- **A leading colon on the affinity**, not a spelled-out name. It is expanded against the
+  applicationId at install time, so it is `de.plmail:calendar` in the foss build and
+  `de.plmail.google:calendar` in the other, `.debug` folded in. The two flavours are installed side
+  by side on this project's own test device while the push paths are compared, and a literal affinity
+  would have made them share one calendar task.
+- **`exported="false"` on the activity is correct**, and looks like a mistake until you follow the
+  launch. The launcher resolves the *alias*; it is the alias's exported flag the permission check
+  reads, and only then is the target instantiated inside our own process. Verified on the release
+  APK's own manifest, not only in source.
+- **Two activities have no shared state to fight over**, which is the reason the "one activity, two
+  entrances" version was dropped. `MainActivity` is `singleTask`, so there is exactly one instance of
+  it and one `isCalendaring` boolean; both doors would have been steering it, and opening the
+  calendar app while the mail was open would either hijack the mail's screen or need a second
+  instance of a `singleTask` activity, which is not a thing.
+- **Back is deliberately unhandled in `CalendarActivity`.** `CalendarScreen` already takes the
+  gesture for its detail and editor pages and disables its handler on the board. Inside
+  `MainActivity`, `:app` catches what falls through and clears `isCalendaring`, which puts the mail
+  list back. In the calendar task nothing catches it, so the activity finishes and the task ends.
+  Adding a handler is what would break the requirement.
+- **Disabling closes the task first.** `AppCalendarLauncherIcon.setEnabled(false)` walks
+  `ActivityManager.getAppTasks()` and calls `finishAndRemoveTask()` on the calendar's before it
+  disables the component, so switching the icon off cannot leave a recents card that relaunches into
+  a component that no longer resolves. The platform may well do this itself on the package-changed
+  broadcast; what it does with an already-finished task in Recents is launcher and OEM specific, and
+  this does not depend on finding out.
+- **The state is `PackageManager`'s and is never copied.** `getComponentEnabledSetting` is read on
+  construction and again on every resume; `DEFAULT` folds into "off" because the manifest says
+  `enabled="false"`, which keeps the default in one place. Switching off writes `DISABLED` rather
+  than `DEFAULT` on purpose — they read alike today and would stop doing so the moment somebody
+  edited the manifest.
+- **The icon is a sibling, not a second icon.** Same 108 canvas, same group transform, same 5.5
+  stroke with round caps and joins, same four brand colours, same `@color/ic_launcher_background`;
+  only the geometry is new, a page with two binder rings, a header rule and three date dots. The
+  monochrome layer drops the dots, because tinted to one colour a header rule plus three dots becomes
+  five bars in a box and reads as a form. The safe-circle arithmetic is redone in the file's own
+  comment and must be redone again if the art is ever rescaled.
+- **The toggle lives on the Appearance screen**, last, under a "Home screen" heading, and is hidden
+  outright where the server publishes no calendar — the same condition that hides the drawer row. Its
+  own view model rather than a field on `AppearanceViewModel`: everything else on that screen syncs
+  to the server and comes back to every device, and this one cannot. The body string says so, and
+  says that the icon may take a moment to appear because some launchers only notice on their next
+  reload.
+
+**Tests.** `CalendarLauncherManifestTest` reads the *merged* manifest — found through the
+`com/android/tools/test_config.properties` AGP writes onto the unit-test classpath, so it runs once
+per variant and both flavours are checked rather than assumed to match — and pins the alias's enabled
+and exported flags, its target, its MAIN + LAUNCHER filter, that its label and icon are its own,
+that the calendar's affinity is `:calendar` and differs from the mail's, and that the alias is
+declared after the activity it targets. `CalendarLauncherIconTest` runs the switch against
+Robolectric's real component-enabled table. Both are in `:app`, which gains Robolectric and
+`testOptions.unitTests.isIncludeAndroidResources` for them.
+
+**What only a device can answer**, and none of it is covered above: whether the icon actually appears
+without a launcher restart and how long that takes; whether the two apps really split-screen side by
+side; whether the recents card is gone the instant the switch is flipped on the launcher in use; and
+how the mark reads at 48dp on a real home screen next to the mail icon rather than in a renderer.
 
 ### The test backfill — 2026-08-06, `chore/hardening`
 

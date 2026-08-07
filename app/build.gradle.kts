@@ -55,6 +55,18 @@ android {
      * `src/google/kotlin` and `src/google/AndroidManifest.xml` are conventional locations AGP
      * already reads, and the manifest is merged into the main one for that flavour only.
      */
+
+    /**
+     * Needed by the launcher-icon suites, and for two separate reasons.
+     *
+     * Robolectric cannot answer anything about a component without the real resources behind it,
+     * and `CalendarLauncherManifestTest` needs something else again: the **merged** manifest, which
+     * is the only artefact where the alias, the activity it targets and the affinity that separates
+     * their tasks exist together. Switching this on is what makes AGP write the
+     * `com.android.tools.test_config.properties` that names the path to it, and that file is how
+     * the test finds it without hard-coding a build directory that changes with the variant.
+     */
+    testOptions.unitTests.isIncludeAndroidResources = true
 }
 
 dependencies {
@@ -112,4 +124,19 @@ dependencies {
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.kotlin.test.junit5)
     testRuntimeOnly(libs.junit.platform.launcher)
+
+    // Robolectric, for the one thing in this module that cannot be tested
+    // without an Android: the enabled state of a manifest component, which is
+    // PackageManager's to hold. ShadowPackageManager keeps it honestly enough
+    // that "default means the manifest's false" is a statement a test can make.
+    testImplementation(libs.robolectric)
+    // For org.junit.Test and org.junit.runner.RunWith, which Robolectric needs
+    // and which nothing else here puts on the compile classpath: this module's
+    // own tests are Jupiter, and the vintage engine below is runtime only. The
+    // same artifact the calendar and core:ui screenshot suites take it from.
+    testImplementation(libs.androidx.test.ext.junit)
+    // Robolectric is JUnit 4 and this module runs on the JUnit Platform.
+    // Without the vintage engine its classes are not discovered at all and the
+    // task reports success having run none of them.
+    testRuntimeOnly(libs.junit.vintage.engine)
 }
