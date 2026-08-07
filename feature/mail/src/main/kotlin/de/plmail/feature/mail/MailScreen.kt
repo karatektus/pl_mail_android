@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Archive
+import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Inbox
@@ -88,6 +90,14 @@ fun MailScreen(
     onSearch: () -> Unit,
     onCompose: () -> Unit,
     view: MailView = MailView.Inbox,
+    /**
+     * Opens the calendar, or null where this install has no calendar.
+     *
+     * The same callback the drawer's entry is given and therefore the same destination — see
+     * [LabelSidebar] for why absence is a null rather than a flag. Hoisted for the same reason
+     * [onSearch] is: `:feature:calendar` is a peer module, and this one must not learn about it.
+     */
+    onCalendar: (() -> Unit)? = null,
     /** Null where the sidebar is already on screen and there is nothing to open. */
     onOpenSidebar: (() -> Unit)? = null,
     onEditLabel: (Label) -> Unit = {},
@@ -201,29 +211,12 @@ fun MailScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = onSearch) {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = stringResource(R.string.search),
-                            )
-                        }
-
-                        // Only where there is something to edit. A category has
-                        // no server object behind it at all -- there is nothing
-                        // to rename, recolour or delete -- and a system label
-                        // would be a rename the server refuses. Colour is the
-                        // exception the editor is reached for on a system label,
-                        // and that is reached from the sidebar rather than from
-                        // here: this bar is over one list, and Inbox's colour is
-                        // a property of the sidebar row.
-                        if (label?.mayRename == true || label?.mayDelete == true) {
-                            IconButton(onClick = { onEditLabel(label) }) {
-                                Icon(
-                                    Icons.Default.MoreVert,
-                                    contentDescription = stringResource(R.string.label_edit),
-                                )
-                            }
-                        }
+                        MailListActions(
+                            onCalendar = onCalendar,
+                            onSearch = onSearch,
+                            label = label,
+                            onEditLabel = onEditLabel,
+                        )
                     },
                 )
             } else {
@@ -374,6 +367,69 @@ fun MailScreen(
                     },
                 )
             }
+        }
+    }
+}
+
+/**
+ * What the mail list's top bar offers, in the order it offers it.
+ *
+ * Its own composable rather than a lambda inside [MailScreen], because the order is the requirement
+ * and the order is the thing that can regress. [MailScreen] itself needs a Hilt `MailViewModel` and
+ * a Paging flow to compose at all, so a test that wanted to check where an icon sits would have to
+ * stand up half the data layer to find out — this is the seam that makes the answer cheap. The
+ * ordering is pinned in `MailListActionsTest`.
+ *
+ * Read left to right: Calendar, Search, then the label's own overflow. Calendar is the leftmost
+ * because it is the only one that leaves the mail behind, and Search is the one the thumb already
+ * knows where to find — moving Search would be paying for the calendar with a control people use
+ * far more often.
+ *
+ * `RowScope` is the receiver Material hands `actions`, and it is kept so this cannot accidentally
+ * be called anywhere the buttons would not be laid out side by side.
+ */
+@Composable
+internal fun RowScope.MailListActions(
+    /** Null where this install has no calendar, and then no button is drawn. */
+    onCalendar: (() -> Unit)?,
+    onSearch: () -> Unit,
+    /** The label being browsed, if this list is browsing one. Null for the inbox and categories. */
+    label: Label?,
+    onEditLabel: (Label) -> Unit,
+) {
+    // Immediately left of Search, and drawn only where the server publishes a
+    // calendar -- the same condition the drawer's entry is under, because a
+    // second door onto a destination that is not there is worse than one.
+    //
+    // The drawer keeps its row. This is not a move: the drawer is where the
+    // app's *places* are listed and the calendar is one of them, but it was a
+    // swipe, a scroll and a tap away from the screen people open the app for.
+    //
+    // The drawer's own glyph rather than a second calendar icon, so the two
+    // entries are recognisably one destination, and the same word for its
+    // description -- TalkBack says "Calendar" in both places.
+    onCalendar?.let { open ->
+        IconButton(onClick = open) {
+            Icon(
+                Icons.Outlined.CalendarMonth,
+                contentDescription = stringResource(R.string.calendar),
+            )
+        }
+    }
+
+    IconButton(onClick = onSearch) {
+        Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
+    }
+
+    // Only where there is something to edit. A category has no server object
+    // behind it at all -- there is nothing to rename, recolour or delete -- and
+    // a system label would be a rename the server refuses. Colour is the
+    // exception the editor is reached for on a system label, and that is reached
+    // from the sidebar rather than from here: this bar is over one list, and
+    // Inbox's colour is a property of the sidebar row.
+    if (label?.mayRename == true || label?.mayDelete == true) {
+        IconButton(onClick = { onEditLabel(label) }) {
+            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.label_edit))
         }
     }
 }

@@ -129,6 +129,14 @@ fun MailShell(
                 onEditLabel = { editing = LabelEditorRequest.Edit(it.key) },
                 onCreateLabel = { editing = LabelEditorRequest.New },
                 onSearch = onSearch,
+                // The callback as it arrived, without the drawer-closing wrapper
+                // the sidebar's copy carries: there is no drawer open when the
+                // top bar is being tapped, and closing a closed drawer on a
+                // tablet's permanent one is a request to hide the navigation.
+                // Same destination, same mechanism -- :app flips one flag either
+                // way, so back from the calendar lands on the list whichever
+                // entry was used.
+                onCalendar = onCalendar,
                 onCompose = onCompose,
                 onReply = onReply,
                 onForward = onForward,

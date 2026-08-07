@@ -57,6 +57,8 @@ fun MailPane(
     onEditLabel: (Label) -> Unit,
     onCreateLabel: () -> Unit,
     onSearch: () -> Unit,
+    /** Null where this install has no calendar. Passed straight to the list's top bar. */
+    onCalendar: (() -> Unit)?,
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
@@ -128,6 +130,7 @@ fun MailPane(
                         onEditLabel = onEditLabel,
                         onCreateLabel = onCreateLabel,
                         onSearch = onSearch,
+                        onCalendar = onCalendar,
                         onCompose = onCompose,
                         viewModel = viewModel,
                         onThreadSelected = { thread ->
