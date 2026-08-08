@@ -97,7 +97,15 @@ class StateChangeApplierTest {
     // -- helpers -----------------------------------------------------------
 
     private suspend fun applier(transport: RecordingTransport) =
-        StateChangeApplier(database, syncStack(database, transport))
+        StateChangeApplier(
+            database,
+            syncStack(database, transport),
+            // Real rather than a double, so the request count these tests assert
+            // on includes anything the prefetch adds. It finds nothing to fetch
+            // here — the canned syncs store no messages — which is the point:
+            // "nothing missing a body" must cost no request.
+            bodyPrefetcher(database, transport),
+        )
 
     /** A server with nothing to report, so the only thing under test is whether it was asked. */
     private fun quiet(): RecordingTransport = RecordingTransport { request ->
