@@ -116,6 +116,51 @@ class CredentialStoreTest {
         assertNull(afterKeyLoss.connection.first())
     }
 
+    /**
+     * The cold-launch cost this store exists to stop paying repeatedly.
+     *
+     * On a device `open` is an Android Keystore operation, and there are four collectors of
+     * [CredentialStore.connection] alive during a launch — plus one re-emission per write to a
+     * preferences file the whole app shares. Counting opens is the only way to see that from the
+     * JVM: the correctness of the value never changed, only how many times it was computed.
+     */
+    @Test
+    fun `one ciphertext is opened once however often it is read`() = runTest {
+        val cipher = RecordingCipher()
+        val backing = EmittingDataStore()
+
+        // Written behind the store rather than through `save`, because the case
+        // is a *launch*: the ciphertext is already on disk and nothing in this
+        // process has ever held the plaintext.
+        backing.write(stringPreferencesKey("server.address"), address.display)
+        backing.write(stringPreferencesKey("server.secret"), cipher.seal(secret).encoded)
+
+        val store = CredentialStore(backing, cipher)
+
+        repeat(3) { assertEquals(secret, store.connection.first()?.credential?.secret) }
+        // An unrelated component writing to the same file, which re-emits the
+        // whole preference map to every collector.
+        backing.write(stringPreferencesKey("push.lastSeen"), "now")
+        store.connection.first()
+
+        assertEquals(1, cipher.opens, "the ciphertext was opened more than once")
+    }
+
+    /** Because the cache is keyed by the ciphertext, and re-pairing writes a different one. */
+    @Test
+    fun `re-pairing is not served from the previous secret`() = runTest {
+        val cipher = RecordingCipher()
+        val store = CredentialStore(EmittingDataStore(), cipher)
+        val replacement = "plmail_" + "b".repeat(64)
+
+        store.save(ServerConnection(address, Credential.AppPassword(secret)))
+        assertEquals(secret, store.connection.first()?.credential?.secret)
+
+        store.save(ServerConnection(address, Credential.AppPassword(replacement)))
+
+        assertEquals(replacement, store.connection.first()?.credential?.secret)
+    }
+
     @Test
     fun `clearing forgets everything`() = runTest {
         val backing = FakeDataStore()
@@ -188,15 +233,22 @@ private class FakeDataStore : DataStore<Preferences> {
  */
 private class RecordingCipher(private val canOpen: Boolean = true) : SecretCipher {
 
+    /** How many times a ciphertext has actually been opened. On a device, Keystore round trips. */
+    var opens = 0
+        private set
+
     override fun seal(plaintext: String): SealedSecret =
         SealedSecret(SEALED_PREFIX + plaintext.reversed())
 
-    override fun open(sealed: SealedSecret): String? =
-        if (canOpen && sealed.encoded.startsWith(SEALED_PREFIX)) {
+    override fun open(sealed: SealedSecret): String? {
+        opens++
+
+        return if (canOpen && sealed.encoded.startsWith(SEALED_PREFIX)) {
             sealed.encoded.removePrefix(SEALED_PREFIX).reversed()
         } else {
             null
         }
+    }
 
     private companion object {
         const val SEALED_PREFIX = "sealed:"

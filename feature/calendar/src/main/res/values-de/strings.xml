@@ -76,7 +76,7 @@
     <string name="calendar_write_unreachable_unnamed">plMail konnte den Server nicht erreichen. Es wurde nichts geändert.</string>
     <string name="calendar_gone">Dieser Server bietet keinen Kalender mehr an.</string>
 
-    <string name="calendar_view_switcher">Kalenderansicht</string>
+    <string name="calendar_view_choose">Kalenderansicht wechseln</string>
     <string name="calendar_view_agenda">Agenda</string>
     <string name="calendar_view_day">Tag</string>
     <string name="calendar_view_week">Woche</string>

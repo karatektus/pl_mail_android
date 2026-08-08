@@ -103,12 +103,15 @@
     <string name="calendar_gone">This server is no longer offering a calendar.</string>
 
     <!--
-      The switcher. Four words rather than four icons, and on their own row:
-      the whole reason this feature exists is somebody tapping the Today icon
-      expecting a view switcher, so hiding the views behind a fifth icon would
-      have answered a discoverability complaint with less discoverability.
+      The switcher, which is now a menu in the app bar rather than four words on
+      a row of their own, because the calendar needs the height more. The names
+      are still words and still translated; what changed is where they are read.
+
+      The button's description is a verb, deliberately: it is the one control in
+      that bar whose whole job is to change the others' meaning, and "Calendar
+      view" alone would have TalkBack announce a heading rather than an action.
     -->
-    <string name="calendar_view_switcher">Calendar view</string>
+    <string name="calendar_view_choose">Change calendar view</string>
     <string name="calendar_view_agenda">Agenda</string>
     <string name="calendar_view_day">Day</string>
     <string name="calendar_view_week">Week</string>
