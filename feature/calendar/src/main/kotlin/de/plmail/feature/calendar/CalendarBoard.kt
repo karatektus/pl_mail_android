@@ -60,19 +60,20 @@ import kotlinx.coroutines.launch
 /**
  * The calendar, in whichever of its four views the user is in.
  *
- * **One screen rather than four**, because the top bar, the switcher, the banners, the pull-to-
- * refresh and the horizon footer are the same in all of them and the day they were written four
- * times is the day one of them stopped saying "there may be more".
+ * **One screen rather than four**, because the top bar, the banners, the pull-to-refresh and the
+ * horizon footer are the same in all of them and the day they were written four times is the day
+ * one of them stopped saying "there may be more".
  *
- * The chrome is three rows and each one earns its height:
+ * The chrome above the calendar is now **two rows**, and losing the third is the point: the
+ * switcher used to have a row to itself and has moved into the bar as `ViewMenu`, which is a touch
+ * target of height given back to the one thing this screen is for.
  *
- * - **The app bar** keeps what was already there — back, the calendar's name, Today, New — so
- *   nothing a user had learned moved. **Today is now a word rather than an icon**, and that is the
- *   defect this whole feature started from: `Icons.Outlined.Today` draws a calendar page, people
- *   read it as "switch view", and there was no switcher to find. The web's toolbar has spelled it
- *   "Today" all along. It also does more than it used to — it means "show me now" in whatever view
- *   is open, rather than "scroll this list to the top", which was the only thing there was to mean.
- * - **The switcher**, on its own row so the four names fit at 320dp. See `ViewSwitcher`.
+ * - **The app bar** keeps what was already there — back, the calendar's name, Today, New — plus the
+ *   view menu. **Today is a word rather than an icon**, and that is the defect this whole feature
+ *   started from: `Icons.Outlined.Today` draws a calendar page, people read it as "switch view",
+ *   and there was no switcher to find. The web's toolbar has spelled it "Today" all along. It also
+ *   does more than it used to — it means "show me now" in whatever view is open, rather than
+ *   "scroll this list to the top", which was the only thing there was to mean.
  * - **The pager**, on paged views only: chevrons either side of where you are. The agenda has none,
  *   because it is a rolling list from today and Previous on it would be a control that scrolls.
  *
@@ -132,9 +133,14 @@ internal fun CalendarBoard(
                     }
                 },
                 actions = {
-                    // A word rather than an icon. See this file's header: the
-                    // icon was being read as a view switcher, which is exactly
-                    // what it was not.
+                    // First, and left of Today: it is the only action here that
+                    // changes what the rest of the bar means -- Today and New
+                    // both act *within* whatever view this one has chosen.
+                    ViewMenu(chosen = state.view, onChoose = onChoose)
+
+                    // A word rather than an icon. The icon this replaced was
+                    // being read as a view switcher, and now that there really
+                    // is one beside it the word is what keeps the two apart.
                     TextButton(
                         onClick = {
                             onToday()
@@ -164,8 +170,6 @@ internal fun CalendarBoard(
         },
     ) { insets ->
         Column(modifier = Modifier.fillMaxSize().padding(insets)) {
-            ViewSwitcher(chosen = state.view, onChoose = onChoose)
-
             if (state.view.isPaged) {
                 Pager(
                     heading = state.view.heading(state.anchor, state.firstDayOfWeek, formats),
