@@ -17,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -139,6 +140,14 @@ private fun PlMailApp(
     var isCalendaring by rememberSaveable { mutableStateOf(false) }
     var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
 
+    // A conversation picked from a search result. It goes through the same
+    // openThread door as a notification tap because that is the only door:
+    // MailPane owns the list/detail navigator, and closing search just puts the
+    // mail *list* on screen — which is exactly what tapping a result used to
+    // do, and was a bug, not a shortcut.
+    var searchPick by
+        rememberSaveable(stateSaver = ThreadTargetSaver) { mutableStateOf<ThreadTarget?>(null) }
+
     // Over the mail list, never over the composer: the composer has closed by
     // the time the undo window is running, which is the whole point of a window
     // rather than a confirmation.
@@ -151,7 +160,7 @@ private fun PlMailApp(
     val openThread =
         (notification as? NotificationRequest.OpenConversation)?.let {
             ThreadTarget(accountKey = it.accountKey, threadId = it.threadId)
-        }
+        } ?: searchPick
 
     LaunchedEffect(notification) {
         val reply = notification as? NotificationRequest.Reply ?: return@LaunchedEffect
@@ -279,11 +288,13 @@ private fun PlMailApp(
                         DiagnosticsScreen(onBack = { isDiagnosing = false })
                     } else if (screen == Screen.SEARCH) {
                         SearchScreen(
-                            // The reader is M4's and reached from the list;
-                            // opening a result closes search, so Back returns to
-                            // the mail list rather than to a query the user has
-                            // finished with.
-                            onOpenThread = { _, _ -> isSearching = false },
+                            // Closing search as well as picking: Back from the
+                            // opened conversation should return to the mail
+                            // list, not to a query the user has finished with.
+                            onOpenThread = { accountKey, threadId ->
+                                isSearching = false
+                                searchPick = ThreadTarget(accountKey, threadId)
+                            },
                             onBack = { isSearching = false },
                         )
                     } else {
@@ -307,7 +318,15 @@ private fun PlMailApp(
                                 composing = ComposeRequest.Forward(accountKey, emailId)
                             },
                             openThread = openThread,
-                            onThreadOpened = onNotificationHandled,
+                            // Both cleared, not just whichever produced this
+                            // target: acknowledging is what stops back-then-
+                            // rotate from reopening the conversation, and a
+                            // stale pick would do exactly that the moment the
+                            // notification ahead of it was consumed.
+                            onThreadOpened = {
+                                searchPick = null
+                                onNotificationHandled()
+                            },
                         )
                     }
                 }
@@ -352,6 +371,17 @@ internal fun PlMailAppTheme(
 
     PlMailTheme(appearance = appearance, content = content)
 }
+
+/**
+ * Survives process death because [MailPane] acknowledges a target it has acted on, and between the
+ * pick and that acknowledgement there is a window a recreation can land in. An empty list is the
+ * saved form of "no pick" — a Saver cannot hand back null and mean it.
+ */
+private val ThreadTargetSaver =
+    listSaver<ThreadTarget?, String>(
+        save = { target -> target?.let { listOf(it.accountKey, it.threadId) } ?: emptyList() },
+        restore = { saved -> if (saved.size == 2) ThreadTarget(saved[0], saved[1]) else null },
+    )
 
 /**
  * Which of the state-swapped screens is on top.
