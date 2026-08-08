@@ -62,7 +62,19 @@ interface SecretCipher {
  */
 class KeystoreSecretCipher(private val alias: String = DEFAULT_ALIAS) : SecretCipher {
 
-    private val keyStore: KeyStore = KeyStore.getInstance(PROVIDER).apply { load(null) }
+    /**
+     * Lazy, so loading the provider happens on whichever thread first opens a secret rather than on
+     * whichever thread first *injects* something that holds this.
+     *
+     * That thread is the main one: this is a `@Singleton`, and the first component to ask for it is
+     * `MainViewModel` during `onCreate`. `load(null)` is not free — it opens the keystore daemon
+     * connection every later operation reuses — and paying for it here put it in front of the first
+     * frame for no reason, since `CredentialStore` already does the opening itself off the main
+     * thread.
+     */
+    private val keyStore: KeyStore by lazy {
+        KeyStore.getInstance(PROVIDER).apply { load(null) }
+    }
 
     override fun seal(plaintext: String): SealedSecret {
         val cipher = Cipher.getInstance(TRANSFORMATION)

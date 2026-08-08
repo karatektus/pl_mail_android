@@ -38,10 +38,15 @@ object DataStoreModule {
 
     @Provides @Singleton fun secretCipher(): SecretCipher = KeystoreSecretCipher()
 
+    /**
+     * `Dispatchers.IO` because on a real device the cipher is the Android Keystore, and opening the
+     * secret is two binder round trips into the TEE. Left to the collector's thread that happens on
+     * `Dispatchers.Main.immediate`, in front of the first frame — see [CredentialStore.connection].
+     */
     @Provides
     @Singleton
     fun credentialStore(
         preferences: DataStore<Preferences>,
         cipher: SecretCipher,
-    ): CredentialStore = CredentialStore(preferences, cipher)
+    ): CredentialStore = CredentialStore(preferences, cipher, opening = Dispatchers.IO)
 }

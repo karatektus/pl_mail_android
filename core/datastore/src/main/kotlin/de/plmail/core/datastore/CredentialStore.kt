@@ -8,8 +8,11 @@ import de.plmail.jmap.client.Credential
 import de.plmail.jmap.client.KeyFingerprint
 import de.plmail.jmap.client.ParsedAddress
 import de.plmail.jmap.client.ServerAddress
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 
 /**
@@ -51,7 +54,47 @@ data class ServerConnection(
 class CredentialStore(
     private val dataStore: DataStore<Preferences>,
     private val cipher: SecretCipher,
+    /**
+     * Where the ciphertext is opened — see [connection] for why it must not be the caller's thread.
+     *
+     * [EmptyCoroutineContext] by default, which `flowOn` treats as "no hop at all", so a test
+     * reading this store is exactly as synchronous as it was before this parameter existed. The
+     * production wiring passes `Dispatchers.IO`, and the reason is entirely the Android Keystore:
+     * it is the one collaborator that cannot be exercised off-device, so it is the one cost no test
+     * can see and no test should have to pay for.
+     */
+    private val opening: CoroutineContext = EmptyCoroutineContext,
 ) {
+
+    /**
+     * The one ciphertext this process has opened, and what it opened to.
+     *
+     * A cache, and it is on the critical path of a cold launch rather than a nicety. Opening the
+     * secret is an Android Keystore operation: a binder round trip to the keystore daemon to fetch
+     * the key handle, and a second into the TEE — or, on a phone that has StrongBox, into a
+     * separate security chip that is an order of magnitude slower again. One is affordable. What
+     * the app was doing was not: [connection] is collected by `MainViewModel`, by the calendar
+     * probe, by `FeedRepository` when it builds the pager and by `AccountsRepository` for the
+     * banner's hostname, so a cold launch opened the same ciphertext four times before the first
+     * page could be asked for — and, because `dataStore.data` re-emits the whole file on every
+     * write and this app keeps every preference in one file, opened it again in every one of those
+     * collectors each time the push log recorded a delivery.
+     *
+     * Keyed by the ciphertext, so [save] invalidates it by construction: a re-pair writes a new
+     * sealed value, which does not match, which decrypts. [clear] never reaches here at all.
+     *
+     * **Only successes are remembered.** Caching a null would turn "the Keystore was busy for a
+     * moment" into "this install has no server" for the rest of the process, and that state is the
+     * one that sends somebody back through pairing. A key that genuinely did not survive a restore
+     * fails every time anyway, so the honest path costs nothing where it matters and keeps a retry
+     * where it might.
+     *
+     * Holding the plaintext is not a new exposure: every emission of [connection] already carries
+     * it, and half the app is holding one of those.
+     */
+    private var opened: Pair<String, String>? = null
+
+    private val openLock = Any()
 
     /**
      * The stored connection, or null when there is none *or* when it can no longer be read — and
@@ -74,12 +117,27 @@ class CredentialStore(
      * a live one within a second of launch. The dedupe belongs here rather than at the one caller,
      * because "the server this app is connected to" is what this flow means, and re-announcing it
      * unchanged is wrong for every subscriber rather than inconvenient for one.
+     *
+     * Note that the dedupe is *downstream* of [read] and so has never saved a single decryption —
+     * it suppresses the emission after the work has been done. [opened] is what makes the work
+     * happen once, and [opening] is what keeps it off whichever thread asked.
+     *
+     * **[flowOn] is load-bearing, not tidiness.** Every operator here otherwise runs in the
+     * collector's context, and the collectors that matter are `stateIn(viewModelScope)` and
+     * `cachedIn(viewModelScope)` — which is `Dispatchers.Main.immediate`. So the Keystore round
+     * trips described on [opened] ran on the UI thread, one after another because they shared it,
+     * in front of the first frame and in front of the pager that draws the cached list.
      */
     val connection: Flow<ServerConnection?>
-        get() = dataStore.data.map(::read).distinctUntilChanged()
+        get() = dataStore.data.map(::read).distinctUntilChanged().flowOn(opening)
 
     suspend fun save(connection: ServerConnection) {
         val sealed = cipher.seal(connection.credential.secret)
+
+        // Primed rather than left to be opened again a moment later. Saving is
+        // the end of pairing, and the screen that replaces onboarding starts by
+        // reading this back.
+        synchronized(openLock) { opened = sealed.encoded to connection.credential.secret }
 
         dataStore.edit { preferences ->
             preferences[ADDRESS] = connection.address.display
@@ -128,7 +186,7 @@ class CredentialStore(
         // parser means the address can never be reconstituted into something
         // the parser would have rejected.
         val address = (ServerAddress.parse(stored) as? ParsedAddress.Valid)?.address ?: return null
-        val secret = cipher.open(SealedSecret(sealed)) ?: return null
+        val secret = open(sealed) ?: return null
 
         return ServerConnection(
             address = address,
@@ -137,6 +195,22 @@ class CredentialStore(
             username = preferences[USERNAME].orEmpty(),
         )
     }
+
+    /**
+     * The plaintext secret behind one stored ciphertext, from [opened] where it can be.
+     *
+     * Locked rather than merely volatile, so the launch storm this exists for collapses into one
+     * Keystore call instead of four concurrent ones: the waiters block for the length of that call
+     * and then find it done. Blocking a thread is the right shape here — [opening] puts them on
+     * `Dispatchers.IO`, which is the pool for exactly this, and the alternative is four TEE
+     * operations racing each other on a device that can only run them one at a time anyway.
+     */
+    private fun open(sealed: String): String? =
+        synchronized(openLock) {
+            opened?.let { (ciphertext, secret) -> if (ciphertext == sealed) return secret }
+
+            cipher.open(SealedSecret(sealed))?.also { secret -> opened = sealed to secret }
+        }
 
     companion object {
         /** The DataStore file name, so the Hilt module and the tests cannot disagree about it. */
