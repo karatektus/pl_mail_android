@@ -28,7 +28,8 @@ constructor(
      *
      * The sync above stores list-row properties only, so without this the push path ends with the
      * message on the device and its body still on the server — and the reader the user reaches from
-     * the notification shade is the one screen guaranteed to be about mail that arrived seconds ago.
+     * the notification shade is the one screen guaranteed to be about mail that arrived seconds
+     * ago.
      */
     private val bodies: BodyPrefetcher,
 ) {

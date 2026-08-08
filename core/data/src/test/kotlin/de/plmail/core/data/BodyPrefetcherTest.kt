@@ -58,7 +58,8 @@ class BodyPrefetcherTest {
             database.emails().body(StoreKey.objectKey(testAccountKey, "m1"))?.textBody,
         )
 
-        val request = transport.requests.last { it.url.endsWith("/jmap/api") }.body!!.decodeToString()
+        val request =
+            transport.requests.last { it.url.endsWith("/jmap/api") }.body!!.decodeToString()
         assertTrue(request.contains("\"fetchTextBodyValues\":true"), request)
         // The capitalisation trap: the camel-cased spelling is silently ignored
         // and comes back with empty body values and nothing to debug.

@@ -75,10 +75,10 @@ constructor(
     /**
      * Where the directory refresh runs when a cached list is already on screen.
      *
-     * Process-lifetime rather than the caller's, because the refresh outlives the flow that
-     * started it by construction: the point of doing it here is that nobody is waiting for it, and
-     * a scope tied to the screen would cancel it the moment the user switched view — which is the
-     * exact moment it was started.
+     * Process-lifetime rather than the caller's, because the refresh outlives the flow that started
+     * it by construction: the point of doing it here is that nobody is waiting for it, and a scope
+     * tied to the screen would cancel it the moment the user switched view — which is the exact
+     * moment it was started.
      */
     @ApplicationScope private val scope: CoroutineScope,
     repages: RepageSignal,
@@ -89,8 +89,8 @@ constructor(
     /**
      * Serialises the directory refresh, and remembers when the last one finished.
      *
-     * Both halves are one guard. The lock single-flights — flipping between Inbox, Promotions and
-     * a label in three seconds starts three refreshes, and a server advertising four concurrent
+     * Both halves are one guard. The lock single-flights — flipping between Inbox, Promotions and a
+     * label in three seconds starts three refreshes, and a server advertising four concurrent
      * requests that is frequently a Raspberry Pi should see one. The timestamp is what makes the
      * queued callers *cheap* rather than merely late: each takes the lock, sees a refresh newer
      * than [DIRECTORY_REFRESH_INTERVAL], and returns without asking anything.
@@ -368,35 +368,34 @@ constructor(
         skipAccountsWithoutFilter: Boolean,
         filterFor: suspend (accountKey: String, accountId: AccountId) -> EmailFilter?,
     ): Flow<PagingData<ThreadEntity>> {
-        val sources =
-            accounts.mapNotNull { (accountKey, accountId) ->
-                // "In this label" is a binding id, and the binding differs per
-                // account -- resolved per account rather than shared.
-                val filter = filterFor(accountKey, accountId)
+        val sources = accounts.mapNotNull { (accountKey, accountId) ->
+            // "In this label" is a binding id, and the binding differs per
+            // account -- resolved per account rather than shared.
+            val filter = filterFor(accountKey, accountId)
 
-                // A list scoped to one label must exclude an account that does
-                // not have it. Falling through to an unfiltered pager here would
-                // merge that account's *whole* mailbox into the label's rows,
-                // which reads as a filter that stopped working rather than as an
-                // account that never had the label.
-                if (filter == null && skipAccountsWithoutFilter) return@mapNotNull null
+            // A list scoped to one label must exclude an account that does
+            // not have it. Falling through to an unfiltered pager here would
+            // merge that account's *whole* mailbox into the label's rows,
+            // which reads as a filter that stopped working rather than as an
+            // account that never had the label.
+            if (filter == null && skipAccountsWithoutFilter) return@mapNotNull null
 
-                AccountPager(
-                    accountKey = accountKey,
-                    accountId = accountId,
-                    client = client,
-                    filter = filter,
-                    onPage = { emails, threads, state ->
-                        mail.storeEmails(accountKey, emails, threads, fetchedAt = now())
+            AccountPager(
+                accountKey = accountKey,
+                accountId = accountId,
+                client = client,
+                filter = filter,
+                onPage = { emails, threads, state ->
+                    mail.storeEmails(accountKey, emails, threads, fetchedAt = now())
 
-                        // The cursor delta sync resumes from. Recorded here
-                        // because a page is the only place it is reported, and
-                        // without it every push triggers a sync that finds no
-                        // cursor and gives up.
-                        mail.recordEmailState(accountKey, state)
-                    },
-                )
-            }
+                    // The cursor delta sync resumes from. Recorded here
+                    // because a page is the only place it is reported, and
+                    // without it every push triggers a sync that finds no
+                    // cursor and gives up.
+                    mail.recordEmailState(accountKey, state)
+                },
+            )
+        }
 
         return Pager(
                 config =
@@ -431,7 +430,9 @@ constructor(
         directoryLock.withLock {
             if (now() - directoryRefreshedAt < DIRECTORY_REFRESH_INTERVAL) return
 
-            val session = runCatching { client.session() }
+            val session = runCatching {
+                client.session()
+            }
                 .getOrElse { failure ->
                     // The same banner the blocking path raised, for the same
                     // reason: the list is drawing rows nothing is refreshing, and
@@ -462,19 +463,19 @@ constructor(
             val accountKey = StoreKey.account(server, accountId.value)
 
             runCatching {
-                    val request = RequestBuilder()
-                    val mailboxes = request.add(MailboxGet(accountId))
-                    // In the same batch rather than its own round trip.
-                    // Identities are what the composer's From row is drawn from,
-                    // and a composer opened before the first sync would otherwise
-                    // have nothing to send as -- against a server on a domestic
-                    // uplink, one request is the resource worth saving.
-                    val identities = request.add(IdentityGet(accountId))
-                    val results = client.send(request)
+                val request = RequestBuilder()
+                val mailboxes = request.add(MailboxGet(accountId))
+                // In the same batch rather than its own round trip.
+                // Identities are what the composer's From row is drawn from,
+                // and a composer opened before the first sync would otherwise
+                // have nothing to send as -- against a server on a domestic
+                // uplink, one request is the resource worth saving.
+                val identities = request.add(IdentityGet(accountId))
+                val results = client.send(request)
 
-                    mail.replaceMailboxes(accountKey, results.result(mailboxes).list)
-                    mail.replaceIdentities(accountKey, results.result(identities).list)
-                }
+                mail.replaceMailboxes(accountKey, results.result(mailboxes).list)
+                mail.replaceIdentities(accountKey, results.result(identities).list)
+            }
                 // This account just answered two methods, which is the whole of
                 // what a "could not reach it" banner claims it cannot do. Said
                 // here rather than left to the next sync: on the cached path
@@ -527,9 +528,9 @@ constructor(
          * How long a directory refresh stands for.
          *
          * A minute, not an hour: mailbox and identity lists change rarely, but when they do — a
-         * label created in the browser — the user is usually about to look for it. Long enough
-         * that flipping between four views costs one refresh rather than four, which is the only
-         * thing this is defending against; the periodic sync covers the rest.
+         * label created in the browser — the user is usually about to look for it. Long enough that
+         * flipping between four views costs one refresh rather than four, which is the only thing
+         * this is defending against; the periodic sync covers the rest.
          */
         const val DIRECTORY_REFRESH_INTERVAL = 60_000L
     }

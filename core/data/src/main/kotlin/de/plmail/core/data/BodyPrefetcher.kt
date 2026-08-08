@@ -123,14 +123,13 @@ constructor(
  * Records that these messages were fetched and genuinely have no body.
  *
  * `toBodyEntity` returns null when a message has neither text nor html, so that a body that was
- * never fetched stays distinguishable from an empty one — which is right, and leaves the
- * genuinely empty message with no row at all. Every query for "what is missing a body" then
- * answers with it, forever: it would be refetched on every prefetch run, occupying budget that
- * belongs to mail that actually has something to download, and refetched on every open of the
- * conversation it is in.
+ * never fetched stays distinguishable from an empty one — which is right, and leaves the genuinely
+ * empty message with no row at all. Every query for "what is missing a body" then answers with it,
+ * forever: it would be refetched on every prefetch run, occupying budget that belongs to mail that
+ * actually has something to download, and refetched on every open of the conversation it is in.
  *
- * An empty string rather than null in `textBody`, because null is what an unfetched body looks
- * like everywhere else and the whole point of the row is to be distinguishable from one.
+ * An empty string rather than null in `textBody`, because null is what an unfetched body looks like
+ * everywhere else and the whole point of the row is to be distinguishable from one.
  *
  * Written only where no row exists, so this can never overwrite a body [MailRepository] has just
  * stored — including on the ordinary path, where nearly every fetched message has one.
