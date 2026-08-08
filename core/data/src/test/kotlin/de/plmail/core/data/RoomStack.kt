@@ -248,18 +248,7 @@ internal suspend fun syncStack(
         )
     )
 
-    val transports =
-        object : TransportFactory {
-            override fun create(address: ServerAddress, pinned: KeyFingerprint?): JmapTransport =
-                transport
-
-            override fun createStreaming(
-                address: ServerAddress,
-                pinned: KeyFingerprint?,
-            ): StreamingTransport = error("no stream is opened on this path")
-        }
-
-    val clients = AccountClients(credentials, transports)
+    val clients = AccountClients(credentials, fixedTransports(transport))
 
     return DeltaSync(
         database = database,
@@ -277,6 +266,39 @@ internal suspend fun syncStack(
         schedules = ScheduledSendReconciler(scheduledSends(), NoSubmissions),
     )
 }
+
+/** A factory that hands out the one canned transport, whatever it is asked for. */
+internal fun fixedTransports(transport: JmapTransport): TransportFactory =
+    object : TransportFactory {
+        override fun create(address: ServerAddress, pinned: KeyFingerprint?): JmapTransport =
+            transport
+
+        override fun createStreaming(
+            address: ServerAddress,
+            pinned: KeyFingerprint?,
+        ): StreamingTransport = error("no stream is opened on this path")
+    }
+
+/** An [AccountClients] pointed at [TEST_SERVER], answering out of a canned transport. */
+internal suspend fun testClients(transport: JmapTransport): AccountClients {
+    val credentials = CredentialStore(InMemoryPreferences(), PlainCipher)
+
+    credentials.save(
+        ServerConnection(
+            address = (ServerAddress.parse(TEST_SERVER) as ParsedAddress.Valid).address,
+            credential = Credential.AppPassword("plmail_" + "a".repeat(64)),
+            username = "someone@example.com",
+        )
+    )
+
+    return AccountClients(credentials, fixedTransports(transport))
+}
+
+/** A real [BodyPrefetcher] over a real database, answering out of a canned transport. */
+internal suspend fun bodyPrefetcher(
+    database: PlMailDatabase,
+    transport: JmapTransport,
+): BodyPrefetcher = BodyPrefetcher(database, testClients(transport), MailRepository(database))
 
 /** A [ScheduledSends] over a store that is a variable. */
 internal fun scheduledSends(): ScheduledSends =

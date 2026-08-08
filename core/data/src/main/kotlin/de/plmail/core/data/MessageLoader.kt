@@ -40,7 +40,17 @@ constructor(
      */
     suspend fun loadBodies(accountKey: String, threadId: String) {
         val stored = database.emails().inThread(accountKey, threadId)
-        val missing = stored.filter { database.emails().body(it.uid) == null }
+        val (missing, held) = stored.partition { database.emails().body(it.uid) == null }
+        val now = System.currentTimeMillis()
+
+        // Opening a conversation is the event eviction should be measured from,
+        // and until this it was not measured at all: `fetchedAt` recorded when a
+        // body was *downloaded*, so `BodyPrefetcher.prune` would drop a thread
+        // reread every week on the sixtieth day after its one fetch. Done before
+        // the early return, because a thread whose bodies are all cached is
+        // precisely the one being reread.
+        if (held.isNotEmpty()) database.emails().touchBodies(held.map { it.uid }, now)
+
         if (missing.isEmpty()) return
 
         val connection = credentials.connection.first() ?: return
@@ -72,6 +82,12 @@ constructor(
 
         // Through the repository, so bodies and attachments are written the same
         // way a sync writes them and the thread summary is recomputed once.
-        mail.storeEmails(accountKey, emails, fetchedAt = System.currentTimeMillis())
+        mail.storeEmails(accountKey, emails, fetchedAt = now)
+
+        // A message with neither text nor html stores no body row, so without
+        // this it is "missing a body" again the next time the thread is opened --
+        // one `Email/get` per open, forever, for a message that has nothing to
+        // fetch. See `markFetchedBodylessMessages`.
+        database.markFetchedBodylessMessages(accountKey, emails.map { it.id.value }, now)
     }
 }

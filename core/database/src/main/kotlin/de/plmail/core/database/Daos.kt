@@ -195,6 +195,33 @@ interface EmailDao {
     @Query("SELECT * FROM email_bodies WHERE uid = :uid")
     suspend fun body(uid: String): EmailBodyEntity?
 
+    /**
+     * The newest messages whose bodies are not on the device, for the prefetcher to go and get.
+     *
+     * Newest first because that is the order they will be opened in. The `LEFT JOIN` rather than a
+     * `NOT IN` subquery so SQLite can walk the body table's primary key rather than materialising
+     * every cached uid — this runs over the whole account on every periodic sync.
+     */
+    @Query(
+        """
+        SELECT emails.* FROM emails
+        LEFT JOIN email_bodies ON emails.uid = email_bodies.uid
+        WHERE emails.accountKey = :accountKey AND email_bodies.uid IS NULL
+        ORDER BY emails.receivedAt DESC LIMIT :limit
+        """
+    )
+    suspend fun withoutBodies(accountKey: String, limit: Int): List<EmailEntity>
+
+    /**
+     * Marks bodies as used, so eviction is by last read rather than by when they were downloaded.
+     *
+     * Without this, prefetching and pruning fight each other: a conversation reread every week
+     * would still be dropped sixty days after the one fetch that brought it down, and then
+     * prefetched again — the cache would churn hardest on exactly the mail that is worth keeping.
+     */
+    @Query("UPDATE email_bodies SET fetchedAt = :at WHERE uid IN (:uids)")
+    suspend fun touchBodies(uids: List<String>, at: Long)
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAttachments(attachments: List<AttachmentEntity>)
 
@@ -249,8 +276,23 @@ interface EmailDao {
     )
     suspend fun recipientsLike(pattern: String, limit: Int): List<RecipientRow>
 
-    /** Frees space without losing the message; bodies re-fetch on demand. */
-    @Query("DELETE FROM email_bodies WHERE fetchedAt < :before")
+    /**
+     * Frees space without losing the message; bodies re-fetch on demand.
+     *
+     * `fetchedAt` is bumped on every read — see [touchBodies] — so this is a least-recently-used
+     * eviction rather than an age one, which is the difference between dropping mail nobody has
+     * looked at since spring and dropping the thread someone reads every Monday.
+     *
+     * Flagged mail and drafts are spared unconditionally. Both are things the user has said are
+     * theirs to come back to, and a draft in particular is not always re-fetchable in the form it
+     * is held locally: evicting one is the only case here that can lose something.
+     */
+    @Query(
+        """
+        DELETE FROM email_bodies WHERE fetchedAt < :before
+        AND uid NOT IN (SELECT uid FROM emails WHERE isFlagged = 1 OR isDraft = 1)
+        """
+    )
     suspend fun evictBodiesOlderThan(before: Long)
 }
 

@@ -341,7 +341,12 @@ class LegacySubscriptionSweepTest {
             clients = clients ?: clients(transport),
             // Real, because nothing here delivers a push -- but constructed
             // rather than doubled so the class under test is the shipping one.
-            changes = StateChangeApplier(database, syncStack(database, transport)),
+            changes =
+                StateChangeApplier(
+                    database,
+                    syncStack(database, transport),
+                    bodyPrefetcher(database, transport),
+                ),
             log = log,
             state = state,
         )

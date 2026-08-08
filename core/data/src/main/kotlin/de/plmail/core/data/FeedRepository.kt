@@ -17,6 +17,7 @@ import de.plmail.jmap.protocol.MailboxId
 import de.plmail.jmap.protocol.RequestBuilder
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /** The lists the app can show. Ids are stable, because they key the feed table. */
 enum class Feed(val id: String) {
@@ -68,10 +72,31 @@ constructor(
     private val credentials: CredentialStore,
     private val transports: TransportFactory,
     private val mail: MailRepository,
+    /**
+     * Where the directory refresh runs when a cached list is already on screen.
+     *
+     * Process-lifetime rather than the caller's, because the refresh outlives the flow that
+     * started it by construction: the point of doing it here is that nobody is waiting for it, and
+     * a scope tied to the screen would cancel it the moment the user switched view — which is the
+     * exact moment it was started.
+     */
+    @ApplicationScope private val scope: CoroutineScope,
     repages: RepageSignal,
 ) : ReachableAccounts {
 
     private val _failures = MutableStateFlow<List<SourceFailure>>(emptyList())
+
+    /**
+     * Serialises the directory refresh, and remembers when the last one finished.
+     *
+     * Both halves are one guard. The lock single-flights — flipping between Inbox, Promotions and
+     * a label in three seconds starts three refreshes, and a server advertising four concurrent
+     * requests that is frequently a Raspberry Pi should see one. The timestamp is what makes the
+     * queued callers *cheap* rather than merely late: each takes the lock, sees a refresh newer
+     * than [DIRECTORY_REFRESH_INTERVAL], and returns without asking anything.
+     */
+    private val directoryLock = Mutex()
+    private var directoryRefreshedAt = 0L
 
     /**
      * The mediator's own report of how many rows it has just committed, per feed.
@@ -213,7 +238,6 @@ constructor(
             is MailView.Labelled -> labelled(view.label, pageSize)
         }
 
-    @OptIn(ExperimentalPagingApi::class)
     private fun feed(
         feedId: String,
         pageSize: Int,
@@ -236,30 +260,57 @@ constructor(
                 transport = transports.create(connection.address, connection.pinnedKey),
             )
 
-        // The session is the one call in this flow that can fail before any row
-        // exists, and it throws rather than returning — a revoked app password
-        // is a `NotAuthenticated`, and an unreachable server an IO failure. Left
-        // to propagate it reaches `cachedIn(viewModelScope)` with nothing
-        // between, which is an uncaught exception on the main thread: the app
-        // dies at launch rather than showing the mail it already has on disk.
-        // Found by reseeding the test stack, which is exactly what "my
-        // credential stopped working" looks like.
+        val server = connection.address.origin
+
+        // The accounts this server has already been seen to have. Everything
+        // needed to build a pager is in this row -- the JMAP account id and the
+        // key the mailbox and label tables are scoped by -- and the pager needs
+        // nothing else, because `JmapClient.session()` is cached, single-flighted
+        // and called lazily by `send()`. So the round trip happens if and only if
+        // the mediator actually goes to the network, which it skips whenever the
+        // feed table can answer.
+        val cached = database.accounts().all().filter { it.serverId == server }
+
+        if (cached.isNotEmpty()) {
+            // Behind the rows, not in front of them. This preamble used to be
+            // blocking, and it defeated the whole of `FeedMediator`: the mediator
+            // skips its initial refresh precisely so a cold launch draws from
+            // disk, and then every cold launch and every sidebar switch sat on
+            // "Fetching your mail…" waiting for a session and a MailboxGet per
+            // account -- for names, bindings and identities that were already in
+            // Room.
+            scope.launch { refreshDirectory(client, server) }
+
+            emitAll(
+                pagerFor(
+                    feedId = feedId,
+                    pageSize = pageSize,
+                    client = client,
+                    accounts = cached.map { it.uid to AccountId(it.accountId) },
+                    skipAccountsWithoutFilter = skipAccountsWithoutFilter,
+                    filterFor = filterFor,
+                )
+            )
+            return@flow
+        }
+
+        // Nothing cached -- a first run, right after pairing. There is no list to
+        // show behind a background refresh, so the directory is fetched in front
+        // of the first page as it always was.
+        //
+        // The session is the one call here that can fail before any row exists,
+        // and it throws rather than returning — a revoked app password is a
+        // `NotAuthenticated`, and an unreachable server an IO failure. Left to
+        // propagate it reaches `cachedIn(viewModelScope)` with nothing between,
+        // which is an uncaught exception on the main thread: the app dies at
+        // launch rather than showing the mail it already has on disk. Found by
+        // reseeding the test stack, which is exactly what "my credential stopped
+        // working" looks like.
         val session = runCatching {
             client.session()
         }
             .getOrElse { failure ->
-                _failures.update {
-                    listOf(
-                        SourceFailure(
-                            // The origin, because there is nothing else: the
-                            // call that would have named the accounts is the
-                            // one that just failed.
-                            accountKey = connection.address.origin,
-                            error = failure,
-                            isWholeServer = true,
-                        )
-                    )
-                }
+                publishServerFailure(server, failure)
 
                 // The cached rows, still paged from the local table. An
                 // expired credential must not empty someone's inbox on
@@ -269,8 +320,6 @@ constructor(
                 return@flow
             }
 
-        val server = connection.address.origin
-
         // Written before the first page, so the sidebar and the per-account
         // banner have names to show even while the first query is in flight.
         mail.replaceAccounts(server, session)
@@ -279,31 +328,51 @@ constructor(
         // filter below, and every move action, which is expressed as adding or
         // removing a binding id that differs per account. Without this the list
         // silently pages the whole mailbox and archiving silently does nothing.
-        session.accountIds.forEach { accountId ->
-            val accountKey = StoreKey.account(server, accountId.value)
+        refreshBindings(client, server, session.accountIds.map { AccountId(it.value) })
 
-            runCatching {
-                val request = RequestBuilder()
-                val mailboxes = request.add(MailboxGet(AccountId(accountId.value)))
-                // In the same batch rather than its own round trip. Identities
-                // are what the composer's From row is drawn from, and a composer
-                // opened before the first sync would otherwise have nothing to
-                // send as -- against a server on a domestic uplink, one request
-                // is the resource worth saving.
-                val identities = request.add(IdentityGet(AccountId(accountId.value)))
-                val results = client.send(request)
+        // This *was* the directory refresh, so the throttle counts it. Without
+        // this the very next view switch after pairing -- which is now a cached
+        // one, because the lines above filled the accounts table -- would ask the
+        // server for the whole directory again a second later.
+        directoryLock.withLock { directoryRefreshedAt = now() }
 
-                mail.replaceMailboxes(accountKey, results.result(mailboxes).list)
-                mail.replaceIdentities(accountKey, results.result(identities).list)
-            }
-        }
+        emitAll(
+            pagerFor(
+                feedId = feedId,
+                pageSize = pageSize,
+                client = client,
+                accounts =
+                    session.accountIds.map {
+                        StoreKey.account(server, it.value) to AccountId(it.value)
+                    },
+                skipAccountsWithoutFilter = skipAccountsWithoutFilter,
+                filterFor = filterFor,
+            )
+        )
+    }
 
+    /**
+     * The paged list itself, over whichever accounts the caller resolved.
+     *
+     * Takes the accounts rather than finding them, because the two callers above differ in exactly
+     * that: one read them from Room and one from a session it had to wait for. Everything after
+     * that point is identical, and two copies of it is how the cached path and the first-run path
+     * come to build subtly different pagers.
+     */
+    @OptIn(ExperimentalPagingApi::class)
+    private suspend fun pagerFor(
+        feedId: String,
+        pageSize: Int,
+        client: JmapClient,
+        accounts: List<Pair<String, AccountId>>,
+        skipAccountsWithoutFilter: Boolean,
+        filterFor: suspend (accountKey: String, accountId: AccountId) -> EmailFilter?,
+    ): Flow<PagingData<ThreadEntity>> {
         val sources =
-            session.accountIds.mapNotNull { accountId ->
-                val accountKey = StoreKey.account(server, accountId.value)
+            accounts.mapNotNull { (accountKey, accountId) ->
                 // "In this label" is a binding id, and the binding differs per
                 // account -- resolved per account rather than shared.
-                val filter = filterFor(accountKey, AccountId(accountId.value))
+                val filter = filterFor(accountKey, accountId)
 
                 // A list scoped to one label must exclude an account that does
                 // not have it. Falling through to an unfiltered pager here would
@@ -314,7 +383,7 @@ constructor(
 
                 AccountPager(
                     accountKey = accountKey,
-                    accountId = AccountId(accountId.value),
+                    accountId = accountId,
                     client = client,
                     filter = filter,
                     onPage = { emails, threads, state ->
@@ -329,30 +398,104 @@ constructor(
                 )
             }
 
-        emitAll(
-            Pager(
-                    config =
-                        PagingConfig(
-                            pageSize = pageSize,
-                            // Room's PagingSource reads from disk, so a generous
-                            // prefetch costs a query rather than a round trip.
-                            prefetchDistance = pageSize,
-                            enablePlaceholders = false,
-                        ),
-                    remoteMediator =
-                        FeedMediator(
-                            feedId = feedId,
-                            database = database,
-                            sources = sources,
-                            onFailures = { failed -> _failures.update { failed } },
-                            onRowsHeld = { held ->
-                                mediatorRowCounts.tryEmit(feedId to held)
-                            },
-                        ),
-                    pagingSourceFactory = { database.feed().pagingSource(feedId) },
+        return Pager(
+                config =
+                    PagingConfig(
+                        pageSize = pageSize,
+                        // Room's PagingSource reads from disk, so a generous
+                        // prefetch costs a query rather than a round trip.
+                        prefetchDistance = pageSize,
+                        enablePlaceholders = false,
+                    ),
+                remoteMediator =
+                    FeedMediator(
+                        feedId = feedId,
+                        database = database,
+                        sources = sources,
+                        onFailures = { failed -> _failures.update { failed } },
+                        onRowsHeld = { held -> mediatorRowCounts.tryEmit(feedId to held) },
+                    ),
+                pagingSourceFactory = { database.feed().pagingSource(feedId) },
+            )
+            .flow
+    }
+
+    /**
+     * Brings account names, label bindings and identities up to date, behind a list already drawn.
+     *
+     * Throttled and single-flighted together — see [directoryLock]. The suspension on the lock is
+     * what makes the throttle free: a caller that arrives during a refresh waits for it and then
+     * finds its own work already done, rather than deciding on a stale timestamp.
+     */
+    private suspend fun refreshDirectory(client: JmapClient, server: String) {
+        directoryLock.withLock {
+            if (now() - directoryRefreshedAt < DIRECTORY_REFRESH_INTERVAL) return
+
+            val session = runCatching { client.session() }
+                .getOrElse { failure ->
+                    // The same banner the blocking path raised, for the same
+                    // reason: the list is drawing rows nothing is refreshing, and
+                    // the one thing worse than saying so is not saying so. The
+                    // rows stay -- this path never touches them.
+                    publishServerFailure(server, failure)
+                    return
+                }
+
+            mail.replaceAccounts(server, session)
+            refreshBindings(client, server, session.accountIds.map { AccountId(it.value) })
+
+            // Stamped only where the session answered -- the failure path above
+            // returns without setting it, so a server that is down is retried on
+            // the next view switch rather than being throttled out for the whole
+            // interval.
+            directoryRefreshedAt = now()
+        }
+    }
+
+    /** Mailboxes and identities, per account, each account's failure its own. */
+    private suspend fun refreshBindings(
+        client: JmapClient,
+        server: String,
+        accountIds: List<AccountId>,
+    ) {
+        accountIds.forEach { accountId ->
+            val accountKey = StoreKey.account(server, accountId.value)
+
+            runCatching {
+                    val request = RequestBuilder()
+                    val mailboxes = request.add(MailboxGet(accountId))
+                    // In the same batch rather than its own round trip.
+                    // Identities are what the composer's From row is drawn from,
+                    // and a composer opened before the first sync would otherwise
+                    // have nothing to send as -- against a server on a domestic
+                    // uplink, one request is the resource worth saving.
+                    val identities = request.add(IdentityGet(accountId))
+                    val results = client.send(request)
+
+                    mail.replaceMailboxes(accountKey, results.result(mailboxes).list)
+                    mail.replaceIdentities(accountKey, results.result(identities).list)
+                }
+                // This account just answered two methods, which is the whole of
+                // what a "could not reach it" banner claims it cannot do. Said
+                // here rather than left to the next sync: on the cached path
+                // nothing else runs, so a banner raised by one failed refresh
+                // would sit over mail that is being refreshed perfectly well.
+                .onSuccess { answered(accountKey) }
+        }
+    }
+
+    private fun publishServerFailure(server: String, failure: Throwable) {
+        _failures.update {
+            listOf(
+                SourceFailure(
+                    // The origin, because there is nothing else: the call that
+                    // would have named the accounts is the one that just failed.
+                    accountKey = server,
+                    error = failure,
+                    isWholeServer = true,
                 )
-                .flow
-        )
+            )
+        }
     }
 
     /**
@@ -379,6 +522,16 @@ constructor(
     private companion object {
         const val PAGE_SIZE = 25
         const val INBOX_ROLE = "inbox"
+
+        /**
+         * How long a directory refresh stands for.
+         *
+         * A minute, not an hour: mailbox and identity lists change rarely, but when they do — a
+         * label created in the browser — the user is usually about to look for it. Long enough
+         * that flipping between four views costs one refresh rather than four, which is the only
+         * thing this is defending against; the periodic sync covers the rest.
+         */
+        const val DIRECTORY_REFRESH_INTERVAL = 60_000L
     }
 }
 

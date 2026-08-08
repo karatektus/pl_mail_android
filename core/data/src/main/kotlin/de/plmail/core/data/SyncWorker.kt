@@ -47,6 +47,8 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
         fun mailActions(): MailActions
 
         fun appearance(): AppearanceRepository
+
+        fun bodies(): BodyPrefetcher
     }
 
     override suspend fun doWork(): Result {
@@ -75,6 +77,19 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
         // be noticed. It swallows its own failures and never decides the run's
         // result: a sync is not worth retrying over a colour.
         dependencies.appearance().refresh()
+
+        // Last, and never able to change the result. This is the one place with
+        // the time to spend on bodies: nobody is watching a spinner, and the mail
+        // it downloads is what makes the *next* tap on a conversation open
+        // instantly rather than fetching. A prefetch that could not finish leaves
+        // the app exactly as it was before -- reading a body on demand is still
+        // the fallback -- so failing the run over it would re-ask the server for
+        // changes it has already answered, to retry something optional.
+        runCatching { dependencies.bodies().prefetchAll() }
+
+        // After the prefetch rather than before it, so nothing downloaded in the
+        // line above is measured against a threshold it has just moved past.
+        runCatching { dependencies.bodies().prune() }
 
         // Retried only when everything failed. One unreachable account among
         // several is not a reason to re-run the whole sync -- the others are

@@ -20,7 +20,18 @@ import javax.inject.Singleton
 @Singleton
 class StateChangeApplier
 @Inject
-constructor(private val database: PlMailDatabase, private val deltaSync: DeltaSync) {
+constructor(
+    private val database: PlMailDatabase,
+    private val deltaSync: DeltaSync,
+    /**
+     * What makes a tapped notification open a conversation rather than fetch one.
+     *
+     * The sync above stores list-row properties only, so without this the push path ends with the
+     * message on the device and its body still on the server — and the reader the user reaches from
+     * the notification shade is the one screen guaranteed to be about mail that arrived seconds ago.
+     */
+    private val bodies: BodyPrefetcher,
+) {
 
     /**
      * Syncs every announced account this device has not already caught up with.
@@ -62,6 +73,12 @@ constructor(private val database: PlMailDatabase, private val deltaSync: DeltaSy
                     if (announced != null && announced == account.emailState) return@forEach
 
                     deltaSync.sync(account.uid)
+
+                    // After the sync, because the sync is what puts the message
+                    // rows there for this to find. Swallowed: a body that could
+                    // not be fetched now is fetched when the conversation is
+                    // opened, which is what happened before this existed at all.
+                    runCatching { bodies.prefetch(account.uid) }
                 }
         }
     }
