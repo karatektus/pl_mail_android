@@ -135,10 +135,11 @@ data class Session(
         get() = capabilities[Capability.APPEARANCE]?.let(AppearanceCapability::from)
 
     /**
-     * How far back this server intends to hold mail for one account.
+     * How much of one account this server has fetched so far.
      *
      * Null when the account publishes no sync capability. Absence is the signal, as with calendars
-     * — it is not the same as an uncapped window, which is published as `syncLimit: 0`.
+     * — "this server does not say" is not the same sentence as "this server has everything", which
+     * is a completed backfill.
      */
     fun syncWindow(id: AccountId): SyncWindow? =
         account(id)?.accountCapabilities?.get(Capability.SYNC)?.let(SyncWindow::from)
@@ -420,38 +421,29 @@ data class ClosedRange(val min: Float, val max: Float) {
 }
 
 /**
- * What the server intends to hold for one account, per `urn:plmail:params:jmap:sync`.
+ * How much of one account the server has actually got hold of, per `urn:plmail:params:jmap:sync`.
  *
- * All three answer the same user question — "why can I not find a mail I know exists?" — and none
- * of them is about this device. The client's own cached count answers a different question and both
+ * Both fields answer the same user question — "why can I not find a mail I know exists?" — and
+ * neither is about this device. The client's own cached count answers a different question and both
  * are worth showing.
  *
- * [syncLimit] is the cap **in force**, not the one stored: an account whose provider cannot honour
- * it (Microsoft Graph enumerates a folder in an order that cannot stop early) is published as 0
- * whatever is configured, because a stored number would have a client explain a gap that is not
- * there.
+ * The server keeps every message an account has; there is no retention setting to report, so an
+ * unfinished backfill is the only gap it can honestly name. Older servers still publish a
+ * `syncLimit` here from when there was one — [from] does not read it, which is the whole of the
+ * compatibility story: an unknown key in a capability object is ignored, never an error.
  *
  * [backfillTarget] is a message *count*, not a date — how far back a completed backfill reached, 0
  * meaning the whole mailbox. Null means none has ever finished, which is why it cannot be collapsed
- * into 0.
+ * into 0. A positive number is an account the retired cap stopped short, and reads as unfinished.
  *
  * [backfillPending] means "there is mail still coming", not "a worker is running this second".
  * Nothing records the latter, and a client that worded it as progress would be inventing a
  * guarantee.
  */
-data class SyncWindow(
-    val syncLimit: Int = 0,
-    val backfillTarget: Int? = null,
-    val backfillPending: Boolean = false,
-) {
-    /** Whether the server intends to hold everything this account has. */
-    val isUncapped: Boolean
-        get() = syncLimit == 0
-
+data class SyncWindow(val backfillTarget: Int? = null, val backfillPending: Boolean = false) {
     companion object {
         fun from(json: JsonObject): SyncWindow =
             SyncWindow(
-                syncLimit = (json["syncLimit"] as? JsonPrimitive)?.content?.toIntOrNull() ?: 0,
                 backfillTarget = (json["backfillTarget"] as? JsonPrimitive)?.content?.toIntOrNull(),
                 backfillPending =
                     (json["backfillPending"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()

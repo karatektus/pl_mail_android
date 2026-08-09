@@ -131,12 +131,6 @@
     <string name="accounts_window">%1$s, zurück bis %2$s</string>
     <string name="accounts_window_empty">Von diesem Konto liegt noch nichts auf diesem Gerät.</string>
 
-    <string name="accounts_server_window_uncapped">Ihr Server behält jede Nachricht in diesem Postfach.</string>
-    <plurals name="accounts_server_window_capped">
-        <item quantity="one">Ihr Server behält die neueste Nachricht in diesem Postfach.</item>
-        <item quantity="other">Ihr Server behält die neuesten %1$d Nachrichten in diesem Postfach.</item>
-    </plurals>
-
     <string name="accounts_server_backfill_pending">Es kommt noch ältere Post; Ihr Server ist in diesem Postfach noch nicht am Ende angelangt.</string>
     <string name="accounts_server_backfill_all">Er hat alles davon geholt.</string>
     <plurals name="accounts_server_backfill_reached">

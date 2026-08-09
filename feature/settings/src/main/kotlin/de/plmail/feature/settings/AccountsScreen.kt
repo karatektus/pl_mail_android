@@ -267,59 +267,38 @@ private fun AccountRow(
 }
 
 /**
- * What the server intends to hold, in at most two sentences.
+ * How much of the mailbox the server has, in one sentence.
  *
- * The cap first, because it is the setting; the backfill second, because it is the state. Both are
- * counted in *messages* rather than dated — that is what the server publishes, and inventing a date
- * from a count would be the same guess the old probe made.
+ * There is no cap to report any more -- the server keeps everything -- so the backfill is the whole
+ * of it. It is counted in *messages* rather than dated, because that is what the server publishes,
+ * and inventing a date from a count would be the same guess the old probe made.
  *
  * `backfillPending` is worded as mail still to come rather than as work in progress. It is derived
- * from two numbers the sync engine compares, not from a running job, so "the server is fetching
- * older mail right now" would be a promise nothing here can keep.
+ * from a number the sync engine records, not from a running job, so "the server is fetching older
+ * mail right now" would be a promise nothing here can keep.
  */
 @Composable
 private fun ServerWindow(window: SyncWindow) {
-    Column {
+    val reached = window.backfillTarget
+
+    val backfill =
+        when {
+            window.backfillPending -> stringResource(R.string.accounts_server_backfill_pending)
+            reached == 0 -> stringResource(R.string.accounts_server_backfill_all)
+            reached != null ->
+                pluralStringResource(R.plurals.accounts_server_backfill_reached, reached, reached)
+            // Not reachable from this server -- a null target is what makes
+            // `backfillPending` true -- but the two arrive as separate fields
+            // and the screen must not depend on them agreeing.
+            else -> null
+        }
+
+    backfill?.let {
         Text(
-            text =
-                if (window.isUncapped) {
-                    stringResource(R.string.accounts_server_window_uncapped)
-                } else {
-                    pluralStringResource(
-                        R.plurals.accounts_server_window_capped,
-                        window.syncLimit,
-                        window.syncLimit,
-                    )
-                },
+            text = it,
             style = MaterialTheme.typography.bodySmall,
             color = PlMailTheme.colors.inkMuted,
         )
-
-        val reached = window.backfillTarget
-
-        val backfill =
-            when {
-                window.backfillPending -> stringResource(R.string.accounts_server_backfill_pending)
-                reached == 0 -> stringResource(R.string.accounts_server_backfill_all)
-                reached != null ->
-                    pluralStringResource(
-                        R.plurals.accounts_server_backfill_reached,
-                        reached,
-                        reached,
-                    )
-                // Not reachable from this server -- a null target is what makes
-                // `backfillPending` true -- but the two arrive as separate
-                // fields and the screen must not depend on them agreeing.
-                else -> null
-            }
-
-        backfill?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.bodySmall,
-                color = PlMailTheme.colors.inkMuted,
-            )
-        }
     }
 }
 
