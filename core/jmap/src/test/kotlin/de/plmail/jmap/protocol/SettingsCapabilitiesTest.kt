@@ -11,22 +11,20 @@ import kotlin.test.assertTrue
  * The three capabilities that arrive with discovery and need no method call.
  *
  * Read out of a session captured from the live stack after the 2026-08-06 batch landed. The sync
- * window is the one that replaced a request: the accounts screen used to ask every account for its
- * oldest message, and everything it wanted is in this object.
+ * capability is the one that replaced a request: the accounts screen used to ask every account for
+ * its oldest message, and everything it wanted is in this object.
+ *
+ * The fixture predates the removal of the server's sync cap, so it still carries a `syncLimit` —
+ * which makes it exactly the right fixture to keep. Decoding it proves an older self-hosted server
+ * is read without complaint rather than crashing a client that no longer knows the field.
  */
 class SettingsCapabilitiesTest {
 
     private val session = Fixture.decode<Session>("session-settings.json")
 
     @Test
-    fun `the sync window is per account, and zero means uncapped`() {
+    fun `backfill progress is per account, and an older server's extra fields are ignored`() {
         val window = assertNotNull(session.syncWindow(AccountId("1")))
-
-        // The single most dangerous misreading. `syncLimit: 0` is "no cap", and
-        // a client treating it as a count would tell somebody their server keeps
-        // no mail at all. It is also what a Microsoft account always reports,
-        // because Graph cannot honour the cap whatever is stored.
-        assertTrue(window.isUncapped)
 
         // Null is "no backfill has completed"; 0 would be "one completed and
         // reached the whole mailbox". Opposite facts, which collapse into each

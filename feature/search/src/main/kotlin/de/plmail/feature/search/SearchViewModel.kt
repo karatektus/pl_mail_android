@@ -9,7 +9,6 @@ import de.plmail.core.data.SearchRepository
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.datastore.RecentSearchStore
 import de.plmail.jmap.search.SearchQuery
-import java.time.Instant
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -52,16 +51,6 @@ sealed interface EmptyReason {
 
     /** The search ran and genuinely matched nothing. */
     data object NoMatches : EmptyReason
-
-    /**
-     * The search ran, matched nothing, and asked about a time the server has no mail for.
-     *
-     * The distinction matters: mail older than what the server has synced is not searchable, so "no
-     * results" would be a true sentence that means the wrong thing. [oldest] is the earliest
-     * message the server actually holds — an observed fact, not a policy, because nothing in the
-     * JMAP session reports a retention window.
-     */
-    data class OutsideSyncedRange(val oldest: Instant) : EmptyReason
 }
 
 @HiltViewModel
@@ -150,37 +139,16 @@ constructor(
     /**
      * Called when Paging reports the list settled with no rows.
      *
-     * The extra query only happens here — once, on an empty dated search — rather than alongside
-     * every search, because it is a round trip that exists purely to write a better sentence.
+     * A dated search used to get its own answer here: the server held a window of mail, so a query
+     * reaching past it found nothing whether or not the message existed, and it cost a round trip
+     * to say so honestly. The server keeps everything now, so a search that found nothing found
+     * nothing — and the plain wording is the true one.
      */
     fun onEmptyResults() {
-        val current = _state.value
-
-        if (!current.isSearchable) {
-            _state.update { it.copy(emptyReason = EmptyReason.NotAsked) }
-            return
-        }
-
-        if (!current.parsed.hasDateBound) {
-            _state.update { it.copy(emptyReason = EmptyReason.NoMatches) }
-            return
-        }
-
-        viewModelScope.launch {
-            val oldest = runCatching { search.oldestHeldMessage() }.getOrNull()
-
-            _state.update { state ->
-                state.copy(
-                    emptyReason =
-                        // Only when the query actually reaches past what the
-                        // server holds. A dated search *inside* the synced range
-                        // that found nothing really did find nothing, and
-                        // blaming the window for it is its own dishonesty.
-                        if (oldest != null && state.parsed.reachesBefore(oldest))
-                            EmptyReason.OutsideSyncedRange(oldest)
-                        else EmptyReason.NoMatches
-                )
-            }
+        _state.update {
+            it.copy(
+                emptyReason = if (it.isSearchable) EmptyReason.NoMatches else EmptyReason.NotAsked
+            )
         }
     }
 
@@ -200,16 +168,3 @@ constructor(
         const val DEBOUNCE_MILLIS = 300L
     }
 }
-
-/**
- * Whether this query asks about a time before [boundary].
- *
- * Both bounds count, and for different reasons. `after:2019` asks for everything since a date the
- * server has no mail from, so its window starts outside what was synced. `before:2019` asks only
- * for mail older than that, which — if the boundary is later — is *entirely* outside it.
- *
- * `before` is compared inclusively because it is a strict `<` on the server: `before:` the oldest
- * message excludes that message too, leaving a window with nothing in it.
- */
-internal fun SearchQuery.reachesBefore(boundary: Instant): Boolean =
-    after?.isBefore(boundary) == true || before?.isAfter(boundary) == false

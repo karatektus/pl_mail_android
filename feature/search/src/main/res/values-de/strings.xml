@@ -8,13 +8,6 @@
 
     <string name="search_empty_no_matches">Keine Nachrichten gefunden.</string>
 
-    <!--
-      Zwei Sätze, weil sie Verschiedenes sagen: die Suche hat funktioniert, und
-      die E-Mails waren nie da, um gefunden zu werden.
-    -->
-    <string name="search_empty_outside_window">Nichts gefunden — diese Suche reicht aber weiter zurück, als deine E-Mails synchronisiert sind.</string>
-    <string name="search_oldest_held">Die älteste Nachricht auf diesem Server ist vom %1$s.</string>
-
     <string name="search_contradiction">is:read und is:unread zusammen finden nichts.</string>
 
     <string name="search_account_lacks_mailbox">Konto %1$s hat dieses Postfach nicht und wurde nicht durchsucht.</string>

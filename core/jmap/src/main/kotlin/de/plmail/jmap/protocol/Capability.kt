@@ -23,11 +23,12 @@ object Capability {
     const val APPEARANCE = "urn:plmail:params:jmap:appearance"
 
     /**
-     * The sync window, and the one URN here that is never declared.
+     * Backfill progress, and the one URN here that is never declared.
      *
      * It advertises numbers rather than methods — there is nothing to call under it — so it appears
-     * in the session's `accountCapabilities` and in no request's `using` list. See
-     * [Session.syncWindow].
+     * in the session's `accountCapabilities` and in no request's `using` list. The name is older
+     * than what it now carries: it published a retention window too, until the server stopped
+     * having one. See [Session.syncWindow].
      */
     const val SYNC = "urn:plmail:params:jmap:sync"
 

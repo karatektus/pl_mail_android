@@ -196,18 +196,6 @@
     <string name="accounts_window_empty">Nothing from this account is on this device yet.</string>
 
     <!--
-      What the *server* intends to hold, read from the session rather than
-      probed. Counted in messages because that is what the server publishes: it
-      caps a mailbox at the newest N, and a date would be a guess laid over a
-      number.
-    -->
-    <string name="accounts_server_window_uncapped">Your server keeps every message in this mailbox.</string>
-    <plurals name="accounts_server_window_capped">
-        <item quantity="one">Your server keeps the newest message in this mailbox.</item>
-        <item quantity="other">Your server keeps the newest %1$d messages in this mailbox.</item>
-    </plurals>
-
-    <!--
       Deliberately not "a backfill is running". The server publishes whether
       there is ground left to cover, derived from two numbers — nothing records
       whether a worker is on it this second, and phrasing it as progress would

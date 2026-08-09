@@ -276,9 +276,10 @@ private fun QueryChips(state: SearchUiState) {
 /**
  * Nothing to show, and why.
  *
- * The dated case is the one worth building: mail older than what the server synced is not
- * searchable at all, so "no results" is a true sentence that means the wrong thing. Naming the
- * oldest message the server actually holds turns a dead end into something the reader can act on.
+ * There used to be a third case here, for a dated query reaching past what the server had synced:
+ * "no results" was then a true sentence that meant the wrong thing. The server keeps every message
+ * an account has now, so a search that found nothing really did find nothing and the plain wording
+ * is the honest one.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -291,22 +292,7 @@ private fun EmptyState(
         modifier = Modifier.fillMaxSize().padding(PlMailTheme.spacing.xLarge),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        when (val reason = state.emptyReason) {
-            is EmptyReason.OutsideSyncedRange -> {
-                Text(
-                    text = stringResource(R.string.search_empty_outside_window),
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                )
-                Text(
-                    text = stringResource(R.string.search_oldest_held, reason.oldest.asDate()),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = PlMailTheme.colors.inkMuted,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
-
+        when (state.emptyReason) {
             EmptyReason.NoMatches ->
                 Text(
                     text = stringResource(R.string.search_empty_no_matches),

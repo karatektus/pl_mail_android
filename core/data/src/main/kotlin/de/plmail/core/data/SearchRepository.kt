@@ -9,17 +9,12 @@ import de.plmail.core.database.StoreKey
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.jmap.client.JmapClient
-import de.plmail.jmap.mail.Comparator
-import de.plmail.jmap.methods.EmailGet
-import de.plmail.jmap.methods.EmailQuery
 import de.plmail.jmap.methods.SearchSnippet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.MailboxId
-import de.plmail.jmap.protocol.RequestBuilder
 import de.plmail.jmap.search.CompiledSearch
 import de.plmail.jmap.search.SearchQuery
 import de.plmail.jmap.search.SearchQueryCompiler
-import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.Flow
@@ -213,63 +208,6 @@ constructor(
                 )
                 .flow
         )
-    }
-
-    /**
-     * When the oldest message this server holds for the account arrived, if it holds any.
-     *
-     * For the empty state of a dated query. The server syncs a window of mail from the upstream
-     * provider, so a search for something older than that window returns nothing whether or not the
-     * message exists — and "no results" is a dishonest way to say "not synced".
-     *
-     * Asked rather than assumed: nothing in the JMAP session reports a retention policy, so the
-     * observable fact is the only honest thing available. One query, ascending, limit one.
-     */
-    suspend fun oldestHeldMessage(): Instant? {
-        val connection = credentials.connection.first() ?: return null
-
-        val client =
-            JmapClient(
-                discoveryUrl = connection.address.discoveryUrl,
-                credential = connection.credential,
-                transport = transports.create(connection.address, connection.pinnedKey),
-            )
-
-        val session = client.session()
-
-        // The earliest across accounts: the caller is asking what this server can
-        // answer for at all, and the oldest account's boundary is the generous
-        // reading of that.
-        return session.accountIds
-            .mapNotNull { accountId ->
-                runCatching {
-                    val request = RequestBuilder()
-
-                    val query =
-                        request.add(
-                            EmailQuery(
-                                accountId = AccountId(accountId.value),
-                                sort = listOf(Comparator.OLDEST_FIRST),
-                                limit = 1,
-                            )
-                        )
-
-                    val get =
-                        request.add(
-                            EmailGet.byReference(
-                                AccountId(accountId.value),
-                                query.reference("/ids"),
-                                properties = listOf("id", "receivedAt"),
-                            )
-                        )
-
-                    client.send(request).result(get).list.firstOrNull()?.receivedAt
-                }
-                    .getOrNull()
-                    ?.toEpochMillis()
-            }
-            .minOrNull()
-            ?.let(Instant::ofEpochMilli)
     }
 
     /** Drops the last query's rows, so re-entering search does not flash them. */
