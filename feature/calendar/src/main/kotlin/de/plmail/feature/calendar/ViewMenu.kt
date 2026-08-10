@@ -3,6 +3,7 @@ package de.plmail.feature.calendar
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.EventNote
 import androidx.compose.material.icons.outlined.CalendarViewDay
 import androidx.compose.material.icons.outlined.CalendarViewMonth
 import androidx.compose.material.icons.outlined.CalendarViewWeek
@@ -130,6 +131,7 @@ internal val CalendarViewMode.labelRes: Int
             CalendarViewMode.DAY -> R.string.calendar_view_day
             CalendarViewMode.WEEK -> R.string.calendar_view_week
             CalendarViewMode.MONTH -> R.string.calendar_view_month
+            CalendarViewMode.MONTH_AGENDA -> R.string.calendar_view_month_agenda
         }
 
 /**
@@ -138,6 +140,11 @@ internal val CalendarViewMode.labelRes: Int
  * Deliberately *not* `Icons.Outlined.CalendarMonth`, which this screen already spends on its empty
  * state: an empty month would otherwise draw the same picture twice, once as a control and once as
  * an illustration, and only one of them does anything when tapped.
+ *
+ * The mixture view wears `EventNote` — a page with ruled lines on it — because the two things it
+ * has to be told apart from are the month grid it sits beside in this menu and the agenda at the
+ * top of it, and a glyph that is a grid with a list in it does not exist. Ruled lines under a date
+ * is the closest either icon set gets to "a month, and what is in it".
  */
 private val CalendarViewMode.icon: ImageVector
     get() =
@@ -146,6 +153,7 @@ private val CalendarViewMode.icon: ImageVector
             CalendarViewMode.DAY -> Icons.Outlined.CalendarViewDay
             CalendarViewMode.WEEK -> Icons.Outlined.CalendarViewWeek
             CalendarViewMode.MONTH -> Icons.Outlined.CalendarViewMonth
+            CalendarViewMode.MONTH_AGENDA -> Icons.AutoMirrored.Outlined.EventNote
         }
 
 /** Material's own leading-icon size; the tick and the gap it holds open have to agree on it. */

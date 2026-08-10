@@ -81,6 +81,9 @@
     <string name="calendar_view_day">Tag</string>
     <string name="calendar_view_week">Woche</string>
     <string name="calendar_view_month">Monat</string>
+    <string name="calendar_view_month_agenda">Monat &amp; Agenda</string>
+
+    <string name="calendar_month_empty_body">In diesem Monat steht nichts an.</string>
 
     <string name="calendar_previous">Zurück</string>
     <string name="calendar_next">Weiter</string>

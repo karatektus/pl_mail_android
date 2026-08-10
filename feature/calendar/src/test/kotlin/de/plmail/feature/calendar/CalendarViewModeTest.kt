@@ -159,6 +159,64 @@ class CalendarViewModeTest {
         assertEquals(CalendarViewMode.WEEK, CalendarViewMode.fromWire("week"))
     }
 
+    /**
+     * The mixture view is a month, in every way that costs a request.
+     *
+     * Its window, its step and its heading are the month's — which is what makes switching between
+     * the two free: the six weeks are already on the phone, so the toggle redraws them rather than
+     * asking the server for the same span in a different shape.
+     */
+    @Test
+    fun `the mixture view is a month in window, step and heading`() {
+        val formats = CalendarFormats.ofPatterns()
+
+        assertEquals(
+            CalendarViewMode.MONTH.window(thursday, monday),
+            CalendarViewMode.MONTH_AGENDA.window(thursday, monday),
+        )
+        assertEquals(
+            CalendarViewMode.MONTH.step(thursday, forward = true),
+            CalendarViewMode.MONTH_AGENDA.step(thursday, forward = true),
+        )
+        assertEquals(
+            "August 2026",
+            CalendarViewMode.MONTH_AGENDA.heading(thursday, monday, formats),
+        )
+        assertTrue(CalendarViewMode.MONTH_AGENDA.isPaged)
+    }
+
+    /**
+     * Both month views answer to the predicate the shared behaviour hangs off, and nothing else.
+     */
+    @Test
+    fun `the month predicate names both month views and no other`() {
+        assertEquals(
+            listOf(CalendarViewMode.MONTH, CalendarViewMode.MONTH_AGENDA),
+            CalendarViewMode.entries.filter { it.isMonthGrid },
+        )
+    }
+
+    /**
+     * Every view survives being written to the preferences file and read back.
+     *
+     * The wire names *are* the persistence — see `CalendarPrefsStore`, which stores the raw string
+     * — so a name that did not round trip would silently put somebody back on the agenda on their
+     * next launch, with nothing to tell them their choice had been dropped. Over `entries` rather
+     * than a list written here, so a sixth view cannot be added without this test covering it.
+     */
+    @Test
+    fun `every view's stored name round trips`() {
+        CalendarViewMode.entries.forEach {
+            assertEquals(it, CalendarViewMode.fromWire(it.wire), "${it.name} does not round trip")
+        }
+
+        assertEquals(
+            CalendarViewMode.entries.size,
+            CalendarViewMode.entries.map { it.wire }.toSet().size,
+            "two views share a wire name",
+        )
+    }
+
     /** Every day of the window is a column, whether anything is on it or not. */
     @Test
     fun `a window enumerates every day it covers`() {

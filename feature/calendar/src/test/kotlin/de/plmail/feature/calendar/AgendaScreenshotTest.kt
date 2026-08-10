@@ -116,10 +116,36 @@ class AgendaScreenshotTest {
         capture("week", state(days = twoDays()).copy(view = CalendarViewMode.WEEK))
     }
 
-    /** The month: six weeks that do not reflow, and a cell whose meetings are dots. */
+    /** The month: six weeks that do not reflow, and cells whose meetings are titled chips. */
     @Test
     fun month() {
         capture("month", state(days = twoDays()).copy(view = CalendarViewMode.MONTH))
+    }
+
+    /**
+     * The case the chips exist for and the case they cannot cover, in one grid.
+     *
+     * A day with more meetings than the cell has room for, so the "+n" chip is in the baseline
+     * rather than being a thing somebody discovers on a busy Tuesday — and beside it a day with an
+     * all-day row, whose chip says the word where the others say a clock. The German titles are the
+     * point of capturing it at 411dp: "Quarterly figures" fits where "Vierteljahreszahlen" does
+     * not, and the ellipsis is what this view promises to do about that.
+     */
+    @Test
+    fun monthOverflowing() {
+        capture("month-full", state(days = busyDay()).copy(view = CalendarViewMode.MONTH))
+    }
+
+    /**
+     * The mixture: a compact grid of dots over the month's own agenda.
+     *
+     * Both halves in one frame, because the thing worth guarding is the *split* — a grid that grew
+     * to eat the list, or a list squeezed to two rows, is the failure this view has, and neither is
+     * visible in a test of either half alone.
+     */
+    @Test
+    fun monthAgenda() {
+        capture("month-agenda", state(days = twoDays()).copy(view = CalendarViewMode.MONTH_AGENDA))
     }
 
     private fun capture(name: String, state: CalendarState) {
@@ -237,6 +263,43 @@ class AgendaScreenshotTest {
                                 title = "Zahnarzt",
                                 start = "2026-08-09T11:45:00",
                                 end = "2026-08-09T12:15:00",
+                                calendarName = "Persönlich",
+                                color = "#a855f7",
+                            )
+                        )
+                    ),
+            ),
+        )
+
+    /** One day carrying more than any cell can hold, plus an all-day row on the day after. */
+    private fun busyDay() =
+        listOf(
+            AgendaDay(
+                date = LocalDate.parse("2026-08-06"),
+                clusters =
+                    clusterRows(
+                        listOf(
+                            row(title = "Standup", start = "2026-08-06T09:00:00"),
+                            row(title = "Vierteljahreszahlen", start = "2026-08-06T10:00:00"),
+                            row(
+                                title = "Elternabend",
+                                start = "2026-08-06T11:00:00",
+                                calendarName = "Persönlich",
+                                color = "#a855f7",
+                            ),
+                            row(title = "Zahnarzt", start = "2026-08-06T14:00:00"),
+                            row(title = "Retrospektive", start = "2026-08-06T16:00:00"),
+                        )
+                    ),
+            ),
+            AgendaDay(
+                date = LocalDate.parse("2026-08-07"),
+                clusters =
+                    clusterRows(
+                        listOf(
+                            row(
+                                title = "Sommerfest der Nachbarschaft",
+                                isAllDay = true,
                                 calendarName = "Persönlich",
                                 color = "#a855f7",
                             )

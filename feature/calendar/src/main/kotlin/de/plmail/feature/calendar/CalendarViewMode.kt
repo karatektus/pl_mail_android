@@ -8,12 +8,21 @@ import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
 /**
- * The four ways this app draws a calendar, and the one place that says what each of them covers.
+ * The ways this app draws a calendar, and the one place that says what each of them covers.
  *
- * The same four the web has, with the same wire names, because the two surfaces are one product and
- * a person who reads their week in a browser should find a week here under the same word. The names
- * are also what is persisted — see `CalendarPrefsStore` — so they may not be renamed without
+ * Four of them are the web's, with the same wire names, because the two surfaces are one product
+ * and a person who reads their week in a browser should find a week here under the same word. The
+ * names are also what is persisted — see `CalendarPrefsStore` — so they may not be renamed without
  * stranding whatever is already in somebody's preferences file.
+ *
+ * **[MONTH_AGENDA] is the phone's own, and deliberately so.** A month grid on a 411dp phone can
+ * carry two or three titled chips per cell before it starts counting the rest, which is enough to
+ * recognise a day and not enough to read one; the browser never had that problem because its cells
+ * are three times the size. Splitting the screen — a grid you scan, a list you read — is the answer
+ * to a constraint that only exists here, so inventing a fifth view is honest where copying a fifth
+ * *web* view would not be. Its wire name is one the web will never write, and
+ * [CalendarViewMode.fromWire] degrades anything unknown to the default, so neither surface can
+ * strand the other.
  *
  * **A window is one request.** Every method here answers with a [CalendarWindow], because the round
  * trip discipline the `expandRecurrences` adoption bought is that a *visible span* costs one
@@ -25,11 +34,23 @@ enum class CalendarViewMode(val wire: String) {
     AGENDA("agenda"),
     DAY("day"),
     WEEK("week"),
-    MONTH("month");
+    MONTH("month"),
+    MONTH_AGENDA("month-agenda");
 
     /** Whether this view is a page that steps, as opposed to a rolling list that scrolls. */
     val isPaged: Boolean
         get() = this != AGENDA
+
+    /**
+     * Whether this view draws the six-week grid.
+     *
+     * Both month views share a window, a step and a heading, and every one of those is a place
+     * where a `== MONTH` written before the split would silently do the wrong thing for the new
+     * view. One predicate rather than five comparisons, so adding the third month view — if there
+     * ever is one — is not another sweep of the file.
+     */
+    val isMonthGrid: Boolean
+        get() = this == MONTH || this == MONTH_AGENDA
 
     /**
      * The span this view draws when it is anchored on [anchor].
@@ -47,7 +68,8 @@ enum class CalendarViewMode(val wire: String) {
             AGENDA -> CalendarWindow(from = anchor, to = anchor.plusDays(AGENDA_DAYS))
             DAY -> CalendarWindow(from = anchor, to = anchor.plusDays(1))
             WEEK -> weekStart(anchor, firstDayOfWeek).let { CalendarWindow(it, it.plusDays(7)) }
-            MONTH ->
+            MONTH,
+            MONTH_AGENDA ->
                 monthGridStart(anchor, firstDayOfWeek).let {
                     CalendarWindow(it, it.plusDays(MONTH_GRID_DAYS))
                 }
@@ -71,7 +93,8 @@ enum class CalendarViewMode(val wire: String) {
             AGENDA -> anchor
             DAY -> anchor.plusDays(direction)
             WEEK -> anchor.plusWeeks(direction)
-            MONTH -> anchor.plusMonths(direction)
+            MONTH,
+            MONTH_AGENDA -> anchor.plusMonths(direction)
         }
     }
 
@@ -210,7 +233,8 @@ internal fun CalendarViewMode.heading(
     when (this) {
         CalendarViewMode.AGENDA,
         CalendarViewMode.DAY -> anchor.format(formats.date)
-        CalendarViewMode.MONTH -> anchor.format(formats.month)
+        CalendarViewMode.MONTH,
+        CalendarViewMode.MONTH_AGENDA -> anchor.format(formats.month)
         CalendarViewMode.WEEK -> {
             val from = weekStart(anchor, firstDayOfWeek)
             val to = from.plusDays(6)

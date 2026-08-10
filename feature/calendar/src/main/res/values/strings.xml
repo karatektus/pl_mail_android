@@ -116,6 +116,21 @@
     <string name="calendar_view_day">Day</string>
     <string name="calendar_view_week">Week</string>
     <string name="calendar_view_month">Month</string>
+    <!--
+      Named for what is on the screen rather than for the split. "Compact
+      month", which was the other candidate, describes the top half to somebody
+      who has already seen it and nothing at all to somebody choosing from a
+      menu; the two nouns say what the two halves are.
+    -->
+    <string name="calendar_view_month_agenda">Month &amp; agenda</string>
+
+    <!--
+      The agenda's own "the next 30 days are clear" is a sentence about the
+      agenda's window, and the list under the month grid is showing six weeks
+      around a month somebody paged to. Saying the wrong span is worse than
+      saying less.
+    -->
+    <string name="calendar_month_empty_body">Nothing is on in this month.</string>
 
     <string name="calendar_previous">Previous</string>
     <string name="calendar_next">Next</string>

@@ -4,26 +4,33 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import de.plmail.core.designsystem.PlMailTheme
 
 /**
@@ -161,6 +168,123 @@ internal fun EventChip(
 }
 
 /**
+ * One cluster as a month cell draws it: a tinted card, the title over the time.
+ *
+ * **Two lines rather than the grid chip's one, and that is what makes a title readable here.** A
+ * month cell on a 411dp phone is about 55dp wide. Laid out as one line, the clock takes half of it
+ * and the title gets four characters — "Stan…", which is the argument this view drew dots on for as
+ * long as it did. Stacked, the title gets the whole width and the clock gets the line under it, and
+ * four characters become eleven.
+ *
+ * **The calendar's colour arrives twice, as a wash and as a rail**, and neither of them is the
+ * text. The wash is the same recipe [EventBlock] uses — the calendar's own hex over a veil of the
+ * surface, because that hex is a literal the user picked in a browser and has no dark variant of
+ * its own. Drawing the *title* in it, which is what the reference this was modelled on does, would
+ * put a user-chosen colour into the one role on the screen that has to stay legible in both schemes
+ * and is the one thing `PaletteContrastTest` cannot check. The rail carries the colour at full
+ * strength instead, where it costs 3dp and no contrast, and it is what a merged meeting splits in
+ * two — the same fact the pie dot carries everywhere else in this app.
+ *
+ * The chip is **not a target**. See `MonthGrid`: the cell is the control, and a chip is the picture
+ * of an event inside it.
+ */
+@Composable
+internal fun MonthEventChip(
+    cluster: EventCluster,
+    modifier: Modifier = Modifier,
+    dimmed: Boolean = false,
+) {
+    val theme = PlMailTheme.values
+    val row = cluster.primary
+    val cancelled = row.status == STATUS_CANCELLED
+    val allDay = stringResource(R.string.calendar_all_day)
+    val time = startTimeOf(row)?.format(CLOCK) ?: allDay
+    val tint = calendarColor(row.calendarColor) ?: theme.colors.accent
+
+    Row(
+        modifier =
+            modifier
+                // The spill-in days of the neighbouring months dim whole, chip
+                // and rail together, rather than the date alone going grey over
+                // chips at full strength -- which would leave last month's
+                // Tuesday reading as the loudest thing in the grid.
+                .alpha(if (dimmed) OTHER_MONTH_ALPHA else 1f)
+                .clip(RoundedCornerShape(theme.radii.small))
+                .background(tint.copy(alpha = BLOCK_TINT))
+                .background(theme.colors.surface.copy(alpha = BLOCK_VEIL))
+    ) {
+        CalendarRail(
+            colors = cluster.dotColors(),
+            modifier = Modifier.fillMaxHeight().width(CHIP_RAIL),
+        )
+
+        Column(
+            modifier =
+                Modifier.weight(1f)
+                    .padding(horizontal = theme.spacing.hair)
+                    // Centred in the chip rather than pinned to its top: the
+                    // chip's height follows the font scale, and two lines
+                    // floating at the top of a tall box is what that looks like
+                    // when it does not quite fill.
+                    .fillMaxHeight(),
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = row.title,
+                // A line height tighter than the type scale's, which is the one
+                // liberty this chip takes: labelSmall's own 16sp leading over
+                // two lines is taller than the chip, and a chip sized to the
+                // leading is a cell that holds one.
+                style = MaterialTheme.typography.labelSmall.copy(lineHeight = CHIP_LINE),
+                color = theme.colors.ink,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textDecoration = if (cancelled) TextDecoration.LineThrough else null,
+            )
+
+            Text(
+                text = time,
+                // A step smaller than the title, which is the second liberty
+                // this chip takes and the one a 12-hour locale forces. "10:00
+                // AM" is eight characters and a 55dp cell fits about eight and
+                // a half of them at the title's size, so the line arrived
+                // reading "10:00 A" -- a clock with its meridiem cut in half,
+                // which is worse than no clock at all. It is also the right
+                // hierarchy independently: the title is what the event *is*.
+                style =
+                    MaterialTheme.typography.labelSmall.copy(
+                        fontSize = CHIP_TIME,
+                        lineHeight = CHIP_LINE,
+                    ),
+                color = theme.colors.inkFaint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/**
+ * The calendar's colour down the leading edge of a chip, split when the meeting is on more than
+ * one.
+ *
+ * The rail's reading of the pie dot: equal slices in member order, so the two marks tell the same
+ * story about the same meeting. Vertical rather than horizontal, because 3dp across is not a
+ * division anybody would see.
+ */
+@Composable
+private fun CalendarRail(colors: List<Color>, modifier: Modifier = Modifier) {
+    val slices = colors.ifEmpty { listOf(fallbackDotColor()) }
+
+    Column(modifier = modifier) {
+        slices.forEach { color ->
+            Box(modifier = Modifier.weight(1f).fillMaxWidth().background(color))
+        }
+    }
+}
+
+/**
  * A block on the time grid: the chip inside a coloured, floored box.
  *
  * The floor is what a fifteen-minute meeting needs to be readable. A quarter hour is a ninety-sixth
@@ -230,6 +354,42 @@ internal fun EventCluster.a11ySentence(): String {
 
 /** The dot inside a chip, smaller than an agenda row's: a grid block has less room to spare. */
 private val CHIP_DOT = 8.dp
+
+/** The calendar's colour down a month chip's leading edge. See [CalendarRail]. */
+private val CHIP_RAIL = 3.dp
+
+/** Two lines in a chip 30dp tall, with room left for the rounding. See [MonthEventChip]. */
+private val CHIP_LINE = 13.sp
+
+/**
+ * The clock under a month chip's title.
+ *
+ * In `sp` rather than `dp`, so it still answers to the system font size — small is a decision about
+ * this line's place in the hierarchy, not a refusal to scale. The chip's own height scales with it;
+ * see `monthChipHeight`.
+ */
+private val CHIP_TIME = 9.sp
+
+/**
+ * How tall one month chip is at a font scale of one.
+ *
+ * The number the slot arithmetic divides by — see `monthChipSlots` — and therefore a number the two
+ * lines above have to actually fit inside at the default scale. `monthChipHeight` is what scales
+ * it.
+ */
+internal val MONTH_CHIP_HEIGHT = 30.dp
+
+/** The gap between two stacked month chips. Between them only, never after the last. */
+internal val MONTH_CHIP_GAP = 2.dp
+
+/**
+ * How far a neighbouring month's chips are faded.
+ *
+ * Faded rather than hidden: those events are real and a person paging through a month legitimately
+ * cares that the 1st is already full. Far enough down that the month being drawn is unmistakably
+ * the loud one.
+ */
+private const val OTHER_MONTH_ALPHA = 0.55f
 
 /** How many lines a title may take inside a block before it is cut. */
 private const val TALL_LINES = 3

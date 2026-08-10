@@ -186,7 +186,12 @@ internal fun CalendarBoard(
             ) {
                 when (state.view) {
                     CalendarViewMode.AGENDA ->
-                        AgendaList(state = state, list = list, onOpen = onOpen)
+                        AgendaList(
+                            days = state.days,
+                            status = state.status,
+                            list = list,
+                            onOpen = onOpen,
+                        )
                     CalendarViewMode.DAY,
                     CalendarViewMode.WEEK ->
                         TimeGrid(
@@ -208,6 +213,13 @@ internal fun CalendarBoard(
                             onCreateAt = onCreateAt,
                             modifier = Modifier.pageOnSwipe(onPage),
                         )
+                    CalendarViewMode.MONTH_AGENDA ->
+                        MonthAgendaPane(
+                            state = state,
+                            onOpen = onOpen,
+                            onCreateAt = onCreateAt,
+                            onPage = onPage,
+                        )
                 }
             }
         }
@@ -226,7 +238,7 @@ internal fun CalendarBoard(
  * what is a twitch at its width.
  */
 @Composable
-private fun Modifier.pageOnSwipe(onPage: (Boolean) -> Unit): Modifier {
+internal fun Modifier.pageOnSwipe(onPage: (Boolean) -> Unit): Modifier {
     val density = LocalDensity.current
     // The container's own width rather than `Configuration.screenWidthDp`,
     // which is the whole display and is wrong in a split screen and on a
@@ -297,30 +309,40 @@ private fun Pager(heading: String, onPage: (Boolean) -> Unit) {
 }
 
 /**
- * What is coming up, as a rolling list from today.
+ * What is coming up, as a list of days with the empty ones left out.
  *
  * The web's agenda, on a phone: thirty days, grouped by day, with the empty days left out — which
  * is the whole difference between an agenda and a month grid.
+ *
+ * **Handed its days rather than reading them off the state**, because the mixture view draws this
+ * same list under a compact grid over a *month's* window. One list composable for both, so the day
+ * header, the hairline inset, the horizon footer and the "not asked yet" case cannot come to differ
+ * between the two places an agenda appears. The window it is showing is the caller's business; the
+ * only thing that changes with it is [emptyBody], because "the next 30 days are clear" is a
+ * sentence about the agenda's window and would be a small lie under a month.
  *
  * The rows are the cache, and they stay on screen through every failure above. A calendar that
  * could not be refreshed is still a correct account of what the phone last heard, and blanking it
  * would throw away the only thing that is still true.
  */
 @Composable
-private fun AgendaList(
-    state: CalendarState,
+internal fun AgendaList(
+    days: List<AgendaDay>,
+    status: CalendarStatus,
     list: LazyListState,
     onOpen: (EventCluster) -> Unit,
+    modifier: Modifier = Modifier,
+    emptyBody: String = stringResource(R.string.calendar_empty_body),
 ) {
-    if (state.days.isEmpty()) {
+    if (days.isEmpty()) {
         // "Nothing coming up" and "not asked yet" are different answers, and
         // showing the first while the first refresh is in flight tells somebody
         // their month is empty when it is not.
-        if (state.status.hasSettled) {
+        if (status.hasSettled) {
             PlMailEmptyState(
                 icon = Icons.Outlined.CalendarMonth,
                 title = stringResource(R.string.calendar_empty),
-                body = stringResource(R.string.calendar_empty_body),
+                body = emptyBody,
             )
         } else {
             Loading()
@@ -340,8 +362,12 @@ private fun AgendaList(
             DOT_SIZE +
             PlMailTheme.spacing.medium
 
-    LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
-        state.days.forEach { day ->
+    // One item per day header and one per cluster, in that order, which is the
+    // shape `agendaAnchorIndex` counts to place a selected day. The two have to
+    // stay in step: an item added here and not counted there scrolls the
+    // mixture view to the wrong row.
+    LazyColumn(state = list, modifier = modifier.fillMaxSize()) {
+        days.forEach { day ->
             item(key = day.date.toString()) { DayHeader(day) }
 
             day.clusters.forEachIndexed { index, cluster ->
@@ -359,8 +385,8 @@ private fun AgendaList(
             }
         }
 
-        if (state.status.mayBeIncomplete) {
-            item(key = HORIZON) { HorizonNote(state.status.horizon) }
+        if (status.mayBeIncomplete) {
+            item(key = HORIZON) { HorizonNote(status.horizon) }
         }
     }
 }
