@@ -1,0 +1,212 @@
+name: Release
+
+on:
+    push:
+        # The whole trigger. A release is a tag and nothing else — see
+        # docs/RELEASING.md for the two commands that cut one.
+        #
+        # Deliberately no `paths-ignore` here, and that is worth saying out
+        # loud because the Docker workflow in the server repository has one:
+        # path filters apply to tag pushes too, so a rule aimed at prose would
+        # silently skip the release when the tagged commit happened to touch
+        # only documentation. A filter that can drop a release is worse than no
+        # filter. The CI workflow carries the hygiene rules instead, where the
+        # cost of a wrong answer is a skipped build rather than a version that
+        # never ships.
+        tags: ['v*']
+    # The escape hatch. Select a tag as the ref when running this by hand — the
+    # first step refuses anything else, because every step after it names the
+    # release after the ref it was given.
+    workflow_dispatch:
+
+# Only the release step needs more than read, but the token is job-wide, so
+# this is the smallest scope that works: contents:write creates the release and
+# uploads the assets to it.
+permissions:
+    contents: read
+
+# Retagging the same version while the first run is still going would have two
+# jobs uploading assets to one release. Queue instead of cancelling: a
+# half-finished release that was killed mid-upload is the state nobody wants to
+# find.
+concurrency:
+    group: release-${{ github.ref }}
+    cancel-in-progress: false
+
+jobs:
+    release:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            # The toolchain the build declares, from gradle/libs.versions.toml.
+            # The convention plugins pin a JDK 21 toolchain and compile to Java
+            # 17 bytecode; Gradle would download a toolchain itself if this
+            # were wrong, so a mismatch here costs minutes rather than
+            # correctness — but it costs them on every single release.
+            - name: Set up JDK 21
+              uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: '21'
+
+            # Caches ~/.gradle across runs and reads the wrapper's checksum
+            # from gradle/wrapper/gradle-wrapper.properties. Read-only on a tag
+            # by this action's own default — the cache is written from the
+            # default branch, which is where the entries a release wants come
+            # from anyway.
+            - name: Set up Gradle
+              uses: gradle/actions/setup-gradle@v4
+
+            # The one thing a human can get wrong that nothing downstream would
+            # catch: tagging v0.2.0 while the build still says 0.1.0. Every
+            # asset published below is named after the tag, so without this the
+            # release would carry a file called plmail-0.2.0-foss.apk whose
+            # manifest, updater and about screen all say 0.1.0.
+            #
+            # The build is asked rather than the source grepped, so this keeps
+            # working when the version moves.
+            - name: Check the tag against the version in the build
+              run: |
+                  set -euo pipefail
+
+                  case "$GITHUB_REF_NAME" in
+                      v*) ;;
+                      *)
+                          echo "::error::'$GITHUB_REF_NAME' is not a release tag. Run this workflow against a tag of the form v1.2.3."
+                          exit 1
+                          ;;
+                  esac
+
+                  tagged="${GITHUB_REF_NAME#v}"
+                  declared="$(./gradlew --quiet --console=plain :app:printVersionName | tail -n 1 | tr -d '[:space:]')"
+
+                  if [ "$tagged" != "$declared" ]; then
+                      echo "::error::Tag $GITHUB_REF_NAME does not match the versionName the build produces ($declared). Bump VERSION_NAME in build-logic/convention/src/main/kotlin/AndroidApplicationConventionPlugin.kt, commit, and tag that commit."
+                      exit 1
+                  fi
+
+                  echo "APP_VERSION=$declared" >> "$GITHUB_ENV"
+                  echo "Building $GITHUB_REF_NAME as version $declared."
+
+            # Before the release build, not after, so a failing test costs one
+            # Gradle invocation instead of a full R8 run.
+            #
+            # `test` rather than a named variant: the app module has flavours,
+            # so there is no `testDebugUnitTest` there at all, and asking for
+            # one by name would run it in the library modules only — the app's
+            # own Robolectric suites would never execute and the build would
+            # still be green. The lifecycle task exists in every module and
+            # picks up both flavours (14 test tasks, at the time of writing).
+            - name: Run the unit tests
+              run: ./gradlew test
+
+            # The keystore lives in a secret as base64 and on disk only inside
+            # this job. A missing secret is a hard failure rather than a
+            # fallback to an unsigned build: an unsigned APK is a perfectly
+            # reasonable local artifact and an unusable release asset, and
+            # nobody reads a warning on a job that went green.
+            - name: Decode the signing keystore
+              env:
+                  KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+              run: |
+                  set -euo pipefail
+
+                  if [ -z "$KEYSTORE_BASE64" ]; then
+                      echo "::error::KEYSTORE_BASE64 is not set. See docs/RELEASING.md for the four secrets a release needs."
+                      exit 1
+                  fi
+
+                  keystore="$RUNNER_TEMP/release.jks"
+                  printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+                  echo "PLMAIL_KEYSTORE_FILE=$keystore" >> "$GITHUB_ENV"
+
+            # The four PLMAIL_ variables are what app/build.gradle.kts reads;
+            # the secret names are what a maintainer sets. Keeping them
+            # distinct means the build script's contract does not depend on
+            # GitHub, which is what lets the same block sign a local build from
+            # app/signing.properties.
+            #
+            # Both flavours, both formats: `assembleRelease` and
+            # `bundleRelease` each fan out over foss and google, giving four
+            # artifacts. The AAB is only useful for Play, which takes the
+            # `google` flavour — the foss one is built anyway because
+            # suppressing it would cost more configuration than the minute it
+            # saves.
+            - name: Assemble the signed release build
+              env:
+                  PLMAIL_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+                  PLMAIL_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+                  PLMAIL_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+              run: ./gradlew assembleRelease bundleRelease
+
+            # AGP names its outputs after the variant and drops them in a tree
+            # nobody wants to read in a release listing. Renamed here, once, so
+            # the assets say which version and which flavour they are.
+            #
+            # The mapping files go up too. `isMinifyEnabled` is on for release,
+            # so a stack trace from a published build is unreadable without the
+            # mapping that produced it — and the only moment that file is
+            # certain to exist is this one.
+            - name: Collect the release artifacts
+              run: |
+                  set -euo pipefail
+                  shopt -s nullglob
+
+                  artifacts="$RUNNER_TEMP/artifacts"
+                  mkdir -p "$artifacts"
+
+                  for apk in app/build/outputs/apk/*/release/*.apk; do
+                      flavour="$(basename "$(dirname "$(dirname "$apk")")")"
+                      cp "$apk" "$artifacts/plmail-$APP_VERSION-$flavour.apk"
+                  done
+
+                  for aab in app/build/outputs/bundle/*Release/*.aab; do
+                      variant="$(basename "$(dirname "$aab")")"
+                      cp "$aab" "$artifacts/plmail-$APP_VERSION-${variant%Release}.aab"
+                  done
+
+                  for mapping in app/build/outputs/mapping/*Release/mapping.txt; do
+                      variant="$(basename "$(dirname "$mapping")")"
+                      cp "$mapping" "$artifacts/plmail-$APP_VERSION-${variant%Release}-mapping.txt"
+                  done
+
+                  ls -l "$artifacts"
+
+            # The check that the signing config in app/build.gradle.kts is not
+            # guarded off. That block does nothing at all when a value is
+            # missing, by design, and the build stays green either way — so
+            # without this a typo'd secret name publishes unsigned APKs under a
+            # signed-looking name. apksigner exits non-zero on an unsigned APK,
+            # which is the whole point of running it.
+            - name: Verify the APKs are signed
+              run: |
+                  set -euo pipefail
+
+                  apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -n 1)"
+
+                  for apk in "$RUNNER_TEMP"/artifacts/*.apk; do
+                      echo "== $(basename "$apk")"
+                      "$apksigner" verify --print-certs "$apk"
+                  done
+
+            # Release notes are GitHub's own: the commits since the previous
+            # tag, grouped by the pull requests they came from. Handwritten
+            # notes can be edited in afterwards; generating them means a
+            # release never ships with an empty body because someone was in a
+            # hurry.
+            #
+            # A tag with a hyphen in it — v1.2.0-rc1 — is marked pre-release,
+            # which is the same semver convention the versionCode derivation in
+            # the convention plugin reads.
+            - name: Publish the GitHub Release
+              uses: softprops/action-gh-release@v2
+              with:
+                  files: ${{ runner.temp }}/artifacts/*
+                  generate_release_notes: true
+                  prerelease: ${{ contains(github.ref_name, '-') }}
+                  fail_on_unmatched_files: true

@@ -1,0 +1,15 @@
+# Local release signing. Copy to `signing.properties` — which is gitignored,
+# along with *.jks and *.keystore — and fill in.
+#
+# Only needed to build a signed release APK by hand. Releases are cut by the
+# workflow in .github/workflows/release.yml, which takes the same four values
+# from repository secrets instead; see docs/RELEASING.md. Debug builds and an
+# unsigned `assembleRelease` need none of this and will not read the file.
+#
+# storeFile is resolved relative to app/, so a keystore kept outside the
+# repository wants an absolute path. Do not put one inside the repository.
+
+storeFile=/home/you/keys/plmail-release.jks
+storePassword=
+keyAlias=plmail
+keyPassword=

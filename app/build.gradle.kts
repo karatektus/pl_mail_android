@@ -1,8 +1,39 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.plmail.android.application)
     alias(libs.plugins.plmail.android.compose)
     alias(libs.plugins.plmail.android.hilt)
 }
+
+/**
+ * Where the release signing identity comes from, in the two places it can live.
+ *
+ * The environment is CI: the release workflow base64-decodes `KEYSTORE_BASE64` into a file under
+ * the runner's temp directory and exports the path, so the keystore exists only for the length of
+ * one job and never as a file in the repository. `signing.properties` is the same four values on a
+ * developer's machine, for the rare case of building a signed APK by hand — it is gitignored, and
+ * `signing.properties.dist` next to it is the template.
+ *
+ * `providers.` rather than `System.getenv` and `File.readText`, because the configuration cache is
+ * on: an untracked read is one the cache cannot invalidate, so a build that has already run once
+ * would keep signing with the previous job's keystore.
+ */
+val signingProperties: Properties? =
+    providers
+        .fileContents(layout.projectDirectory.file("signing.properties"))
+        .asText
+        .map { text -> Properties().apply { load(text.reader()) } }
+        .orNull
+
+val signingValue = { variable: String, property: String ->
+    providers.environmentVariable(variable).orNull ?: signingProperties?.getProperty(property)
+}
+
+val releaseStorePath = signingValue("PLMAIL_KEYSTORE_FILE", "storeFile")
+val releaseStorePassword = signingValue("PLMAIL_KEYSTORE_PASSWORD", "storePassword")
+val releaseKeyAlias = signingValue("PLMAIL_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = signingValue("PLMAIL_KEY_PASSWORD", "keyPassword")
 
 android {
     namespace = "de.plmail"
@@ -39,6 +70,39 @@ android {
             applicationIdSuffix = ".google"
             buildConfigField("boolean", "HAS_GOOGLE_PUSH", "true")
         }
+    }
+
+    /**
+     * Release signing, and only when all four values are actually present.
+     *
+     * The guard is what keeps `./gradlew assembleRelease` working on a machine that has never seen
+     * the keystore: with no signing config the release variants build exactly as before and AGP
+     * writes `app-foss-release-unsigned.apk`, which is a perfectly good thing to have locally and
+     * an obviously wrong thing to publish. Half a config is the case worth refusing — a keystore
+     * with no key password fails deep inside the signing task with a message about a JKS entry, so
+     * all four or none.
+     *
+     * Nothing here tells the release workflow that signing succeeded. That is deliberate: the
+     * workflow runs `apksigner verify` over the finished APKs instead, because this block quietly
+     * doing nothing is the exact failure that would otherwise ship unsigned artifacts to a GitHub
+     * Release.
+     */
+    if (
+        releaseStorePath != null &&
+            releaseStorePassword != null &&
+            releaseKeyAlias != null &&
+            releaseKeyPassword != null
+    ) {
+        val releaseKeystore = file(releaseStorePath)
+
+        signingConfigs.create("release") {
+            storeFile = releaseKeystore
+            storePassword = releaseStorePassword
+            keyAlias = releaseKeyAlias
+            keyPassword = releaseKeyPassword
+        }
+
+        buildTypes.getByName("release").signingConfig = signingConfigs.getByName("release")
     }
 
     /**
@@ -139,4 +203,24 @@ dependencies {
     // Without the vintage engine its classes are not discovered at all and the
     // task reports success having run none of them.
     testRuntimeOnly(libs.junit.vintage.engine)
+}
+
+/**
+ * `./gradlew -q :app:printVersionName` — the build's own answer to "what version is this?".
+ *
+ * It exists for the release workflow, which refuses to publish when the tag being built and the
+ * version compiled into the APK disagree. Grepping the constant out of the convention plugin would
+ * work today and stop working the first time the version moves somewhere else; asking the Android
+ * extension cannot go stale.
+ *
+ * The value is read at configuration time and captured, rather than reached for inside `doLast`,
+ * because the configuration cache does not let a task action touch the project model.
+ */
+tasks.register("printVersionName") {
+    description = "Prints the versionName the release variants are built with."
+    group = "help"
+
+    val versionName = android.defaultConfig.versionName
+
+    doLast { println(versionName) }
 }

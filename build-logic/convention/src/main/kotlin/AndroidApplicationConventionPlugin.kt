@@ -4,6 +4,33 @@ import org.gradle.api.Project
 import org.gradle.api.plugins.JavaPluginExtension
 import org.gradle.kotlin.dsl.configure
 
+/**
+ * The version, declared once and here.
+ *
+ * A release is cut by pushing a `v`-prefixed tag, and the workflow refuses to publish unless the
+ * tag matches this string — so the version is a reviewed change in a commit, not a property of
+ * whoever typed the tag. Bump this, commit, then tag the commit.
+ */
+private const val VERSION_NAME = "0.1.0"
+
+/**
+ * versionCode, computed from versionName rather than stored beside it.
+ *
+ * Two numbers that must agree and are maintained separately eventually disagree, and the way that
+ * one surfaces is an upgrade that silently does not install. Deriving it also keeps the build
+ * reproducible from the tag alone, which matters more here than usual: F-Droid builds this
+ * repository itself, and a versionCode taken from a CI run counter would come out different every
+ * time anyone rebuilt the same source.
+ *
+ * `0.1.0` is 100, `1.2.3` is 10203. Two digits each for minor and patch, which is the ceiling this
+ * scheme buys — a `1.2.100` would collide with `1.3.0` and is a long way off. A pre-release suffix
+ * is dropped: `1.2.0-rc1` and `1.2.0` share a code, so the release supersedes its own candidate.
+ */
+private fun versionCodeOf(versionName: String): Int {
+    val (major, minor, patch) = versionName.substringBefore('-').split('.').map(String::toInt)
+    return major * 10_000 + minor * 100 + patch
+}
+
 /** The one application module. Everything else is a library. */
 class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) {
@@ -21,8 +48,8 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 defaultConfig {
                     minSdk = catalogVersionInt("minSdk")
                     targetSdk = catalogVersionInt("targetSdk")
-                    versionCode = 1
-                    versionName = "0.1.0"
+                    versionName = VERSION_NAME
+                    versionCode = versionCodeOf(VERSION_NAME)
                     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
                 }
 

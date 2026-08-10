@@ -20,6 +20,7 @@ is the specification this app implements. Read it before changing anything here.
 | `core/jmap/` | Transport and codec. A plain JVM module — no Android, on purpose. |
 | `build-logic/` | Convention plugins. No module repeats an `android {}` block. |
 | `gradle/libs.versions.toml` | Every dependency version, declared once. |
+| `.github/workflows/` | CI on every push, and the release build a `v*` tag triggers. |
 
 `core/jmap` has no Android dependency by design: it is the code most worth testing — every wire
 shape the server can hand back — and keeping the frameworks out means its suite runs on the host in
@@ -78,3 +79,20 @@ credential with `app:test:seed-api-token -q`.
 The session object's URLs are generated from the request's `Host` header, so the app must read
 `apiUrl`, `uploadUrl`, `downloadUrl` and `eventSourceUrl` from it rather than deriving them. That is
 what makes one credential work from both the emulator and a phone on the LAN.
+
+## Releasing
+
+Bump `VERSION_NAME` in `build-logic/convention/src/main/kotlin/AndroidApplicationConventionPlugin.kt`,
+commit it, then tag the commit:
+
+```bash
+git tag v0.2.0 && git push origin main v0.2.0
+```
+
+The tag is the trigger. CI runs the unit tests, builds and signs both flavours, and publishes a
+GitHub Release with the APKs, the app bundles and the R8 mapping files attached — and refuses to
+publish at all if the tag and the version in the build disagree.
+
+[docs/RELEASING.md](docs/RELEASING.md) has the details, including the four repository secrets the
+signing step needs. Building a release locally needs none of them: without a signing identity
+`./gradlew assembleRelease` simply produces an unsigned APK.
