@@ -19,3 +19,4 @@ captures/
 signing.properties
 *.jks
 *.keystore
+.claude/
