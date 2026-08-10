@@ -506,6 +506,33 @@ interface CalendarEventDao {
     @Query("DELETE FROM calendar_events WHERE uid = :uid") suspend fun deleteEvent(uid: String)
 
     /**
+     * Which cached series are which meeting: the row key, the calendar it is on, and its JMAP uid.
+     *
+     * Read once per refresh so the answer can be reconciled against the cache on **uid** rather
+     * than on the server id alone — see `CalendarRepository`'s dedup. Three short columns rather
+     * than `SELECT *`, because none of the rest is needed to decide identity and this is read on
+     * every window change.
+     *
+     * The whole account rather than the refreshed window, and deliberately not an `IN (:uids)` over
+     * what the query just answered: a busy month is easily past SQLite's 999-variable ceiling, and
+     * the row a stale copy has to be recognised against may sit on a day outside the window that
+     * exposed the duplicate.
+     */
+    @Query(
+        "SELECT uid, calendarKey, eventUid FROM calendar_events " +
+            "WHERE accountKey = :accountKey AND eventUid IS NOT NULL AND eventUid != ''"
+    )
+    suspend fun identities(accountKey: String): List<EventIdentity>
+
+    /** Drops series rows by key. Chunk the argument; see [identities] for the ceiling. */
+    @Query("DELETE FROM calendar_events WHERE uid IN (:uids)")
+    suspend fun deleteEvents(uids: List<String>)
+
+    /** Drops every day of several series at once. Chunk the argument. */
+    @Query("DELETE FROM calendar_occurrences WHERE eventKey IN (:eventKeys)")
+    suspend fun clearOccurrencesOfEvents(eventKeys: List<String>)
+
+    /**
      * Drops series rows nothing places any more.
      *
      * This is where "left the window" and "was deleted on the server" are deliberately *not*
@@ -519,6 +546,16 @@ interface CalendarEventDao {
     )
     suspend fun deleteUnplacedEvents()
 }
+
+/**
+ * A cached series' two identities and where it lives.
+ *
+ * [uid] is this cache's key and is built from the **server id**, which is local to one server and
+ * is re-minted whenever a remote calendar's mirror re-imports an event. [eventUid] is JMAP's own
+ * uid, which is not — it is the same string on both copies of one meeting, which is what makes it
+ * the only key a duplicate can be recognised on.
+ */
+data class EventIdentity(val uid: String, val calendarKey: String, val eventUid: String?)
 
 /**
  * One occurrence as a list draws it: the day, the time, and the series and calendar it came from.

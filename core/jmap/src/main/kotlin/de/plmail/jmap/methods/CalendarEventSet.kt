@@ -321,7 +321,14 @@ data class CalendarEventSetResult(
 @Serializable
 data class CreatedCalendarEvent(
     val id: CalendarEventId,
-    val uid: String = "",
+    /**
+     * JMAP's own uid for the event just created, where the server echoed one.
+     *
+     * Nullable rather than defaulted to the empty string, because the cache reconciles a created
+     * row against later refreshes on this value and "" is not an identity — it is the absence of
+     * one, and one that would compare equal to every other absence.
+     */
+    val uid: String? = null,
     val calendarId: CalendarId? = null,
     val isRecurring: Boolean = false,
     val sequence: Int = 0,

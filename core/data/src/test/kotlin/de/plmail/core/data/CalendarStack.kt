@@ -141,6 +141,15 @@ internal data class FakeEvent(
      */
     val overrides: String? = null,
     val calendarId: String = TEST_CALENDAR_ID,
+    /**
+     * JMAP's `uid`, which is **not** the id and does not move when the id does.
+     *
+     * Defaulted to `<id>@plmail`, which is the shape plMail mints, so every fixture that does not
+     * care reads as it always did. A test sets it explicitly for the one case where the two
+     * identities come apart: a provider mirror re-importing the event it has just pushed, which
+     * keeps the uid and hands out a row id of its own.
+     */
+    val uid: String? = null,
 )
 
 /** A one-off on one day, placed from its own start. */
@@ -151,6 +160,8 @@ internal fun oneOff(
     duration: String = "PT1H",
     showWithoutTime: Boolean = false,
     timeZone: String? = "Europe/Berlin",
+    uid: String? = null,
+    calendarId: String = TEST_CALENDAR_ID,
 ): FakeEvent =
     FakeEvent(
         id = id,
@@ -160,6 +171,8 @@ internal fun oneOff(
         duration = duration,
         showWithoutTime = showWithoutTime,
         timeZone = timeZone,
+        uid = uid,
+        calendarId = calendarId,
     )
 
 /** A series the server has materialised on [days], with no rule the client is ever shown. */
@@ -411,7 +424,7 @@ private fun FakeInstance.startUtc(event: FakeEvent): LocalDateTime =
 
 /** The series object: its own start, its own title, and the override map published whole. */
 private fun FakeEvent.toJson(): String = buildString {
-    append("""{"id":"$id","uid":"$id@plmail","calendarId":"$calendarId",""")
+    append("""{"id":"$id","uid":"${uid ?: "$id@plmail"}","calendarId":"$calendarId",""")
     append(""""title":"$title","start":"$start","duration":"$duration",""")
     timeZone?.let { append(""""timeZone":"$it",""") }
     if (showWithoutTime) append(""""showWithoutTime":true,""")
@@ -428,7 +441,7 @@ private fun FakeEvent.toJson(): String = buildString {
  * the same thing to a deserialiser.
  */
 private fun FakeEvent.toJson(instance: FakeInstance, occurrenceId: String): String = buildString {
-    append("""{"id":"$occurrenceId","seriesId":"$id","uid":"$id@plmail",""")
+    append("""{"id":"$occurrenceId","seriesId":"$id","uid":"${uid ?: "$id@plmail"}",""")
     append(""""calendarId":"$calendarId","title":"${instance.title}",""")
     append(""""start":"${instance.start.toWire()}","duration":"${instance.duration}",""")
     append(""""recurrenceId":"${instance.recurrenceId.toWire()}",""")
