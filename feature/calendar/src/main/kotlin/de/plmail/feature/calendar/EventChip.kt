@@ -29,6 +29,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -161,6 +163,15 @@ private fun ChipShell(
  * The size is passed rather than taken from the type scale because a chip in a seventh of a phone
  * and a chip in a whole one are not the same typographic problem — see [BlockText] — but both are
  * `sp`, so both still answer to the system font size.
+ *
+ * **[hyphenate] is for the lines that actually wrap, and only those.** A column fifty dp wide holds
+ * about eight characters, which is narrower than a great many single words — so a wrapping title
+ * breaks *inside* a word most times it wraps, and the platform's default break leaves no mark that
+ * it did: the week grid read "Quarterl / y" and "Elternab / end", which is a title that looks
+ * misspelt rather than one that ran out of room. Asking for hyphenation puts the break where the
+ * language keeps one and marks it, and German — a language whose ordinary nouns are compounds — is
+ * where this stops being a nicety. It is off for the single-line lines because a line that
+ * ellipsizes never breaks, and turning it on there would only cost the layout a hyphenator.
  */
 @Composable
 private fun ChipLine(
@@ -172,10 +183,17 @@ private fun ChipLine(
     modifier: Modifier = Modifier,
     weight: FontWeight? = null,
     cancelled: Boolean = false,
+    hyphenate: Boolean = false,
 ) {
+    val base = MaterialTheme.typography.labelSmall.copy(fontSize = size, lineHeight = line)
+
     Text(
         text = text,
-        style = MaterialTheme.typography.labelSmall.copy(fontSize = size, lineHeight = line),
+        // Copied onto the base rather than always set, so a line that does not
+        // wrap keeps whatever the type scale decided about breaking.
+        style =
+            if (hyphenate) base.copy(lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto)
+            else base,
         color = color,
         fontWeight = weight,
         maxLines = maxLines,
@@ -436,6 +454,8 @@ internal fun EventBlock(placed: PlacedCluster, onClick: () -> Unit, modifier: Mo
                         maxLines = plan.titleLines,
                         weight = FontWeight.Medium,
                         cancelled = cancelled,
+                        // Only where the line can actually wrap. See [ChipLine].
+                        hyphenate = plan.titleLines > 1,
                         modifier = if (inlineTime != null) Modifier.weight(1f) else Modifier,
                     )
 
