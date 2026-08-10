@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailBanner
 import de.plmail.core.designsystem.PlMailDivider
@@ -54,6 +55,7 @@ import de.plmail.core.designsystem.PlMailEmptyState
 import de.plmail.core.designsystem.PlMailTheme
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.util.Locale
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 
@@ -186,7 +188,14 @@ internal fun CalendarBoard(
             ) {
                 when (state.view) {
                     CalendarViewMode.AGENDA ->
-                        AgendaList(state = state, list = list, onOpen = onOpen)
+                        AgendaList(
+                            days = state.days,
+                            status = state.status,
+                            today = state.today,
+                            formats = formats,
+                            list = list,
+                            onOpen = onOpen,
+                        )
                     CalendarViewMode.DAY,
                     CalendarViewMode.WEEK ->
                         TimeGrid(
@@ -199,14 +208,29 @@ internal fun CalendarBoard(
                             modifier = Modifier.pageOnSwipe(onPage),
                         )
                     CalendarViewMode.MONTH ->
-                        MonthGrid(
-                            days = remember(state) { state.columns() },
-                            today = state.today,
-                            anchorMonth = state.anchor.monthValue,
-                            weekday = formats.weekday,
-                            onOpenDay = onOpenDay,
+                        // The legend is inside the swipe rather than beside it:
+                        // a strip along the bottom of a paged view that does
+                        // not page with it is a dead zone exactly where a thumb
+                        // rests.
+                        Column(modifier = Modifier.fillMaxSize().pageOnSwipe(onPage)) {
+                            MonthGrid(
+                                days = remember(state) { state.columns() },
+                                today = state.today,
+                                anchorMonth = state.anchor.monthValue,
+                                weekday = formats.weekday,
+                                onOpenDay = onOpenDay,
+                                onCreateAt = onCreateAt,
+                                modifier = Modifier.weight(1f),
+                            )
+
+                            MonthLegend(state.calendars)
+                        }
+                    CalendarViewMode.MONTH_AGENDA ->
+                        MonthAgendaPane(
+                            state = state,
+                            onOpen = onOpen,
                             onCreateAt = onCreateAt,
-                            modifier = Modifier.pageOnSwipe(onPage),
+                            onPage = onPage,
                         )
                 }
             }
@@ -226,7 +250,7 @@ internal fun CalendarBoard(
  * what is a twitch at its width.
  */
 @Composable
-private fun Modifier.pageOnSwipe(onPage: (Boolean) -> Unit): Modifier {
+internal fun Modifier.pageOnSwipe(onPage: (Boolean) -> Unit): Modifier {
     val density = LocalDensity.current
     // The container's own width rather than `Configuration.screenWidthDp`,
     // which is the whole display and is wrong in a split screen and on a
@@ -297,30 +321,42 @@ private fun Pager(heading: String, onPage: (Boolean) -> Unit) {
 }
 
 /**
- * What is coming up, as a rolling list from today.
+ * What is coming up, as a list of days with the empty ones left out.
  *
  * The web's agenda, on a phone: thirty days, grouped by day, with the empty days left out — which
  * is the whole difference between an agenda and a month grid.
+ *
+ * **Handed its days rather than reading them off the state**, because the mixture view draws this
+ * same list under a compact grid over a *month's* window. One list composable for both, so the day
+ * header, the hairline inset, the horizon footer and the "not asked yet" case cannot come to differ
+ * between the two places an agenda appears. The window it is showing is the caller's business; the
+ * only thing that changes with it is [emptyBody], because "the next 30 days are clear" is a
+ * sentence about the agenda's window and would be a small lie under a month.
  *
  * The rows are the cache, and they stay on screen through every failure above. A calendar that
  * could not be refreshed is still a correct account of what the phone last heard, and blanking it
  * would throw away the only thing that is still true.
  */
 @Composable
-private fun AgendaList(
-    state: CalendarState,
+internal fun AgendaList(
+    days: List<AgendaDay>,
+    status: CalendarStatus,
+    today: LocalDate,
+    formats: CalendarFormats,
     list: LazyListState,
     onOpen: (EventCluster) -> Unit,
+    modifier: Modifier = Modifier,
+    emptyBody: String = stringResource(R.string.calendar_empty_body),
 ) {
-    if (state.days.isEmpty()) {
+    if (days.isEmpty()) {
         // "Nothing coming up" and "not asked yet" are different answers, and
         // showing the first while the first refresh is in flight tells somebody
         // their month is empty when it is not.
-        if (state.status.hasSettled) {
+        if (status.hasSettled) {
             PlMailEmptyState(
                 icon = Icons.Outlined.CalendarMonth,
                 title = stringResource(R.string.calendar_empty),
-                body = stringResource(R.string.calendar_empty_body),
+                body = emptyBody,
             )
         } else {
             Loading()
@@ -340,9 +376,13 @@ private fun AgendaList(
             DOT_SIZE +
             PlMailTheme.spacing.medium
 
-    LazyColumn(state = list, modifier = Modifier.fillMaxSize()) {
-        state.days.forEach { day ->
-            item(key = day.date.toString()) { DayHeader(day) }
+    // One item per day header and one per cluster, in that order, which is the
+    // shape `agendaAnchorIndex` counts to place a selected day. The two have to
+    // stay in step: an item added here and not counted there scrolls the
+    // mixture view to the wrong row.
+    LazyColumn(state = list, modifier = modifier.fillMaxSize()) {
+        days.forEach { day ->
+            item(key = day.date.toString()) { DayHeader(day, today, formats) }
 
             day.clusters.forEachIndexed { index, cluster ->
                 item(key = "${day.date}/${cluster.primary.eventKey}/$index") {
@@ -359,8 +399,8 @@ private fun AgendaList(
             }
         }
 
-        if (state.status.mayBeIncomplete) {
-            item(key = HORIZON) { HorizonNote(state.status.horizon) }
+        if (status.mayBeIncomplete) {
+            item(key = HORIZON) { HorizonNote(status.horizon) }
         }
     }
 }
@@ -409,24 +449,69 @@ private fun Banners(status: CalendarStatus) {
     }
 }
 
+/**
+ * Which day the rows under it are on: the day named, then dated.
+ *
+ * **"Today" and "Tomorrow" in place of the weekday, and in the accent**, because those are the two
+ * days anybody opening a calendar is looking for and counting rows to find Thursday is what the
+ * header exists to prevent. The date stays beside the word rather than being replaced by it:
+ * "Today" alone is a header that stops being true if the phone is left open overnight, and it is
+ * the one line on the screen that has to survive being read at two in the morning.
+ *
+ * The weekday is upper-cased against the **device's** locale, not the root one — `uppercase()` with
+ * no argument mangles a Turkish dotted i, which is the bug that ships because nobody testing in
+ * German or English can see it.
+ */
 @Composable
-private fun DayHeader(day: AgendaDay) {
-    Text(
-        text = day.date.format(DAY_HEADER),
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = PlMailTheme.colors.ink,
+private fun DayHeader(day: AgendaDay, today: LocalDate, formats: CalendarFormats) {
+    val theme = PlMailTheme.values
+    val isToday = day.date == today
+    val isTomorrow = day.date == today.plusDays(1)
+
+    val word =
+        when {
+            isToday -> stringResource(R.string.calendar_today)
+            isTomorrow -> stringResource(R.string.calendar_tomorrow)
+            else -> day.date.format(formats.weekdayFull)
+        }
+
+    Row(
         modifier =
             Modifier.fillMaxWidth()
                 .padding(
-                    start = PlMailTheme.spacing.gutter,
-                    end = PlMailTheme.spacing.gutter,
-                    top = PlMailTheme.spacing.large,
-                    bottom = PlMailTheme.spacing.small,
+                    start = theme.spacing.gutter,
+                    end = theme.spacing.gutter,
+                    top = theme.spacing.large,
+                    bottom = theme.spacing.small,
                 )
-                .semantics { heading() },
-    )
+                // One heading, read as one phrase. Two Texts is two stops for a
+                // listener walking the rotor through a month of days.
+                .semantics(mergeDescendants = true) { heading() },
+        horizontalArrangement = Arrangement.spacedBy(theme.spacing.small),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Text(
+            text = word.uppercase(Locale.getDefault()),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = HEADER_TRACKING,
+            color = if (isToday) theme.colors.accent else theme.colors.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        Text(
+            text = day.date.format(formats.date),
+            style = MaterialTheme.typography.bodySmall,
+            color = theme.colors.inkFaint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
+
+/** Small caps want their letters opened out, or they read as one word. */
+private val HEADER_TRACKING = 0.06.sp
 
 /**
  * One row of the agenda.
@@ -446,7 +531,21 @@ private fun AgendaRowItem(cluster: EventCluster, onClick: () -> Unit) {
     val theme = PlMailTheme.values
     val row = cluster.primary
     val allDay = stringResource(R.string.calendar_all_day)
-    val time = startTimeOf(row)?.format(CLOCK) ?: allDay
+    val start = startTimeOf(row)?.format(CLOCK)
+    val end = endTimeOf(row)?.format(CLOCK)
+
+    // The span rather than the start alone: "9:00" says when to be somewhere
+    // and a list of them says nothing about whether the afternoon is free,
+    // which is the question an agenda is read to answer. A zero-length event --
+    // a real thing on this server -- keeps its single time rather than being
+    // drawn as a range from a moment to itself.
+    val time =
+        when {
+            start == null -> allDay
+            end == null || end == start -> start
+            else -> stringResource(R.string.calendar_time_range, start, end)
+        }
+
     val sentence = cluster.a11ySentence()
 
     Row(
@@ -464,8 +563,12 @@ private fun AgendaRowItem(cluster: EventCluster, onClick: () -> Unit) {
     ) {
         Text(
             text = time,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = theme.colors.inkMuted,
+            // Two lines, because a range is two clocks and a 12-hour locale
+            // spells both of them with a meridiem: "8:00 AM – 9:30 AM" does not
+            // fit this column on one line and must not be ellipsised into a
+            // half-truth about when something ends.
             maxLines = 2,
             // Fixed, so every row's title starts at the same edge. "Ganztägig"
             // is nearly twice "All day" and a column sized to the content would
@@ -479,6 +582,7 @@ private fun AgendaRowItem(cluster: EventCluster, onClick: () -> Unit) {
             Text(
                 text = row.title,
                 style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
                 color = theme.colors.ink,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

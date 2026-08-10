@@ -39,6 +39,7 @@ internal fun rememberCalendarFormats(): CalendarFormats {
             dayOfMonth = best("d"),
             monthAndDay = best("MMMd"),
             weekday = best("EEE"),
+            weekdayFull = best("EEEE"),
             hour = best("j"),
         )
     }

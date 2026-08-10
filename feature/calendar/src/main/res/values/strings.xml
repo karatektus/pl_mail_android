@@ -4,6 +4,12 @@
     <string name="calendar_back">Back to your mail</string>
     <string name="calendar_back_agenda">Back to the calendar</string>
     <string name="calendar_today">Today</string>
+    <!--
+      The agenda's day headers name the two days anybody is actually looking
+      for. The date stays beside the word: "Today" alone stops being true if a
+      phone is left open overnight.
+    -->
+    <string name="calendar_tomorrow">Tomorrow</string>
     <string name="calendar_new_event">New event</string>
     <string name="calendar_all_day">All day</string>
 
@@ -116,6 +122,35 @@
     <string name="calendar_view_day">Day</string>
     <string name="calendar_view_week">Week</string>
     <string name="calendar_view_month">Month</string>
+    <!--
+      Named for what is on the screen rather than for the split. "Compact
+      month", which was the other candidate, describes the top half to somebody
+      who has already seen it and nothing at all to somebody choosing from a
+      menu; the two nouns say what the two halves are.
+    -->
+    <string name="calendar_view_month_agenda">Month &amp; agenda</string>
+
+    <!--
+      The agenda's own "the next 30 days are clear" is a sentence about the
+      agenda's window, and the list under the month grid is showing six weeks
+      around a month somebody paged to. Saying the wrong span is worse than
+      saying less.
+    -->
+    <string name="calendar_month_empty_body">Nothing is on in this month.</string>
+
+    <!--
+      A month cell has room for a 3dp colour rail and no name, so the legend
+      under the grid is the only place those colours are explained. One sentence
+      for TalkBack rather than a row of bare names with nothing saying what they
+      are.
+    -->
+    <string name="calendar_legend_a11y">Calendar colours: %1$s</string>
+
+    <!--
+      The grip between the compact month and its agenda. A verb, because it is a
+      control: "Divider" would have TalkBack announce furniture.
+    -->
+    <string name="calendar_split_handle">Drag to resize the month grid</string>
 
     <string name="calendar_previous">Previous</string>
     <string name="calendar_next">Next</string>
