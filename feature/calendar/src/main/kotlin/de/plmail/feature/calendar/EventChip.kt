@@ -5,11 +5,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -22,13 +24,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.Hyphens
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import de.plmail.core.designsystem.PlMailTheme
@@ -99,71 +105,144 @@ internal fun EventCluster.dotColors(): List<Color> {
 }
 
 /**
- * One cluster as a grid or a month cell draws it: the dot, the time, the title.
+ * The shell every grid chip shares: the wash, the rail, the target and the sentence.
  *
- * The same content in every view, which is the point of it being one composable — the web keeps one
- * `_event_chip.html.twig` for the same reason, and the day it grew a second kind of chip is the day
- * the two would start disagreeing about what a cancelled meeting looks like.
+ * One composable for it because the *decoration* is the part that must not diverge — the day a
+ * block and an all-day chip disagree about how a calendar's colour arrives is the day the grid
+ * stops reading as one surface. What differs between them is only what text goes inside, which is
+ * why the content is a slot rather than a set of flags.
  *
- * [tall] fills a block that has a height of its own: the title wraps into the space instead of
- * being truncated to one line, and everything is aligned to the top rather than centred, because a
- * chip centred in a ninety-minute block reads as floating.
+ * **The colour arrives as a wash and a rail, never as the text.** Identical to [MonthEventChip]'s
+ * recipe, and for its reason: the calendar's hex is a literal the user picked in a browser, it has
+ * no dark variant, and putting it into the one role on the screen that has to stay legible in both
+ * schemes is the one thing `PaletteContrastTest` cannot check for. The rail carries it at full
+ * strength where it costs 3dp and no contrast.
  *
- * The whole chip carries **one sentence** for TalkBack rather than three stops. Three stops per
+ * **The whole chip carries one sentence** for TalkBack rather than three stops. Three stops per
  * event is a screenful of fragments — "09:00", "Standup", "Arbeit" — that the listener has to
  * reassemble, and a week grid has thirty of them.
  */
 @Composable
-internal fun EventChip(
+private fun ChipShell(
     cluster: EventCluster,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    showTime: Boolean = true,
-    tall: Boolean = false,
+    content: @Composable RowScope.() -> Unit,
 ) {
     val theme = PlMailTheme.values
-    val row = cluster.primary
-    val cancelled = row.status == STATUS_CANCELLED
-    val time = startTimeOf(row)?.format(CLOCK)
+    val tint = calendarColor(cluster.primary.calendarColor) ?: theme.colors.accent
     val sentence = cluster.a11ySentence()
 
     Row(
         modifier =
             modifier
                 .clip(RoundedCornerShape(theme.radii.small))
+                .background(tint.copy(alpha = BLOCK_TINT))
+                .background(theme.colors.surface.copy(alpha = BLOCK_VEIL))
                 .clickable(onClick = onClick)
-                .padding(horizontal = theme.spacing.tiny, vertical = theme.spacing.hair)
-                .clearAndSetSemantics { contentDescription = sentence },
-        verticalAlignment = if (tall) Alignment.Top else Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(theme.spacing.tiny),
+                .clearAndSetSemantics { contentDescription = sentence }
     ) {
-        CalendarDot(
+        CalendarRail(
             colors = cluster.dotColors(),
-            // Nudged onto the first line's baseline-ish rather than the top of
-            // the box, which is where `Alignment.Top` would put it in a block
-            // three lines tall.
-            modifier = if (tall) Modifier.padding(top = theme.spacing.hair) else Modifier,
-            size = CHIP_DOT,
+            modifier = Modifier.fillMaxHeight().width(CHIP_RAIL),
         )
 
-        if (showTime && time != null && !row.isAllDay) {
-            Text(
-                text = time,
-                style = MaterialTheme.typography.labelSmall,
-                color = theme.colors.inkFaint,
+        content()
+    }
+}
+
+/**
+ * One row of a grid chip.
+ *
+ * **Ellipsis, always, and that is the point of it being one composable.** A `maxLines = 1` with
+ * Compose's default overflow clips at the pixel, which is how the Sunday column came to read "11:4"
+ * for a quarter to twelve — a clock cut mid-character, which a person reads as a rendering fault
+ * rather than as a truncation. Every line of text in this file's chips goes through here so that
+ * cannot come back.
+ *
+ * The size is passed rather than taken from the type scale because a chip in a seventh of a phone
+ * and a chip in a whole one are not the same typographic problem — see [BlockText] — but both are
+ * `sp`, so both still answer to the system font size.
+ *
+ * **[hyphenate] is for the lines that actually wrap, and only those.** A column fifty dp wide holds
+ * about eight characters, which is narrower than a great many single words — so a wrapping title
+ * breaks *inside* a word most times it wraps, and the platform's default break leaves no mark that
+ * it did: the week grid read "Quarterl / y" and "Elternab / end", which is a title that looks
+ * misspelt rather than one that ran out of room. Asking for hyphenation puts the break where the
+ * language keeps one and marks it, and German — a language whose ordinary nouns are compounds — is
+ * where this stops being a nicety. It is off for the single-line lines because a line that
+ * ellipsizes never breaks, and turning it on there would only cost the layout a hyphenator.
+ */
+@Composable
+private fun ChipLine(
+    text: String,
+    size: TextUnit,
+    line: TextUnit,
+    color: Color,
+    maxLines: Int,
+    modifier: Modifier = Modifier,
+    weight: FontWeight? = null,
+    cancelled: Boolean = false,
+    hyphenate: Boolean = false,
+) {
+    val base = MaterialTheme.typography.labelSmall.copy(fontSize = size, lineHeight = line)
+
+    Text(
+        text = text,
+        // Copied onto the base rather than always set, so a line that does not
+        // wrap keeps whatever the type scale decided about breaking.
+        style =
+            if (hyphenate) base.copy(lineBreak = LineBreak.Paragraph, hyphens = Hyphens.Auto)
+            else base,
+        color = color,
+        fontWeight = weight,
+        maxLines = maxLines,
+        overflow = TextOverflow.Ellipsis,
+        textDecoration = if (cancelled) TextDecoration.LineThrough else null,
+        modifier = modifier,
+    )
+}
+
+/**
+ * One all-day row in the band above the axis: the title, the whole column wide.
+ *
+ * **The title gets every pixel that is not the rail.** This chip used to lead with a 8dp dot and
+ * 4dp of padding either side of it, which in a week column about 50dp wide is a third of the row
+ * spent saying something the wash and the rail already say in colour — the band read "So…" for
+ * "Sommerfest der Nachbarschaft". Dropping the dot roughly doubles the characters that survive.
+ *
+ * One line, ellipsized, at a height that follows the font scale: the band is a strip, and an
+ * all-day title that wrapped would push the hours it sits above off the screen.
+ */
+@Composable
+internal fun AllDayChip(cluster: EventCluster, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val theme = PlMailTheme.values
+    val row = cluster.primary
+
+    ChipShell(
+        cluster = cluster,
+        onClick = onClick,
+        modifier = modifier.height(allDayChipHeight()),
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier.weight(1f).fillMaxHeight(),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            val text = blockTextFor(maxWidth)
+
+            ChipLine(
+                text = row.title,
+                size = text.title,
+                line = text.line,
+                color = theme.colors.ink,
                 maxLines = 1,
+                weight = FontWeight.Medium,
+                cancelled = row.status == STATUS_CANCELLED,
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = theme.spacing.hair, vertical = theme.spacing.hair),
             )
         }
-
-        Text(
-            text = row.title,
-            style = MaterialTheme.typography.labelMedium,
-            color = theme.colors.ink,
-            maxLines = if (tall) TALL_LINES else 1,
-            overflow = TextOverflow.Ellipsis,
-            textDecoration = if (cancelled) TextDecoration.LineThrough else null,
-            modifier = Modifier.fillMaxWidth(),
-        )
     }
 }
 
@@ -293,12 +372,28 @@ private fun CalendarRail(colors: List<Color>, modifier: Modifier = Modifier) {
 }
 
 /**
- * A block on the time grid: the chip inside a coloured, floored box.
+ * A block on the time grid: the title first, and whatever else the block has the height to hold.
+ *
+ * **The title, then the clock, then the place — in that order, and cut from the bottom.** The
+ * previous drawing was a row of dot, clock and title, which in a week column is not a hierarchy but
+ * a queue: the dot and the clock are laid out first, they are the ones that fit, and the title —
+ * the only part that says what the meeting *is* — was measured against what was left and got
+ * nothing. A whole week of blocks reading "● 9:00" was the result. Stacking the lines and giving
+ * the title the leftover ones inverts that: the title is the line that always exists, and the clock
+ * appears when the block is two lines tall rather than instead of the title.
+ *
+ * **How much fits is measured, never assumed** — [blockTextPlan] over the block's own height, the
+ * same discipline `monthChipSlots` applies to a month cell. A quarter-hour block at the floor gets
+ * one line and one line only; a ninety-minute one gets the title wrapped over as many as it needs
+ * and a clock underneath.
+ *
+ * **A wide column is a different problem from a seventh of one**, so the type and the content both
+ * follow the measured width: a day view column has room for a larger face and for the location,
+ * which in a week column would be four ellipsized characters of noise. See [BlockText].
  *
  * The floor is what a fifteen-minute meeting needs to be readable. A quarter hour is a ninety-sixth
- * of the column — about twelve pixels at the height this grid gets on a phone — and one line of
- * "9:00 Standup" wants nearer thirty, so a short event drew a sliver with its own label spilling
- * out of it.
+ * of the column — about twelve pixels at the height this grid gets on a phone — so a short event
+ * drew a sliver with its own label spilling out of it.
  *
  * The floored block is then taller than its duration and can reach over the one after it. That is
  * the right trade rather than a compromise: the block's **top** is where the meeting starts and
@@ -309,24 +404,168 @@ private fun CalendarRail(colors: List<Color>, modifier: Modifier = Modifier) {
 @Composable
 internal fun EventBlock(placed: PlacedCluster, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val theme = PlMailTheme.values
-    val tint = calendarColor(placed.cluster.primary.calendarColor) ?: theme.colors.accent
+    val row = placed.cluster.primary
+    val cancelled = row.status == STATUS_CANCELLED
+    val time = startTimeOf(row)?.format(CLOCK)
+    val place = row.location?.takeIf { it.isNotBlank() }
 
-    Row(
-        modifier =
-            modifier
-                .padding(BLOCK_GAP)
-                .clip(RoundedCornerShape(theme.radii.small))
-                .background(tint.copy(alpha = BLOCK_TINT))
-                .background(theme.colors.surface.copy(alpha = BLOCK_VEIL))
+    ChipShell(
+        cluster = placed.cluster,
+        onClick = onClick,
+        modifier = modifier.padding(BLOCK_GAP),
     ) {
-        EventChip(
-            cluster = placed.cluster,
-            onClick = onClick,
-            tall = true,
-            modifier = Modifier.fillMaxSize().padding(theme.spacing.hair),
-        )
+        BoxWithConstraints(modifier = Modifier.weight(1f).fillMaxHeight()) {
+            val text = blockTextFor(maxWidth)
+            val line = with(LocalDensity.current) { text.line.toDp() }
+            val plan =
+                blockTextPlan(
+                    // Net of the padding the lines are about to sit inside, so
+                    // the arithmetic divides the room the text actually gets
+                    // rather than the room the block has.
+                    available = maxHeight - theme.spacing.hair * 2,
+                    line = line,
+                    hasTime = time != null,
+                    hasPlace = text.roomy && place != null,
+                )
+
+            // A wide column that is only one line tall puts the clock *beside*
+            // the title rather than dropping it. The queue this composable
+            // exists to undo was a narrow-column problem: at 355dp a clock
+            // costs about a seventh of the row and the title still gets the
+            // rest, where at 50dp it took everything. A quarter-hour meeting in
+            // Day view is exactly this case, and it is the one place the old
+            // one-line drawing was right.
+            val inlineTime = time?.takeIf { text.roomy && !plan.showsTime }
+
+            Column(
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(
+                            horizontal = if (text.roomy) theme.spacing.tiny else theme.spacing.hair,
+                            vertical = theme.spacing.hair,
+                        )
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(theme.spacing.tiny)) {
+                    ChipLine(
+                        text = row.title,
+                        size = text.title,
+                        line = text.line,
+                        color = theme.colors.ink,
+                        maxLines = plan.titleLines,
+                        weight = FontWeight.Medium,
+                        cancelled = cancelled,
+                        // Only where the line can actually wrap. See [ChipLine].
+                        hyphenate = plan.titleLines > 1,
+                        modifier = if (inlineTime != null) Modifier.weight(1f) else Modifier,
+                    )
+
+                    if (inlineTime != null) {
+                        ChipLine(
+                            text = inlineTime,
+                            size = text.meta,
+                            line = text.line,
+                            color = theme.colors.inkMuted,
+                            maxLines = 1,
+                        )
+                    }
+                }
+
+                if (plan.showsTime && time != null) {
+                    ChipLine(
+                        text = time,
+                        size = text.meta,
+                        line = text.line,
+                        color = theme.colors.inkMuted,
+                        maxLines = 1,
+                    )
+                }
+
+                if (plan.showsPlace && place != null) {
+                    ChipLine(
+                        text = place,
+                        size = text.meta,
+                        line = text.line,
+                        color = theme.colors.inkFaint,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
     }
 }
+
+/**
+ * How a chip sets its text at a given column width.
+ *
+ * Two settings rather than one, because a week column and a day column are not the same problem: a
+ * seventh of a 411dp phone leaves about 44dp for text, where 13sp fits six characters and 11sp fits
+ * eight — and eight is the difference between "Standu…" and "Standup". A day view column has twenty
+ * times that width and would read as wilfully tiny at the week's size.
+ *
+ * Both are `sp` and both scale with the system font size; [roomy] additionally decides whether the
+ * location is worth drawing at all, since a place name ellipsized to four characters is noise
+ * occupying the row a title could have wrapped into.
+ */
+private data class BlockText(
+    val title: TextUnit,
+    val meta: TextUnit,
+    val line: TextUnit,
+    val roomy: Boolean,
+)
+
+private fun blockTextFor(width: Dp): BlockText =
+    if (width >= BLOCK_ROOMY_WIDTH) RoomyBlockText else CompactBlockText
+
+/**
+ * Which lines a block draws in the height it measured, and how many of them the title may take.
+ *
+ * **The title's line is the one that always exists.** Everything else is bought out of what is left
+ * over, which is what makes this a priority order rather than a layout: one line is a title, two is
+ * a title and a clock, four in a wide column is a title over a clock over a place — and a title
+ * long enough to need them takes the spare lines back before the clock is offered one.
+ *
+ * Separated from the drawing so it can be asserted without a canvas, for the reason `monthCellPlan`
+ * gives: what a person reads off a grid is decided here, and "one line short" is the difference
+ * between a readable block and a clock with no title.
+ *
+ * An unbounded height answers one line rather than throwing. A chip laid out in a column that never
+ * constrained it — the all-day band, before it was given a height of its own — is asking to be as
+ * small as it can be, not as large.
+ */
+internal fun blockTextPlan(
+    available: Dp,
+    line: Dp,
+    hasTime: Boolean,
+    hasPlace: Boolean,
+): BlockTextPlan {
+    val lines =
+        if (!available.value.isFinite() || line.value <= 0f) TITLE_MIN_LINES
+        else maxOf(TITLE_MIN_LINES, (available / line).toInt())
+
+    val time = hasTime && lines > TITLE_MIN_LINES
+    val place = hasPlace && lines > TITLE_MIN_LINES + 1
+
+    val spent = (if (time) 1 else 0) + (if (place) 1 else 0)
+
+    return BlockTextPlan(
+        titleLines = (lines - spent).coerceIn(TITLE_MIN_LINES, TITLE_MAX_LINES),
+        showsTime = time,
+        showsPlace = place,
+    )
+}
+
+data class BlockTextPlan(val titleLines: Int, val showsTime: Boolean, val showsPlace: Boolean)
+
+/**
+ * How tall one all-day chip is on this device.
+ *
+ * One line plus its padding, scaled by the font scale for the reason `monthChipHeight` is — the box
+ * has to grow with the text inside it, or a large-text user gets the same strip with the titles
+ * clipped. Sized off the roomier of the two settings so the one height serves both columns.
+ */
+@Composable
+internal fun allDayChipHeight(): Dp =
+    with(LocalDensity.current) { BLOCK_LINE_ROOMY.toDp() } + ALL_DAY_CHIP_PADDING
 
 /**
  * What TalkBack reads for one row, merged or not.
@@ -360,10 +599,7 @@ internal fun EventCluster.a11ySentence(): String {
     }
 }
 
-/** The dot inside a chip, smaller than an agenda row's: a grid block has less room to spare. */
-private val CHIP_DOT = 8.dp
-
-/** The calendar's colour down a month chip's leading edge. See [CalendarRail]. */
+/** The calendar's colour down a chip's leading edge. See [CalendarRail]. */
 private val CHIP_RAIL = 3.dp
 
 /** Two lines in a chip 27dp tall, with room left for the rounding. See [MonthEventChip]. */
@@ -405,8 +641,69 @@ internal val MONTH_CHIP_GAP = 2.dp
  */
 private const val OTHER_MONTH_ALPHA = 0.55f
 
-/** How many lines a title may take inside a block before it is cut. */
-private const val TALL_LINES = 3
+/**
+ * The line a title is never cut below, and the one it is never grown past.
+ *
+ * A block always says *something* about what it is, even in the sliver a quarter-hour meeting gets:
+ * a block drawn with no title at all is a coloured rectangle, which is the state this view was in.
+ * The ceiling is the other end of the same argument — an all-afternoon block would otherwise wrap a
+ * long title over nine lines and read as a paragraph pinned to the grid.
+ */
+private const val TITLE_MIN_LINES = 1
+
+private const val TITLE_MAX_LINES = 4
+
+/**
+ * A grid chip's text, in the two settings it has.
+ *
+ * `sp` throughout, so every one of them answers to the system font size — small is a decision about
+ * these lines' place in the hierarchy, not a refusal to scale. The line height is what
+ * [blockTextPlan] divides the block by, which is why it is stated rather than left to the type
+ * scale's own leading: the arithmetic and the drawing have to be using the same number or a block
+ * plans for three lines and draws two and a half.
+ *
+ * The meta lines sit a step below the title for the reason [MonthEventChip]'s clock does — the
+ * title is what the event *is* — and it buys the same thing it does there: "10:00 AM" is eight
+ * characters against a week column that fits about eight of the title's.
+ */
+private val BLOCK_TITLE = 11.sp
+
+private val BLOCK_META = 10.sp
+
+private val BLOCK_LINE = 13.sp
+
+private val BLOCK_TITLE_ROOMY = 13.sp
+
+private val BLOCK_META_ROOMY = 11.sp
+
+private val BLOCK_LINE_ROOMY = 16.sp
+
+/** The week's setting: as many characters per line as fifty dp can be made to hold. */
+private val CompactBlockText =
+    BlockText(title = BLOCK_TITLE, meta = BLOCK_META, line = BLOCK_LINE, roomy = false)
+
+/** The day's: a full-width column, which has room for a readable face and for the place. */
+private val RoomyBlockText =
+    BlockText(
+        title = BLOCK_TITLE_ROOMY,
+        meta = BLOCK_META_ROOMY,
+        line = BLOCK_LINE_ROOMY,
+        roomy = true,
+    )
+
+/**
+ * How wide a column has to be before a chip sets its text for one.
+ *
+ * Between the two widths that actually occur and closer to neither by accident: a week column on a
+ * 411dp phone is about 50dp and a day column is about 355dp, so anything between 60 and 300 draws
+ * the same picture. It is expressed as a width rather than as a view mode because the day view
+ * splits its column when two meetings overlap, and a half-width lane is a real case that should get
+ * whichever setting it has the room for.
+ */
+private val BLOCK_ROOMY_WIDTH = 160.dp
+
+/** The room an all-day chip keeps around its single line. See [allDayChipHeight]. */
+private val ALL_DAY_CHIP_PADDING = 6.dp
 
 /** The hairline between two adjacent blocks, so a lane boundary is visible. */
 private val BLOCK_GAP = 1.dp

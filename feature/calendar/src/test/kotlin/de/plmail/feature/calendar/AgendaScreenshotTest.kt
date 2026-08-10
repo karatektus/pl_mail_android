@@ -3,10 +3,13 @@ package de.plmail.feature.calendar
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.unit.Density
 import com.github.takahirom.roborazzi.captureRoboImage
 import de.plmail.core.database.AgendaRow
 import de.plmail.core.database.CalendarEntity
@@ -115,6 +118,32 @@ class AgendaScreenshotTest {
     @Test
     fun week() {
         capture("week", state(days = twoDays()).copy(view = CalendarViewMode.WEEK))
+    }
+
+    /**
+     * The same week for somebody who has turned the system font up.
+     *
+     * The claim `EventBlock` and `allDayChipHeight` make is that a block divides its own height by
+     * a line that grew, so a large-text phone gets **fewer lines, not smaller ones** — a title and
+     * no clock where somebody else gets a title and a clock. That is a promise about layout rather
+     * than about colour, which is why this is the one case captured in a single scheme: a second
+     * copy of it in the dark palette would guard nothing the light one does not.
+     */
+    @Test
+    fun weekAtLargeText() {
+        val state = state(days = twoDays()).copy(view = CalendarViewMode.WEEK)
+
+        compose.setContent {
+            val density = LocalDensity.current
+
+            CompositionLocalProvider(
+                LocalDensity provides Density(density.density, LARGE_FONT_SCALE)
+            ) {
+                Screen(state, PlMailThemeChoice.LIGHT)
+            }
+        }
+
+        compose.onRoot().captureRoboImage("src/test/screenshots/agenda-week-large-text-light.png")
     }
 
     /** The month: six weeks that do not reflow, and cells whose meetings are titled chips. */
@@ -361,4 +390,9 @@ class AgendaScreenshotTest {
             // accident.
             eventUid = uid,
         )
+
+    private companion object {
+        /** Android's "Large" text setting, which is the one a lot of people actually run. */
+        const val LARGE_FONT_SCALE = 1.5f
+    }
 }
