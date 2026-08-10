@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -131,6 +132,14 @@ internal fun MonthGrid(
                     color = if (isSunday) theme.colors.accent else theme.colors.inkFaint,
                     fontWeight = if (isSunday) FontWeight.SemiBold else FontWeight.Medium,
                     letterSpacing = WEEKDAY_TRACKING,
+                    // Centred in the column, because the number underneath is.
+                    // A weighted slot is only half the alignment: without this
+                    // the label sits at the leading edge of its seventh of the
+                    // width while `DayCell` centres its date in the same
+                    // seventh, and the whole strip reads as shifted left --
+                    // visibly so in the borderless compact grid, where there
+                    // are no cell rules to hide it.
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     modifier =

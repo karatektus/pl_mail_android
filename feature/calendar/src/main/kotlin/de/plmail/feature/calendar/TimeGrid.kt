@@ -57,12 +57,15 @@ import java.time.format.DateTimeFormatter
  * one makes the grid jump by a row as you page through, and the band is a permanent part of the
  * axis — it is where "this event has no time" is expressible at all.
  *
- * **A known limitation, stated rather than hidden: a seven-day week is tight on a phone.** Seven
- * columns share whatever width is left after the hour gutter, which at 411dp is about fifty each,
- * and a block there says its colour, its time and very little else. It is not solved by a
- * horizontal scroll, which would need the heading row, the all-day band and the hours kept in step;
- * what answers it instead is that neither width is forced on anybody — Day view is one tap away in
- * the switcher and is a single full-width column. Worth revisiting; not worth guessing at.
+ * **A seven-day week is tight on a phone, and what a block spends that width on is the decision.**
+ * Seven columns share whatever is left after the hour gutter, which at 411dp is about fifty each. A
+ * block there used to spend it on a dot and a clock and had nothing left for the title, so the week
+ * read as a column of times with no meetings attached; it now spends the whole width on the title,
+ * wrapped over as many lines as the block is tall, and offers the clock the line underneath only
+ * when there is one. See `EventBlock`. The tightness is not solved by a horizontal scroll, which
+ * would need the heading row, the all-day band and the hours kept in step; what answers the rest of
+ * it is that neither width is forced on anybody — Day view is one tap away in the switcher and is a
+ * single full-width column, where the same block draws the location too.
  *
  * **Creating from the grid is a long press**, not a tap, and that is a platform choice rather than
  * a transcription of the web's double-click. The reasoning is the web's, though: a single tap on
@@ -208,10 +211,9 @@ private fun AllDayBand(days: List<DayGrid>, today: LocalDate, onOpen: (EventClus
                 verticalArrangement = Arrangement.spacedBy(theme.spacing.hair),
             ) {
                 day.allDay.take(ALL_DAY_MAX).forEach { cluster ->
-                    EventChip(
+                    AllDayChip(
                         cluster = cluster,
                         onClick = { onOpen(cluster) },
-                        showTime = false,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
