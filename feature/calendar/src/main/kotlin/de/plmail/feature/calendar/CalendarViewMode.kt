@@ -177,6 +177,14 @@ data class CalendarFormats(
     /** The abbreviated weekday over a grid column — "Mi.". */
     val weekday: DateTimeFormatter,
     /**
+     * The weekday in full, for an agenda's day header — "Mittwoch".
+     *
+     * Separate from [weekday] rather than reusing it: a column three characters wide and a heading
+     * somebody reads down a list want different words, and "Mi." as a heading reads like an
+     * abbreviation the app could not be bothered to expand.
+     */
+    val weekdayFull: DateTimeFormatter,
+    /**
      * A bare hour for the time grid's axis — "9 AM", or "09" on a 24-hour locale.
      *
      * Not the short *time* format the rows use. "10:00 AM" needs about seventy density-independent
@@ -199,6 +207,7 @@ data class CalendarFormats(
             dayOfMonth: String = "d",
             monthAndDay: String = "d MMM",
             weekday: String = "EEE",
+            weekdayFull: String = "EEEE",
             hour: String = "h a",
             locale: Locale = Locale.ENGLISH,
         ) =
@@ -208,6 +217,7 @@ data class CalendarFormats(
                 dayOfMonth = DateTimeFormatter.ofPattern(dayOfMonth, locale),
                 monthAndDay = DateTimeFormatter.ofPattern(monthAndDay, locale),
                 weekday = DateTimeFormatter.ofPattern(weekday, locale),
+                weekdayFull = DateTimeFormatter.ofPattern(weekdayFull, locale),
                 hour = DateTimeFormatter.ofPattern(hour, locale),
             )
     }

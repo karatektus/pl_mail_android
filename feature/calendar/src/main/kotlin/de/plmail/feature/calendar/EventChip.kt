@@ -231,11 +231,19 @@ internal fun MonthEventChip(
         ) {
             Text(
                 text = row.title,
-                // A line height tighter than the type scale's, which is the one
-                // liberty this chip takes: labelSmall's own 16sp leading over
-                // two lines is taller than the chip, and a chip sized to the
-                // leading is a cell that holds one.
-                style = MaterialTheme.typography.labelSmall.copy(lineHeight = CHIP_LINE),
+                // Smaller than the type scale's smallest label, and tighter
+                // leading than it too, which are the liberties this chip takes.
+                // Both are bought with a measurement rather than taste: a 55dp
+                // cell fits about eleven characters of `labelSmall` and about
+                // thirteen of this, and labelSmall's own 16sp leading over two
+                // lines is taller than the chip it has to sit in. Still `sp`,
+                // so the whole thing answers to the system font size -- see
+                // `monthChipHeight`, which scales the box these lines live in.
+                style =
+                    MaterialTheme.typography.labelSmall.copy(
+                        fontSize = CHIP_TITLE,
+                        lineHeight = CHIP_LINE,
+                    ),
                 color = theme.colors.ink,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
@@ -257,7 +265,7 @@ internal fun MonthEventChip(
                         fontSize = CHIP_TIME,
                         lineHeight = CHIP_LINE,
                     ),
-                color = theme.colors.inkFaint,
+                color = theme.colors.inkMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -358,17 +366,23 @@ private val CHIP_DOT = 8.dp
 /** The calendar's colour down a month chip's leading edge. See [CalendarRail]. */
 private val CHIP_RAIL = 3.dp
 
-/** Two lines in a chip 30dp tall, with room left for the rounding. See [MonthEventChip]. */
-private val CHIP_LINE = 13.sp
+/** Two lines in a chip 27dp tall, with room left for the rounding. See [MonthEventChip]. */
+private val CHIP_LINE = 12.sp
 
 /**
- * The clock under a month chip's title.
+ * A month chip's title, and the clock under it.
  *
- * In `sp` rather than `dp`, so it still answers to the system font size — small is a decision about
- * this line's place in the hierarchy, not a refusal to scale. The chip's own height scales with it;
- * see `monthChipHeight`.
+ * In `sp` rather than `dp`, so both still answer to the system font size — small is a decision
+ * about these lines' place in the hierarchy, not a refusal to scale. The chip's own height scales
+ * with them; see `monthChipHeight`.
+ *
+ * The clock is a step below the title and has to be: "10:00 AM" is eight characters against a cell
+ * that fits about thirteen of the title's, and a 12-hour locale set at the title's size arrived
+ * reading "10:00 A" — a meridiem cut in half, which is worse than no clock at all.
  */
-private val CHIP_TIME = 9.sp
+private val CHIP_TITLE = 10.sp
+
+private val CHIP_TIME = 8.sp
 
 /**
  * How tall one month chip is at a font scale of one.
@@ -377,7 +391,7 @@ private val CHIP_TIME = 9.sp
  * lines above have to actually fit inside at the default scale. `monthChipHeight` is what scales
  * it.
  */
-internal val MONTH_CHIP_HEIGHT = 30.dp
+internal val MONTH_CHIP_HEIGHT = 27.dp
 
 /** The gap between two stacked month chips. Between them only, never after the last. */
 internal val MONTH_CHIP_GAP = 2.dp

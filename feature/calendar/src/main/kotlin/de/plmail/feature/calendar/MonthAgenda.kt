@@ -1,18 +1,35 @@
 package de.plmail.feature.calendar
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
-import de.plmail.core.designsystem.PlMailDivider
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
+import de.plmail.core.designsystem.PlMailTheme
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -74,35 +91,96 @@ internal fun MonthAgendaPane(
         agendaAnchorIndex(state.days, target)?.let { list.animateScrollToItem(it) }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        MonthGrid(
-            days = remember(state) { state.columns() },
-            today = state.today,
-            anchorMonth = state.anchor.monthValue,
-            weekday = formats.weekday,
-            // A tap selects rather than opening the day, because the day's
-            // events are already on this screen: opening Day view from here
-            // would be a control that throws away the half of the layout the
-            // user chose this view for.
-            onOpenDay = { selected = it },
-            onCreateAt = onCreateAt,
-            modifier = Modifier.weight(COMPACT_GRID_WEIGHT).pageOnSwipe(onPage),
-            style = MonthCellStyle.DOTS,
-            selected = selected,
-        )
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val height = maxHeight
+        val pixels = with(LocalDensity.current) { height.toPx() }
 
-        PlMailDivider()
+        // The split, as a share of the pane. Saveable, because it is a
+        // deliberate act by the user and a rotation is not an argument against
+        // it.
+        var share by rememberSaveable { mutableFloatStateOf(COMPACT_GRID_WEIGHT) }
 
-        AgendaList(
-            days = state.days,
-            status = state.status,
-            list = list,
-            onOpen = onOpen,
-            // "The next 30 days are clear" is the agenda's sentence and it is
-            // not true here: this list is a month, and a month that is empty is
-            // empty for six weeks rather than for thirty days.
-            emptyBody = stringResource(R.string.calendar_month_empty_body),
-            modifier = Modifier.weight(1f - COMPACT_GRID_WEIGHT),
+        Column(modifier = Modifier.fillMaxSize()) {
+            MonthGrid(
+                days = remember(state) { state.columns() },
+                today = state.today,
+                anchorMonth = state.anchor.monthValue,
+                weekday = formats.weekday,
+                // A tap selects rather than opening the day, because the day's
+                // events are already on this screen: opening Day view from here
+                // would be a control that throws away the half of the layout the
+                // user chose this view for.
+                onOpenDay = { selected = it },
+                onCreateAt = onCreateAt,
+                modifier = Modifier.height(height * share).pageOnSwipe(onPage),
+                style = MonthCellStyle.DOTS,
+                selected = selected,
+            )
+
+            SplitHandle(
+                onDrag = { delta ->
+                    share = (share + delta / pixels).coerceIn(MIN_GRID_SHARE, MAX_GRID_SHARE)
+                }
+            )
+
+            AgendaList(
+                days = state.days,
+                status = state.status,
+                today = state.today,
+                formats = formats,
+                list = list,
+                onOpen = onOpen,
+                // "The next 30 days are clear" is the agenda's sentence and it
+                // is not true here: this list is a month, and a month that is
+                // empty is empty for six weeks rather than for thirty days.
+                emptyBody = stringResource(R.string.calendar_month_empty_body),
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+/**
+ * The seam between the two halves: a short pill, and the grip it looks like.
+ *
+ * **A hairline rule was the wrong mark here.** The divider this replaced said "these are two lists"
+ * in the same voice the agenda uses between two events, which is the one thing the seam is not: it
+ * is where a grid ends and a different kind of thing begins. A centred pill in whitespace says that
+ * without drawing a line across the screen, which is what the borderless grid above it is for.
+ *
+ * **And it is really draggable**, which is the only honest reason to draw a grip. The layout was
+ * already a share of a measured height, so the drag is that float and a `coerceIn` — perhaps
+ * fifteen lines — and a handle that looked adjustable and was not would be a worse thing to ship
+ * than the hairline it replaced. The bounds keep both halves useful: the grid never shrinks below
+ * four legible week rows and never grows to leave the list showing one.
+ *
+ * TalkBack gets the pill as a labelled control rather than as an unexplained graphic; the two
+ * halves either side of it are each fully readable at any share, so the drag is a convenience
+ * rather than the only way to reach anything.
+ */
+@Composable
+private fun SplitHandle(onDrag: (Float) -> Unit) {
+    val theme = PlMailTheme.values
+    val description = stringResource(R.string.calendar_split_handle)
+
+    Box(
+        modifier =
+            Modifier.fillMaxWidth()
+                // A 48dp target around a 4dp mark: the pill is what it looks
+                // like and this is what a thumb actually lands on.
+                .height(theme.spacing.touchTarget)
+                .draggable(
+                    orientation = Orientation.Vertical,
+                    state = rememberDraggableState(onDelta = onDrag),
+                )
+                .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier =
+                Modifier.size(width = HANDLE_WIDTH, height = HANDLE_HEIGHT)
+                    .clip(CircleShape)
+                    .background(theme.colors.line)
         )
     }
 }
@@ -148,3 +226,19 @@ private const val HEADER_ITEM = 1
  * with a footer rather than two halves of one screen.
  */
 private const val COMPACT_GRID_WEIGHT = 0.42f
+
+/**
+ * How far the seam may be dragged, either way.
+ *
+ * Not 0 and 1: a grid squeezed to nothing is a view the user cannot get back without finding the
+ * seam again, and a list squeezed to nothing is the same trap the other way up. The floor is about
+ * four legible week rows; the ceiling leaves the agenda showing three.
+ */
+private const val MIN_GRID_SHARE = 0.25f
+
+private const val MAX_GRID_SHARE = 0.6f
+
+/** The pill: wide enough to read as a grip, short enough not to read as a rule. */
+private val HANDLE_WIDTH = 36.dp
+
+private val HANDLE_HEIGHT = 4.dp

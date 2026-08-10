@@ -47,6 +47,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailBanner
 import de.plmail.core.designsystem.PlMailDivider
@@ -54,6 +55,7 @@ import de.plmail.core.designsystem.PlMailEmptyState
 import de.plmail.core.designsystem.PlMailTheme
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.util.Locale
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 
@@ -189,6 +191,8 @@ internal fun CalendarBoard(
                         AgendaList(
                             days = state.days,
                             status = state.status,
+                            today = state.today,
+                            formats = formats,
                             list = list,
                             onOpen = onOpen,
                         )
@@ -204,15 +208,23 @@ internal fun CalendarBoard(
                             modifier = Modifier.pageOnSwipe(onPage),
                         )
                     CalendarViewMode.MONTH ->
-                        MonthGrid(
-                            days = remember(state) { state.columns() },
-                            today = state.today,
-                            anchorMonth = state.anchor.monthValue,
-                            weekday = formats.weekday,
-                            onOpenDay = onOpenDay,
-                            onCreateAt = onCreateAt,
-                            modifier = Modifier.pageOnSwipe(onPage),
-                        )
+                        // The legend is inside the swipe rather than beside it:
+                        // a strip along the bottom of a paged view that does
+                        // not page with it is a dead zone exactly where a thumb
+                        // rests.
+                        Column(modifier = Modifier.fillMaxSize().pageOnSwipe(onPage)) {
+                            MonthGrid(
+                                days = remember(state) { state.columns() },
+                                today = state.today,
+                                anchorMonth = state.anchor.monthValue,
+                                weekday = formats.weekday,
+                                onOpenDay = onOpenDay,
+                                onCreateAt = onCreateAt,
+                                modifier = Modifier.weight(1f),
+                            )
+
+                            MonthLegend(state.calendars)
+                        }
                     CalendarViewMode.MONTH_AGENDA ->
                         MonthAgendaPane(
                             state = state,
@@ -329,6 +341,8 @@ private fun Pager(heading: String, onPage: (Boolean) -> Unit) {
 internal fun AgendaList(
     days: List<AgendaDay>,
     status: CalendarStatus,
+    today: LocalDate,
+    formats: CalendarFormats,
     list: LazyListState,
     onOpen: (EventCluster) -> Unit,
     modifier: Modifier = Modifier,
@@ -368,7 +382,7 @@ internal fun AgendaList(
     // mixture view to the wrong row.
     LazyColumn(state = list, modifier = modifier.fillMaxSize()) {
         days.forEach { day ->
-            item(key = day.date.toString()) { DayHeader(day) }
+            item(key = day.date.toString()) { DayHeader(day, today, formats) }
 
             day.clusters.forEachIndexed { index, cluster ->
                 item(key = "${day.date}/${cluster.primary.eventKey}/$index") {
@@ -435,24 +449,69 @@ private fun Banners(status: CalendarStatus) {
     }
 }
 
+/**
+ * Which day the rows under it are on: the day named, then dated.
+ *
+ * **"Today" and "Tomorrow" in place of the weekday, and in the accent**, because those are the two
+ * days anybody opening a calendar is looking for and counting rows to find Thursday is what the
+ * header exists to prevent. The date stays beside the word rather than being replaced by it:
+ * "Today" alone is a header that stops being true if the phone is left open overnight, and it is
+ * the one line on the screen that has to survive being read at two in the morning.
+ *
+ * The weekday is upper-cased against the **device's** locale, not the root one — `uppercase()` with
+ * no argument mangles a Turkish dotted i, which is the bug that ships because nobody testing in
+ * German or English can see it.
+ */
 @Composable
-private fun DayHeader(day: AgendaDay) {
-    Text(
-        text = day.date.format(DAY_HEADER),
-        style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.SemiBold,
-        color = PlMailTheme.colors.ink,
+private fun DayHeader(day: AgendaDay, today: LocalDate, formats: CalendarFormats) {
+    val theme = PlMailTheme.values
+    val isToday = day.date == today
+    val isTomorrow = day.date == today.plusDays(1)
+
+    val word =
+        when {
+            isToday -> stringResource(R.string.calendar_today)
+            isTomorrow -> stringResource(R.string.calendar_tomorrow)
+            else -> day.date.format(formats.weekdayFull)
+        }
+
+    Row(
         modifier =
             Modifier.fillMaxWidth()
                 .padding(
-                    start = PlMailTheme.spacing.gutter,
-                    end = PlMailTheme.spacing.gutter,
-                    top = PlMailTheme.spacing.large,
-                    bottom = PlMailTheme.spacing.small,
+                    start = theme.spacing.gutter,
+                    end = theme.spacing.gutter,
+                    top = theme.spacing.large,
+                    bottom = theme.spacing.small,
                 )
-                .semantics { heading() },
-    )
+                // One heading, read as one phrase. Two Texts is two stops for a
+                // listener walking the rotor through a month of days.
+                .semantics(mergeDescendants = true) { heading() },
+        horizontalArrangement = Arrangement.spacedBy(theme.spacing.small),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Text(
+            text = word.uppercase(Locale.getDefault()),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = HEADER_TRACKING,
+            color = if (isToday) theme.colors.accent else theme.colors.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+
+        Text(
+            text = day.date.format(formats.date),
+            style = MaterialTheme.typography.bodySmall,
+            color = theme.colors.inkFaint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
 }
+
+/** Small caps want their letters opened out, or they read as one word. */
+private val HEADER_TRACKING = 0.06.sp
 
 /**
  * One row of the agenda.
@@ -472,7 +531,21 @@ private fun AgendaRowItem(cluster: EventCluster, onClick: () -> Unit) {
     val theme = PlMailTheme.values
     val row = cluster.primary
     val allDay = stringResource(R.string.calendar_all_day)
-    val time = startTimeOf(row)?.format(CLOCK) ?: allDay
+    val start = startTimeOf(row)?.format(CLOCK)
+    val end = endTimeOf(row)?.format(CLOCK)
+
+    // The span rather than the start alone: "9:00" says when to be somewhere
+    // and a list of them says nothing about whether the afternoon is free,
+    // which is the question an agenda is read to answer. A zero-length event --
+    // a real thing on this server -- keeps its single time rather than being
+    // drawn as a range from a moment to itself.
+    val time =
+        when {
+            start == null -> allDay
+            end == null || end == start -> start
+            else -> stringResource(R.string.calendar_time_range, start, end)
+        }
+
     val sentence = cluster.a11ySentence()
 
     Row(
@@ -490,8 +563,12 @@ private fun AgendaRowItem(cluster: EventCluster, onClick: () -> Unit) {
     ) {
         Text(
             text = time,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodySmall,
             color = theme.colors.inkMuted,
+            // Two lines, because a range is two clocks and a 12-hour locale
+            // spells both of them with a meridiem: "8:00 AM – 9:30 AM" does not
+            // fit this column on one line and must not be ellipsised into a
+            // half-truth about when something ends.
             maxLines = 2,
             // Fixed, so every row's title starts at the same edge. "Ganztägig"
             // is nearly twice "All day" and a column sized to the content would
@@ -505,6 +582,7 @@ private fun AgendaRowItem(cluster: EventCluster, onClick: () -> Unit) {
             Text(
                 text = row.title,
                 style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
                 color = theme.colors.ink,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,

@@ -2,6 +2,7 @@ package de.plmail.feature.calendar
 
 import androidx.compose.ui.unit.dp
 import de.plmail.core.database.AgendaRow
+import de.plmail.core.database.CalendarEntity
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.Test
@@ -204,6 +205,46 @@ class MonthIndicatorsTest {
         assertEquals(0, monthChipSlots(29.dp, 30.dp, 2.dp))
         assertEquals(0, monthChipSlots(0.dp, 30.dp, 2.dp))
     }
+
+    /**
+     * The legend explains the colours that are on the grid, and no others.
+     *
+     * A hidden calendar's events are dropped before anything is drawn, so listing it would be a key
+     * to a colour that appears nowhere — which sends somebody looking for a green event that is not
+     * there. Order is the DAO's, because it is the web sidebar's, and the two surfaces listing the
+     * same calendars in different orders reads as one of them being wrong.
+     */
+    @Test
+    fun `the legend lists the visible, named calendars in the order given`() {
+        val legend =
+            legendCalendars(
+                listOf(
+                    calendar("Arbeit"),
+                    calendar("Versteckt", isVisible = false),
+                    calendar("  "),
+                    calendar("Privat"),
+                )
+            )
+
+        assertEquals(listOf("Arbeit", "Privat"), legend.map { it.name })
+    }
+
+    /** No calendars is no legend, rather than an empty strip of padding under the month. */
+    @Test
+    fun `the legend is empty when nothing is visible`() {
+        assertTrue(legendCalendars(listOf(calendar("Arbeit", isVisible = false))).isEmpty())
+        assertTrue(legendCalendars(emptyList()).isEmpty())
+    }
+
+    private fun calendar(name: String, isVisible: Boolean = true) =
+        CalendarEntity(
+            uid = "https://nas.local/13#$name",
+            accountKey = "https://nas.local/13",
+            calendarId = name,
+            name = name,
+            color = "#3b82f6",
+            isVisible = isVisible,
+        )
 
     private fun clusters(count: Int): List<EventCluster> =
         (1..count).map { EventCluster(listOf(row(it.toString(), "Arbeit", uid = "e$it@plmail"))) }

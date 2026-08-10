@@ -4,6 +4,7 @@
     <string name="calendar_back">Zurück zur Post</string>
     <string name="calendar_back_agenda">Zurück zum Kalender</string>
     <string name="calendar_today">Heute</string>
+    <string name="calendar_tomorrow">Morgen</string>
     <string name="calendar_new_event">Neuer Termin</string>
     <string name="calendar_all_day">Ganztägig</string>
 
@@ -84,6 +85,9 @@
     <string name="calendar_view_month_agenda">Monat &amp; Agenda</string>
 
     <string name="calendar_month_empty_body">In diesem Monat steht nichts an.</string>
+
+    <string name="calendar_legend_a11y">Kalenderfarben: %1$s</string>
+    <string name="calendar_split_handle">Ziehen, um das Monatsraster zu verkleinern oder zu vergrößern</string>
 
     <string name="calendar_previous">Zurück</string>
     <string name="calendar_next">Weiter</string>

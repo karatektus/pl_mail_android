@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,12 +15,15 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -29,12 +34,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import de.plmail.core.database.CalendarEntity
 import de.plmail.core.designsystem.PlMailTheme
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * The month: six weeks of day cells, each carrying what is on the day.
@@ -91,18 +99,43 @@ internal fun MonthGrid(
 ) {
     val theme = PlMailTheme.values
 
+    // The rules are the full month's and the compact grid's absence of them is
+    // the compact grid's whole character. Six weeks of hairlines over a third
+    // of the height is a net rather than a calendar, and the grid up there is
+    // being *scanned* -- for which the alignment of seven columns is already
+    // doing the work a line would do. The full month keeps them, because a cell
+    // with chips in it needs a boundary or the chips read as belonging to the
+    // column rather than to the day.
+    val ruled = style == MonthCellStyle.CHIPS
+
     Column(modifier = modifier.fillMaxSize()) {
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = theme.spacing.tiny)) {
             days.take(CalendarViewMode.WEEK_DAYS).forEach { day ->
+                val isSunday = day.date.dayOfWeek == DayOfWeek.SUNDAY
+
                 Text(
-                    text = day.date.format(weekday),
+                    // Upper case with the letters opened out: at this size a
+                    // strip of small caps reads as a legend rather than as a
+                    // seven-word row of content, which is what it is. Cased
+                    // against the *device's* locale rather than the root one --
+                    // a Turkish phone lower-cases its own dotted i differently,
+                    // and `uppercase()` with no argument is the bug that ships.
+                    text = day.date.format(weekday).uppercase(Locale.getDefault()),
                     style = MaterialTheme.typography.labelSmall,
-                    color = theme.colors.inkFaint,
+                    // Sunday in the accent, which is the one column a month is
+                    // scanned against. It is also the convention this app's
+                    // German audience already reads -- Sundays are the coloured
+                    // ones in every wall calendar they own -- and it survives
+                    // the week starting on a Monday, which tinting "the first
+                    // column" would not.
+                    color = if (isSunday) theme.colors.accent else theme.colors.inkFaint,
+                    fontWeight = if (isSunday) FontWeight.SemiBold else FontWeight.Medium,
+                    letterSpacing = WEEKDAY_TRACKING,
                     maxLines = 1,
                     overflow = TextOverflow.Clip,
                     modifier =
                         Modifier.weight(1f)
-                            .padding(horizontal = theme.spacing.tiny)
+                            .padding(horizontal = theme.spacing.hair)
                             // The weekday strip is a legend for the grid below,
                             // and every cell already names its own weekday in
                             // full. Seven extra stops before the first day is a
@@ -117,7 +150,12 @@ internal fun MonthGrid(
         // rather than a border per cell, which would double every internal
         // line and leave a two-pixel seam down the middle of the month.
         days.chunked(CalendarViewMode.WEEK_DAYS).forEach { week ->
-            Row(modifier = Modifier.fillMaxWidth().weight(1f).background(theme.colors.line)) {
+            Row(
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .weight(1f)
+                        .then(if (ruled) Modifier.background(theme.colors.line) else Modifier)
+            ) {
                 week.forEach { day ->
                     DayCell(
                         day = day,
@@ -257,18 +295,25 @@ private fun DayCell(
 ) {
     val theme = PlMailTheme.values
     val sentence = day.a11ySentence()
+    val ruled = style == MonthCellStyle.CHIPS
 
     // Today first, then the selection, then the weekend, then the ordinary
     // case. The spill-in days of the neighbouring months are NOT given a fill
     // of their own -- their date and their events are dimmed instead, because a
     // fourth cell colour in a grid this small stops reading as information and
     // starts reading as noise.
+    //
+    // The borderless grid takes none of them but the selection: today is
+    // already a filled circle round its own number, and a whole cell washed in
+    // `accentSoft` under it says the same thing twice at ten times the area. A
+    // selection has nothing else to say it, so it keeps its fill.
     val fill =
         when {
-            isToday -> theme.colors.accentSoft
+            isToday && ruled -> theme.colors.accentSoft
             isSelected -> theme.colors.hover
-            isWeekend -> theme.colors.sunken
-            else -> theme.colors.surface
+            isWeekend && ruled -> theme.colors.sunken
+            ruled -> theme.colors.surface
+            else -> Color.Transparent
         }
 
     Box(
@@ -286,7 +331,18 @@ private fun DayCell(
                 .padding(theme.spacing.hair)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().background(fill).padding(theme.spacing.hair),
+            modifier =
+                Modifier.fillMaxSize()
+                    // Square where the grid is ruled, so the fill meets the
+                    // hairlines it is bounded by; rounded where it is not,
+                    // because a hard-edged rectangle floating in whitespace is
+                    // a cell border drawn in the selection colour.
+                    .then(
+                        if (ruled) Modifier
+                        else Modifier.clip(RoundedCornerShape(theme.radii.small))
+                    )
+                    .background(fill)
+                    .padding(theme.spacing.hair),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             DayNumber(
@@ -438,8 +494,102 @@ private fun MonthDay.a11ySentence(): String {
     )
 }
 
+/**
+ * Which colour is which calendar, under the month.
+ *
+ * **The one place the grid's colours are explained.** Every other view names the calendar in the
+ * row it draws — the agenda's description says "on Arbeit", a detail screen spells it out — but a
+ * month cell has room for a rail 3dp wide and nothing else, so without this the colours are a code
+ * with no key. It sits under the grid rather than over it because it is a reference, consulted once
+ * and then ignored, and a legend above the month would push the 27th off the bottom of every
+ * screen.
+ *
+ * It also buys the grid something the owner asked for directly: six week rows over a legend are
+ * shorter than six week rows over nothing, and the cells were reading as too tall.
+ *
+ * **Only the calendars that are actually drawn.** A calendar the user has un-ticked has no events
+ * in this grid — `groupByDay` drops them — so listing it would be a key to a colour that is not on
+ * the screen. Unnamed calendars are dropped for the same reason: a dot beside an empty label
+ * explains nothing.
+ *
+ * **One sentence for TalkBack rather than N stops.** A screen reader walking eight bare calendar
+ * names between the month and the bottom of the screen gets a list of words with nothing saying
+ * what they are; the sentence says what they are once.
+ */
+/**
+ * Which calendars the legend explains, out of everything the account holds.
+ *
+ * **The ones whose colours are actually on the grid, and only those.** A calendar the user has
+ * un-ticked has no events in this month — `groupByDay` drops its rows before anything is drawn — so
+ * listing it would be a key to a colour that appears nowhere, which is worse than no key at all: it
+ * invites somebody to go looking for a green event that is not there. An unnamed calendar goes for
+ * the same reason, since a dot beside an empty label explains nothing.
+ *
+ * The order is the one it was given. That comes from the DAO's `sortOrder`, which is the order the
+ * web sidebar lists them in, and re-sorting here would be a second opinion about a question already
+ * answered — the two surfaces disagreeing about which calendar comes first is exactly the kind of
+ * small difference that reads as one of them being wrong.
+ */
+internal fun legendCalendars(calendars: List<CalendarEntity>): List<CalendarEntity> =
+    calendars.filter {
+        it.isVisible && it.name.isNotBlank()
+    }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun MonthLegend(calendars: List<CalendarEntity>, modifier: Modifier = Modifier) {
+    val theme = PlMailTheme.values
+    val shown = remember(calendars) { legendCalendars(calendars) }
+
+    if (shown.isEmpty()) return
+
+    val sentence =
+        stringResource(R.string.calendar_legend_a11y, shown.joinToString(", ") { it.name })
+
+    FlowRow(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = theme.spacing.gutter,
+                    vertical = theme.spacing.small,
+                )
+                .clearAndSetSemantics { contentDescription = sentence },
+        horizontalArrangement = Arrangement.spacedBy(theme.spacing.medium),
+        verticalArrangement = Arrangement.spacedBy(theme.spacing.tiny),
+    ) {
+        shown.forEach { calendar ->
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(theme.spacing.tiny),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CalendarDot(
+                    colors = listOf(calendarColor(calendar.color) ?: theme.colors.inkFaint),
+                    size = MONTH_DOT,
+                )
+
+                Text(
+                    text = calendar.name,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = theme.colors.inkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
 /** Nine in the morning, which is where the web's per-cell create starts an event too. */
 private val NEW_EVENT_HOUR: LocalTime = LocalTime.of(9, 0)
+
+/**
+ * How far the weekday strip's letters are opened out.
+ *
+ * Small caps at 11sp set solid read as a single word per column; the tracking is what turns three
+ * letters back into an abbreviation.
+ */
+private val WEEKDAY_TRACKING = 0.08.sp
 
 private val TODAY_PIP = 22.dp
 

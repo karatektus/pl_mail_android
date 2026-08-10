@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import com.github.takahirom.roborazzi.captureRoboImage
 import de.plmail.core.database.AgendaRow
+import de.plmail.core.database.CalendarEntity
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.designsystem.PlMailThemeChoice
 import java.time.LocalDate
@@ -194,7 +195,18 @@ class AgendaScreenshotTest {
     private fun state(days: List<AgendaDay>, status: CalendarStatus = settled()) =
         CalendarState(
             days = days,
-            calendars = emptyList(),
+            // Named and coloured, because the month's legend is built from
+            // these and an empty list would capture a baseline of the one case
+            // where it draws nothing. The hidden one is here on purpose: it
+            // must not appear in the legend, since none of its events are in
+            // the grid either.
+            calendars =
+                listOf(
+                    calendar("Arbeit", "#3b82f6"),
+                    calendar("Persönlich", "#a855f7"),
+                    calendar("Gesundheit", "#10b981"),
+                    calendar("Feiertage", "#f59e0b", isVisible = false),
+                ),
             status = status,
             view = CalendarViewMode.AGENDA,
             anchor = LocalDate.parse("2026-08-06"),
@@ -203,6 +215,16 @@ class AgendaScreenshotTest {
         )
 
     private fun settled() = CalendarStatus(hasSettled = true)
+
+    private fun calendar(name: String, color: String, isVisible: Boolean = true) =
+        CalendarEntity(
+            uid = "https://nas.local/13#$name",
+            accountKey = "https://nas.local/13",
+            calendarId = name,
+            name = name,
+            color = color,
+            isVisible = isVisible,
+        )
 
     private fun twoDays() =
         listOf(
