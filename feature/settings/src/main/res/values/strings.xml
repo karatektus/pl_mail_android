@@ -212,4 +212,38 @@
     <!-- Names the account, because every row's visible label is identical. -->
     <string name="accounts_notify_a11y">Notify me about new mail from %1$s</string>
     <string name="accounts_muted_explains">This account still syncs and still shows unread counts. It just will not interrupt you.</string>
+
+    <!--
+      The notification screen. Nearly every switch on it is off, which reads as
+      broken unless the screen says that is the arrangement rather than a
+      failure — hence the note at the top before any switch is drawn.
+    -->
+    <string name="notifications_title">Notifications</string>
+    <string name="notifications_explains">Only Primary mail interrupts you to begin with. Switch on anything else you want to hear about. A message that matches more than one of these still arrives as a single notification.</string>
+
+    <string name="notifications_categories">Inbox categories</string>
+    <string name="notifications_categories_explains">The tabs your server sorts incoming mail into.</string>
+
+    <!--
+      The names have to match the tab bar exactly. A switch called something
+      else is a switch nobody can map onto the list it controls.
+    -->
+    <string name="notifications_category_primary">Primary</string>
+    <string name="notifications_category_social">Social</string>
+    <string name="notifications_category_promotions">Promotions</string>
+    <string name="notifications_category_updates">Updates</string>
+    <string name="notifications_category_forums">Forums</string>
+    <!--
+      The one thing people get wrong about this switch, and the reason a server
+      that has never classified anything is not silent: mail nobody has sorted
+      yet counts as Primary rather than as nothing.
+    -->
+    <string name="notifications_category_primary_explains">Includes inbox mail your server has not sorted into any category.</string>
+
+    <string name="notifications_labels">Labels</string>
+    <string name="notifications_labels_explains">Switch a label on to be told about mail that lands there, even when a rule on your server kept it out of the inbox.</string>
+    <string name="notifications_no_labels">No labels have been synced to this device yet.</string>
+
+    <!-- Names the scope, because every row's switch is otherwise identical. -->
+    <string name="notifications_scope_a11y">Notify me about %1$s</string>
 </resources>

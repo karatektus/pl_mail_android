@@ -2,6 +2,8 @@ package de.plmail.core.data
 
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
+import de.plmail.core.datastore.NotificationPrefsStore
+import de.plmail.core.datastore.NotifiedMessageStore
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.EmailChanges
 import de.plmail.jmap.methods.EmailGet
@@ -84,6 +86,22 @@ constructor(
      * and now it is the mechanism by which two devices agree about when a message leaves.
      */
     private val schedules: ScheduledSendReconciler,
+    /**
+     * Which labels and categories the user allows to interrupt.
+     *
+     * Read here for the same reason [AccountsRepository.isNotifying] is: a listener added later
+     * cannot forget a check it never had to make, and one decision about what may interrupt is one
+     * place to look when the phone is quiet.
+     */
+    private val notifyPrefs: NotificationPrefsStore,
+    /**
+     * What has already been announced.
+     *
+     * The last line of defence against a duplicate — see [NotifiedMessageStore]. It is asked at the
+     * very end, after the account gate and the scope filter, so nothing is recorded as announced
+     * that was never going to be.
+     */
+    private val notified: NotifiedMessageStore,
     /**
      * Told about mail that has just arrived.
      *
@@ -236,6 +254,20 @@ constructor(
         // changed mid-sync should not split one delivery in half.
         val mayInterrupt = accounts.isNotifying(accountKey)
 
+        // The same argument, and the same once-per-hydration read: a label
+        // switched on while a sync is running takes effect on the next one
+        // rather than halfway down this one.
+        val scopes = notifyPrefs.current()
+
+        // One query for the whole hydration. Resolving a message's mailbox
+        // bindings to label keys per chunk would re-read the mailbox table up to
+        // twenty times for one catch-up, and the table cannot change under a
+        // sync that is not writing to it.
+        val bindingKeys =
+            database.mailboxes().bindingKeyRows(accountKey).associate {
+                it.mailboxId to it.labelKey
+            }
+
         ids.chunked(HYDRATION_CHUNK).forEach { chunk ->
             val request = RequestBuilder()
             val get = request.add(EmailGet(accountId, ids = chunk))
@@ -261,8 +293,7 @@ constructor(
             // rebuilt -- and each of those would announce mail from March at
             // three in the morning.
             val arrived =
-                if (announce.isEmpty() || inbox == null || account == null || !mayInterrupt)
-                    emptyList()
+                if (announce.isEmpty() || account == null || !mayInterrupt) emptyList()
                 else {
                     val known =
                         database
@@ -274,8 +305,22 @@ constructor(
                         emails = emails,
                         accountKey = accountKey,
                         accountName = account.name,
+                        // Nullable now, and not merely tolerated: an account
+                        // whose mailboxes have never synced has no inbox
+                        // binding *and* no label bindings, so it matches no
+                        // scope and says nothing -- which is the same outcome
+                        // the old hard guard produced, reached without also
+                        // ruling out the label scopes that do not need an inbox.
                         inboxMailboxId = inbox,
                         known = known,
+                        prefs = scopes,
+                        bindingKeys = bindingKeys,
+                        // Straight off the Thread/get that was already in this
+                        // request for snooze. The conversation's category rather
+                        // than the message's is what the tabs are drawn from,
+                        // and a notification that disagreed with the tab the
+                        // mail lands in would be the harder bug to believe.
+                        threadCategories = conversations.associate { it.id.value to it.category },
                     )
                 }
 
@@ -309,10 +354,38 @@ constructor(
             // that has to fetch the message first is the difference between
             // instant and "loading" on the one screen where the mail is
             // guaranteed to be a second old.
-            if (arrived.isNotEmpty()) announce.forEach { it.onNewMail(arrived) }
+            val announcing = claim(accountKey, arrived)
+
+            if (announcing.isNotEmpty()) announce.forEach { it.onNewMail(announcing) }
         }
 
         return count
+    }
+
+    /**
+     * Narrows an announcement to the messages nobody has been told about yet.
+     *
+     * The case this exists for is two syncs at once — a push arriving while the periodic worker is
+     * mid-hydration — where both coroutines read `known` before either writes and both correctly
+     * conclude the same message is new. [NotifiedMessageStore.claim] decides inside a single
+     * DataStore edit, which is serialised per file, so exactly one of them comes back with the id.
+     *
+     * **Fails open.** A ledger that cannot be read is a broken preferences file, and the choice is
+     * between one repeated notification and no notification at all; the cache's own `known` check
+     * is still in front of this and is what stops a re-sync repeating itself, so failing open costs
+     * at most a duplicate in the rare case that brought us here.
+     */
+    private suspend fun claim(accountKey: String, arrived: List<NewMessage>): List<NewMessage> {
+        if (arrived.isEmpty()) return emptyList()
+
+        val keyOf = { message: NewMessage -> StoreKey.objectKey(accountKey, message.emailId) }
+
+        val claimed =
+            runCatching { notified.claim(arrived.map(keyOf), System.currentTimeMillis()) }
+                .getOrNull()
+                ?.toSet() ?: return arrived
+
+        return arrived.filter { keyOf(it) in claimed }
     }
 
     private companion object {

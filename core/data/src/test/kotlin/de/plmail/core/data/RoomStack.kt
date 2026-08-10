@@ -14,6 +14,8 @@ import de.plmail.core.database.StoreKey
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.datastore.AccountPrefsStore
 import de.plmail.core.datastore.CredentialStore
+import de.plmail.core.datastore.NotificationPrefsStore
+import de.plmail.core.datastore.NotifiedMessageStore
 import de.plmail.core.datastore.OutboxStore
 import de.plmail.core.datastore.ScheduledSendStore
 import de.plmail.core.datastore.SealedSecret
@@ -264,6 +266,12 @@ internal suspend fun syncStack(
         // has its own suite, and wiring the real one here would put an
         // `EmailSubmission/changes` into every canned transport script.
         schedules = ScheduledSendReconciler(scheduledSends(), NoSubmissions),
+        // Both over the same in-memory preferences the credential is in, which
+        // is how they sit in the real graph too -- one file, one DataStore. Left
+        // untouched, so these tests see the shipped defaults: Primary speaks and
+        // nothing else does.
+        notifyPrefs = NotificationPrefsStore(preferences),
+        notified = NotifiedMessageStore(preferences),
     )
 }
 

@@ -40,6 +40,7 @@ import de.plmail.feature.settings.AccountsScreen
 import de.plmail.feature.settings.AppearanceScreen
 import de.plmail.feature.settings.AppearanceViewModel
 import de.plmail.feature.settings.DiagnosticsScreen
+import de.plmail.feature.settings.NotificationsScreen
 import de.plmail.feature.settings.PushLogScreen
 import de.plmail.feature.settings.PushScreen
 import de.plmail.notifications.NotificationRequest
@@ -131,6 +132,7 @@ private fun PlMailApp(
     var isSearching by rememberSaveable { mutableStateOf(false) }
     var isDiagnosing by rememberSaveable { mutableStateOf(false) }
     var isChoosingPush by rememberSaveable { mutableStateOf(false) }
+    var isChoosingNotifications by rememberSaveable { mutableStateOf(false) }
     // Reached from the push screen rather than the drawer: the log is
     // evidence about a registration, and reading it without the registration
     // above it is reading a column of timestamps.
@@ -235,6 +237,7 @@ private fun PlMailApp(
                             isAdjustingAppearance -> Screen.APPEARANCE
                             isReadingPushLog -> Screen.PUSH_LOG
                             isChoosingPush -> Screen.PUSH
+                            isChoosingNotifications -> Screen.NOTIFICATIONS
                             isDiagnosing -> Screen.DIAGNOSTICS
                             isSearching -> Screen.SEARCH
                             else -> Screen.MAIL
@@ -257,6 +260,7 @@ private fun PlMailApp(
                             // server is one tap from switching transport.
                             Screen.PUSH_LOG -> isReadingPushLog = false
                             Screen.PUSH -> isChoosingPush = false
+                            Screen.NOTIFICATIONS -> isChoosingNotifications = false
                             Screen.DIAGNOSTICS -> isDiagnosing = false
                             Screen.SEARCH -> isSearching = false
                             Screen.MAIL -> Unit
@@ -280,6 +284,8 @@ private fun PlMailApp(
                             onBack = { isChoosingPush = false },
                             onLog = { isReadingPushLog = true },
                         )
+                    } else if (screen == Screen.NOTIFICATIONS) {
+                        NotificationsScreen(onBack = { isChoosingNotifications = false })
                     } else if (screen == Screen.DIAGNOSTICS) {
                         // Above search in this chain rather than beside it,
                         // because a notification tap has to win over both: mail
@@ -301,6 +307,7 @@ private fun PlMailApp(
                         MailShell(
                             onSearch = { isSearching = true },
                             onPush = { isChoosingPush = true },
+                            onNotifications = { isChoosingNotifications = true },
                             onDiagnostics = { isDiagnosing = true },
                             onAppearance = { isAdjustingAppearance = true },
                             onAccounts = { isManagingAccounts = true },
@@ -396,6 +403,7 @@ private enum class Screen {
     SEARCH,
     DIAGNOSTICS,
     PUSH,
+    NOTIFICATIONS,
     PUSH_LOG,
     APPEARANCE,
     ACCOUNTS,

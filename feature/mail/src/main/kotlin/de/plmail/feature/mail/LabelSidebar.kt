@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.LocalOffer
 import androidx.compose.material.icons.outlined.MonitorHeart
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsActive
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.People
@@ -101,6 +102,7 @@ fun LabelSidebar(
      */
     onCalendar: (() -> Unit)?,
     onPush: () -> Unit,
+    onNotifications: () -> Unit,
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
     onAccounts: () -> Unit,
@@ -251,6 +253,27 @@ fun LabelSidebar(
                 onClick = onAppearance,
                 icon = { Icon(imageVector = Icons.Outlined.Palette, contentDescription = null) },
                 label = { Text(stringResource(R.string.appearance)) },
+                colors =
+                    NavigationDrawerItemDefaults.colors(
+                        unselectedIconColor = theme.colors.inkMuted,
+                        unselectedTextColor = theme.colors.inkSoft,
+                        unselectedContainerColor = theme.colors.surface,
+                    ),
+            )
+
+            // Directly above push, and that pairing is the point. The two
+            // answer the opposite halves of "my phone is too quiet": this one
+            // is what the user *chose* to hear about, push is whether anything
+            // can reach the device at all. Somebody who has just found that
+            // every label is switched off should not have to go looking for the
+            // other explanation, or the reverse.
+            NavigationDrawerItem(
+                selected = false,
+                onClick = onNotifications,
+                icon = {
+                    Icon(imageVector = Icons.Outlined.Notifications, contentDescription = null)
+                },
+                label = { Text(stringResource(R.string.notifications)) },
                 colors =
                     NavigationDrawerItemDefaults.colors(
                         unselectedIconColor = theme.colors.inkMuted,
