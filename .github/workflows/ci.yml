@@ -1,0 +1,76 @@
+name: CI
+
+on:
+    push:
+        branches: [main]
+        # Documentation cannot change what the build produces, and this repo's
+        # docs are large enough that editing them would otherwise mean a
+        # fifteen-minute Android build to confirm that prose still compiles.
+        #
+        # The release workflow deliberately has no such list: path filters
+        # apply to tag pushes too, and one that skipped a release would be a
+        # far more expensive mistake than one that skipped a build.
+        paths-ignore:
+            - 'docs/**'
+            - 'README.md'
+            - '**/*.dist'
+    pull_request:
+        branches: [main]
+    workflow_dispatch:
+
+permissions:
+    contents: read
+
+# The opposite choice to the release workflow: a superseded commit's build is
+# of no interest to anyone, so the newer push wins.
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v4
+
+            - name: Set up JDK 21
+              uses: actions/setup-java@v4
+              with:
+                  distribution: temurin
+                  java-version: '21'
+
+            - name: Set up Gradle
+              uses: gradle/actions/setup-gradle@v4
+
+            # Its own step, and first: a formatting failure is the cheapest
+            # thing that can be wrong and the most annoying to discover at the
+            # end of a long build. `spotlessApply` is the fix.
+            - name: Check formatting
+              run: ./gradlew spotlessCheck
+
+            # The command the README tells contributors to run, run the same
+            # way here. `build` is assemble plus check, and on an Android
+            # module check includes lint — which this project has configured
+            # with warningsAsErrors, so it is doing real work rather than
+            # printing a report nobody opens.
+            #
+            # No signing secrets are exposed to this job. The release variants
+            # still assemble; they come out unsigned, which is exactly what the
+            # guard in app/build.gradle.kts is for.
+            - name: Build, test and lint
+              run: ./gradlew build
+
+            # Only when something failed, and only the reports: a green build's
+            # reports are noise, and uploading a whole build directory would
+            # cost more than the failure it is meant to explain.
+            - name: Upload test and lint reports
+              if: failure()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: reports
+                  path: |
+                      **/build/reports/
+                  retention-days: 7
+                  if-no-files-found: ignore
