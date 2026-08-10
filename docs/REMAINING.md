@@ -259,6 +259,39 @@ and no duplicate pair was seeded. Everything here is against the captured fixtur
 source, and the Roborazzi baselines — which now include day, week and month in both schemes, and an
 agenda whose 18:00 row is a genuine merge produced by `clusterRows` rather than a hand-built cluster.
 
+#### The other half of that rule, in the cache — 2026-08-10
+
+The clustering above answers one meeting held on **two** calendars and is specified never to merge
+two rows on **one**, because a UID is unique within a calendar server-side. A user reported the case
+that falls between the two: an event created on the phone, on a calendar plMail **mirrors from
+Google**, drawn twice from the next sync onwards.
+
+The mirror is what re-mints the identity. The create is stored, pushed out to the provider and
+re-imported on the way back, and the same meeting is then a second row with a second server id and
+the same `uid`. `CalendarRepository` keyed its cache on the server id alone — `StoreKey.objectKey`,
+which is the id in one server's database and nothing more durable — so a refresh wrote both copies
+and `EventCluster` was, correctly, not allowed to hide either.
+
+So the collapse a same-calendar repeat needs happens in the cache, where it can drop a row rather
+than hide one: `collapsedByUid` keeps one series per (calendar, uid) out of each answer, and
+`supersededBy` drops a **cached** row that the server has just named under a different id. Both are
+scoped to one calendar, so the legitimate two-calendar duplicate is untouched — there is a test that
+would fail if it were. The survivor is the lowest id by `EventCluster.MEMBER_ORDER`'s comparator, so
+the phone keeps the copy the web's chip names.
+
+The second half is also the repair, which is why there is no migration: nothing else could ever
+remove a stale copy — a windowed query cannot report a row the server has forgotten, and
+`deleteUnplacedEvents` only sweeps a series whose days have *all* been cleared, which a multi-day
+stale copy's have not. The first refresh of a window holding a duplicate takes it away.
+
+One type change went with it: `CreatedCalendarEvent.uid` is nullable rather than defaulted to `""`,
+because that value is now a reconciliation key and an empty string is not an identity — it is the
+absence of one, comparing equal to every other absence.
+
+**Not verified on the live stack**, for the reason the section above gives: no mirrored Google
+calendar is seeded on 8002 and none was started. The mechanism is pinned by two tests that fail
+without the fix — a mirror that keeps both copies, and one that keeps only its own.
+
 #### What the phone still does not do
 
 **Each of these is a decision rather than a gap**, written down because the web does all of them and

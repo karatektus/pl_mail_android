@@ -5,6 +5,7 @@ import de.plmail.core.database.AgendaRow
 import de.plmail.core.database.CalendarEntity
 import de.plmail.core.database.CalendarEventEntity
 import de.plmail.core.database.CalendarOccurrenceEntity
+import de.plmail.core.database.EventIdentity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
 import de.plmail.core.datastore.CredentialStore
@@ -479,8 +480,17 @@ constructor(
 
         val calendarRows = fetched.calendars.map { it.toEntity(accountKey) }
         val zones = fetched.calendars.associate { it.id.value to it.timeZone }
-        val eventRows = fetched.series.map { it.toEntity(accountKey) }
-        val seriesByKey = fetched.series.associateBy { StoreKey.objectKey(accountKey, it.id.value) }
+
+        // One row per meeting per calendar, on JMAP's `uid` -- see
+        // `collapsedByUid`. Everything downstream is built from the collapsed
+        // list rather than from the answer, so a copy dropped here takes its
+        // occurrences with it instead of leaving days nothing joins to.
+        val eventRows = fetched.series.map { it.toEntity(accountKey) }.collapsedByUid()
+        val keptKeys = eventRows.mapTo(mutableSetOf()) { it.uid }
+        val seriesByKey =
+            fetched.series
+                .associateBy { StoreKey.objectKey(accountKey, it.id.value) }
+                .filterKeys { it in keptKeys }
 
         val occurrences =
             fetched.occurrences.flatMap { occurrence ->
@@ -511,6 +521,12 @@ constructor(
 
             database.calendars().upsert(calendarRows)
             database.calendars().delete(stale)
+
+            // Cached copies of the meetings just answered for, held under an id
+            // the server no longer names them by. Dropped **before** the upsert,
+            // because one of them may be the row this device created and is
+            // still holding under the id the create answered with.
+            supersede(database.calendarEvents().identities(accountKey).supersededBy(eventRows))
 
             database.calendarEvents().upsertEvents(eventRows)
 
@@ -772,7 +788,14 @@ constructor(
                     calendarKey = calendar.uid,
                     calendarId = calendar.calendarId,
                     calendarZone = calendar.timeZone,
-                    eventUid = created.uid,
+                    // Null rather than the empty string when the answer carried
+                    // none, because this is the key a later refresh recognises
+                    // this row by -- see `collapsedByUid` -- and a blank one
+                    // would either match every other uid-less row or none at
+                    // all. An event created against a server that does not echo
+                    // `uid` therefore keeps the ordinary id-only reconcile until
+                    // the first refresh fills the uid in.
+                    eventUid = created.uid?.takeIf { it.isNotBlank() },
                     // Read from the answer, never inferred from the rule that
                     // was sent: a rule the server cannot convert is stored
                     // verbatim and expands to one occurrence, so a create
@@ -990,6 +1013,24 @@ constructor(
     }
 
     /**
+     * Drops cached series by key, days first.
+     *
+     * The days go first because nothing else will take them: [deleteUnplacedEvents] sweeps events
+     * with no occurrences and never the other way round, so deleting the series alone would leave
+     * rows whose join finds no title — drawn as nothing, deletable by nothing.
+     *
+     * Chunked well inside SQLite's 999-variable ceiling for the reason `clearOccurrencesBetween`'s
+     * comment gives: a delete that silently applies to the first 999 is worse than no delete at
+     * all. In practice this list is one or two long.
+     */
+    private suspend fun supersede(keys: List<String>) {
+        keys.chunked(DELETE_CHUNK).forEach { chunk ->
+            database.calendarEvents().clearOccurrencesOfEvents(chunk)
+            database.calendarEvents().deleteEvents(chunk)
+        }
+    }
+
+    /**
      * Places one occurrence inside [window], on the days its **own** start and duration cover.
      *
      * Which days those are is read off the object the server answered for this occurrence id and
@@ -1105,6 +1146,9 @@ constructor(
 
     private companion object {
         const val CREATION_ID = "c1"
+
+        /** Keys per `DELETE ... IN`, well inside SQLite's 999-variable ceiling. */
+        const val DELETE_CHUNK = 500
 
         /** Enough rows to scroll a season without holding a year in memory. */
         const val AGENDA_LIMIT = 500
@@ -1275,6 +1319,90 @@ private fun CalendarEvent.toEntity(accountKey: String) =
                 .takeIf { it.isNotEmpty() }
                 ?.let { Json.encodeToString(JsonObject.serializer(), JsonObject(it)) },
     )
+
+/**
+ * One row per meeting per calendar, keyed on JMAP's `uid`.
+ *
+ * **The cache's key is the server id, and the server id is not the identity of a meeting.** It is a
+ * row id in one server's database, and a *mirrored* calendar — a Google or CalDAV account plMail
+ * syncs into one of its own — re-mints it: the app creates an event, the mirror pushes it out to
+ * the provider and re-imports what comes back, and the same meeting is then a second row with a
+ * second id and **the same uid**. A refresh that reconciled on the id alone wrote both, so the
+ * event somebody had just created was drawn twice from the next sync onwards.
+ *
+ * `EventCluster` cannot rescue that, and deliberately so: it collapses one meeting held on *two
+ * calendars* and is specified never to merge two rows on **one** calendar, because a uid is unique
+ * within a calendar server-side and merging there would erase an occurrence somebody dragged onto a
+ * sibling's time. So a same-calendar repeat has to be resolved here, in the cache, where it can be
+ * resolved by dropping a row rather than by hiding one.
+ *
+ * Scoped to one calendar for exactly that reason — a uid seen on two calendars is the legitimate
+ * duplicate `EventCluster` exists for and both rows are kept. A row with **no** uid is never
+ * collapsed with anything, for the reason `clusterRows` gives: a blank grouping key would fold
+ * every such row into one.
+ *
+ * Which copy survives is the **lowest id**, numerically where the ids are numbers, which is the
+ * comparator `EventCluster.MEMBER_ORDER` already uses — so the row this phone keeps is the one the
+ * web's chip names, and the two surfaces open the same copy.
+ */
+private fun List<CalendarEventEntity>.collapsedByUid(): List<CalendarEventEntity> {
+    val kept = LinkedHashMap<Pair<String, String>, CalendarEventEntity>()
+    val unkeyed = mutableListOf<CalendarEventEntity>()
+
+    forEach { row ->
+        val identity = row.identity()
+
+        if (identity == null) {
+            unkeyed += row
+        } else {
+            val held = kept[identity]
+
+            kept[identity] = if (held == null || row.leads(held)) row else held
+        }
+    }
+
+    return kept.values + unkeyed
+}
+
+/**
+ * The cached rows that are the same meeting as one just answered for, under an id it no longer has.
+ *
+ * The other half of [collapsedByUid], and the half that repairs a cache that has already been
+ * written wrongly: the mirror's re-import leaves the id the create answered with behind, and
+ * nothing else can ever remove it — a windowed query cannot report a row the server has forgotten,
+ * and [de.plmail.core.database.CalendarEventDao.deleteUnplacedEvents] only sweeps a series whose
+ * days are all gone, which a stale copy's are not.
+ *
+ * So no migration is needed for the duplicates already on a device: the first refresh of a window
+ * holding one takes it away.
+ */
+private fun List<EventIdentity>.supersededBy(kept: List<CalendarEventEntity>): List<String> {
+    val keysByIdentity = kept.mapNotNull { row -> row.identity()?.let { it to row.uid } }.toMap()
+
+    return mapNotNull { cached ->
+        val identity = cached.eventUid?.takeIf { it.isNotBlank() }?.let { cached.calendarKey to it }
+        val winner = identity?.let { keysByIdentity[it] } ?: return@mapNotNull null
+
+        cached.uid.takeIf { it != winner }
+    }
+}
+
+/** Which meeting, on which calendar — or null for a row whose uid was never fetched. */
+private fun CalendarEventEntity.identity(): Pair<String, String>? =
+    eventUid?.takeIf { it.isNotBlank() }?.let { calendarKey to it }
+
+/** Ported from `EventCluster.MEMBER_ORDER`, so both surfaces keep the same copy. */
+private fun CalendarEventEntity.leads(other: CalendarEventEntity): Boolean {
+    val mine = eventId.toLongOrNull()
+    val theirs = other.eventId.toLongOrNull()
+
+    return when {
+        mine != null && theirs != null -> mine < theirs
+        mine != null -> true
+        theirs != null -> false
+        else -> eventId < other.eventId
+    }
+}
 
 /**
  * The days a cached one-off occupies, from the row itself.

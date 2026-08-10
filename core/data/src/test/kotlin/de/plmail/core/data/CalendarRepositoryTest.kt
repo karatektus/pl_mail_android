@@ -624,6 +624,183 @@ class CalendarRepositoryTest {
         )
     }
 
+    // ------------------------------------------- one meeting, one row per calendar
+
+    /**
+     * The reported bug: an event created on the phone, drawn twice from the next sync onwards.
+     *
+     * The calendar it was created on is a **mirrored** one — a Google account plMail syncs into a
+     * calendar of its own — so the create is pushed out to the provider and re-imported on the way
+     * back, and the same meeting is then a second row with a second server id and the same `uid`.
+     * Both are answered by the next `CalendarEvent/query`, and a cache keyed on the server id alone
+     * wrote both: one create, two chips, at the same time on the same day.
+     *
+     * `EventCluster` cannot answer this one — it is specified never to merge two rows on **one**
+     * calendar — so the cache resolves it, on the only key that survives a re-mint.
+     */
+    @Test
+    fun `a created event the mirror re-imports is cached once, not twice`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        server.onSet = {
+            server.events +=
+                oneOff(id = "10999", title = "Neuer Termin", start = "2026-08-09T14:00:00")
+
+            createdEvent(id = "10999")
+        }
+
+        val result =
+            repository.create(
+                calendarKey = testCalendarKey,
+                draft =
+                    EventDraft(
+                        title = "Neuer Termin",
+                        start = LocalDateTime.of(2026, 8, 9, 14, 0),
+                        duration = Duration.ofHours(1),
+                    ),
+            )
+
+        assertTrue(result is CalendarWriteResult.Applied, "got $result")
+
+        // The mirror's round trip, as the server then reports it: the same
+        // meeting, the same uid, a row id of the provider import's own.
+        server.events +=
+            oneOff(
+                id = "11005",
+                title = "Neuer Termin",
+                start = "2026-08-09T14:00:00",
+                uid = "10999@plmail",
+            )
+
+        repository.refresh(week)
+
+        assertEquals(
+            listOf("2026-08-09 Neuer Termin"),
+            agenda().filter { it.endsWith("Neuer Termin") },
+            "one create is one row, whatever the mirror did with it",
+        )
+        assertNotNull(
+            database.calendarEvents().byUid(StoreKey.objectKey(testAccountKey, "10999")),
+            "the lower id survives, which is the copy the web's chip names too",
+        )
+        assertNull(database.calendarEvents().byUid(StoreKey.objectKey(testAccountKey, "11005")))
+        assertEquals(
+            emptyList(),
+            database.calendarEvents().occurrencesOf(StoreKey.objectKey(testAccountKey, "11005")),
+            "the copy that was dropped took its days with it",
+        )
+    }
+
+    /**
+     * The same reconcile, on a cache that is already wrong — which is what repairs an installed
+     * app.
+     *
+     * Here the mirror kept only its own copy, so the row the create wrote is one the server will
+     * never mention again — and this one is **three days long**, which is what makes it a case the
+     * window sweep cannot reach. `clearOccurrencesBetween` empties the window that was asked about
+     * and `deleteUnplacedEvents` only sweeps a series whose days have *all* gone, so a stale copy
+     * with a day past the window's end keeps that day and its row for good: the event stays drawn
+     * on the Monday and the Tuesday with nothing able to correct it. Nothing but the uid can
+     * recognise it, which is also why no migration is needed for the duplicates already on
+     * somebody's phone.
+     */
+    @Test
+    fun `a re-minted id takes the place of the row the create wrote, days and all`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        server.onSet = { createdEvent(id = "10999") }
+
+        repository.create(
+            calendarKey = testCalendarKey,
+            draft =
+                EventDraft(
+                    title = "Konferenz",
+                    start = LocalDateTime.of(2026, 8, 9, 14, 0),
+                    // Past the window's last day, so the optimistic placement
+                    // leaves rows on days no refresh of this window clears.
+                    duration = Duration.ofDays(3),
+                ),
+        )
+
+        assertEquals(
+            listOf("2026-08-09", "2026-08-10", "2026-08-11", "2026-08-12"),
+            database
+                .calendarEvents()
+                .occurrencesOf(StoreKey.objectKey(testAccountKey, "10999"))
+                .map { it.date },
+            "the create placed all four days from the draft, as it always has",
+        )
+
+        server.events +=
+            oneOff(
+                id = "11005",
+                title = "Konferenz",
+                start = "2026-08-09T14:00:00",
+                duration = "PT72H",
+                uid = "10999@plmail",
+            )
+
+        repository.refresh(week)
+
+        assertEquals(
+            listOf("2026-08-09 Konferenz"),
+            agenda().filter { it.endsWith("Konferenz") },
+            "the stale copy's days outside the refreshed window went with its row",
+        )
+        assertNotNull(database.calendarEvents().byUid(StoreKey.objectKey(testAccountKey, "11005")))
+        assertNull(
+            database.calendarEvents().byUid(StoreKey.objectKey(testAccountKey, "10999")),
+            "the id the create answered with is not an identity the server still recognises",
+        )
+    }
+
+    /**
+     * The duplicate that is **not** one, and must survive: one meeting on two calendars.
+     *
+     * plMail legitimately holds a meeting twice — extracted from its invitation onto the account's
+     * own calendar and mirrored from a provider onto a connected one — and both rows are correct.
+     * That is what `EventCluster` collapses at draw time, and collapsing it in the cache instead
+     * would throw away a calendar's copy of a meeting and with it the merged chip's second colour.
+     */
+    @Test
+    fun `one meeting on two calendars keeps a row on each`() = runTest {
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        oneOff(
+                            id = "10871",
+                            title = "Quartalsreview",
+                            start = "2026-08-04T11:00:00",
+                        )
+                    )
+            )
+        val repository = calendarStack(database, calendarTransport(server))
+
+        server.events +=
+            oneOff(
+                id = "10872",
+                title = "Quartalsreview",
+                start = "2026-08-04T11:00:00",
+                uid = "10871@plmail",
+                calendarId = "10599",
+            )
+
+        repository.refresh(week)
+
+        assertEquals(
+            listOf("2026-08-04 Quartalsreview", "2026-08-04 Quartalsreview"),
+            agenda(),
+            "two calendars' copies are two rows; the collapse is EventCluster's, at draw time",
+        )
+    }
+
     /**
      * A refusal is an answer, and nothing is written on the strength of it.
      *

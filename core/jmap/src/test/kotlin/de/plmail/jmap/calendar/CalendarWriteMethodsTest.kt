@@ -4,6 +4,7 @@ import de.plmail.jmap.methods.CalendarEventGet
 import de.plmail.jmap.methods.CalendarEventPatch
 import de.plmail.jmap.methods.CalendarEventQuery
 import de.plmail.jmap.methods.CalendarEventSet
+import de.plmail.jmap.methods.CalendarEventSetResult
 import de.plmail.jmap.methods.CalendarGet
 import de.plmail.jmap.methods.EventTimeZone
 import de.plmail.jmap.methods.NewCalendarEvent
@@ -12,13 +13,16 @@ import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.CalendarEventId
 import de.plmail.jmap.protocol.CalendarId
 import de.plmail.jmap.protocol.Capability
+import de.plmail.jmap.protocol.MethodResults
 import de.plmail.jmap.protocol.RequestBuilder
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -322,4 +326,51 @@ class CalendarWriteMethodsTest {
 
         assertContains(arguments["create"]!!.jsonObject.keys, "e1")
     }
+
+    // --- what comes back ---
+
+    /**
+     * The uid of a created event, and the difference between "none" and the empty string.
+     *
+     * It is the key the cache reconciles a created row against later refreshes on — a server id is
+     * re-minted when a mirrored calendar re-imports the event, and the uid is not — so an answer
+     * that carried none has to read as null. Defaulted to `""` it compared equal to every other
+     * answer that carried none, which is a grouping key that folds unrelated events together.
+     */
+    @Test
+    fun `a created event with no uid reports none rather than an empty one`() {
+        val answered =
+            decodeSet(
+                """
+                {"accountId":"1","oldState":"fixed","newState":"fixed",
+                 "created":{"c1":{"id":"10999"}},
+                 "notCreated":{},"updated":{},"notUpdated":{},
+                 "destroyed":[],"notDestroyed":{}}
+                """
+            )
+
+        assertEquals(CalendarEventId("10999"), answered.created.getValue("c1").id)
+        assertNull(answered.created.getValue("c1").uid)
+    }
+
+    @Test
+    fun `a created event carries the uid the server minted for it`() {
+        val answered =
+            decodeSet(
+                """
+                {"accountId":"1","oldState":"fixed","newState":"fixed",
+                 "created":{"c1":{"id":"10999","uid":"df7a068@plmail","isRecurring":true,
+                                  "sequence":0}},
+                 "notCreated":{},"updated":{},"notUpdated":{},
+                 "destroyed":[],"notDestroyed":{}}
+                """
+            )
+
+        assertEquals("df7a068@plmail", answered.created.getValue("c1").uid)
+        assertTrue(answered.created.getValue("c1").isRecurring)
+    }
+
+    private fun decodeSet(json: String): CalendarEventSetResult =
+        CalendarEventSet(account)
+            .decode(MethodResults.JMAP_JSON, Json.parseToJsonElement(json).jsonObject)
 }
