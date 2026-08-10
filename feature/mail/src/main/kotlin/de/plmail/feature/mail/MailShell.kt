@@ -43,6 +43,7 @@ import kotlinx.coroutines.launch
 fun MailShell(
     onSearch: () -> Unit,
     onPush: () -> Unit,
+    onNotifications: () -> Unit,
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
     onAccounts: () -> Unit,
@@ -94,6 +95,10 @@ fun MailShell(
                 onPush = {
                     scope.launch { drawer.close() }
                     onPush()
+                },
+                onNotifications = {
+                    scope.launch { drawer.close() }
+                    onNotifications()
                 },
                 onDiagnostics = {
                     // Closed first, so returning from diagnostics does not come

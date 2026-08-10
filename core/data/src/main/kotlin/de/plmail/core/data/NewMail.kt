@@ -46,26 +46,53 @@ interface NewMailListener {
 /**
  * Which of a fetched page counts as mail that has just arrived.
  *
- * Pure, and split out of [DeltaSync] for one reason: all three filters here are the kind that fail
+ * Pure, and split out of [DeltaSync] for one reason: every filter here is the kind that fails
  * silently in the direction of *more* notifications, at three in the morning, on somebody's phone.
  * A test is cheaper than finding out.
  *
  * - **[known] is subtracted first.** New means new to this device, not new to the server. A
  *   re-indexed message, a server that reports every touched row as created, and a cursor that was
- *   discarded and rebuilt all deliver old mail through the same path.
+ *   discarded and rebuilt all deliver old mail through the same path. This is also what gives the
+ *   whole feature its "no retroactive notifications" property: a message the user was not told
+ *   about because its label was switched off is in the cache all the same, so switching that label
+ *   on later cannot make an old message announce itself. Only mail that arrives *after* the switch
+ *   is affected, which is what Gmail does and what somebody changing a setting expects.
  * - **Unread only.** A message already read elsewhere — the web client, another phone — has been
  *   dealt with, and announcing it is announcing the user's own past.
- * - **Inbox only.** Sent mail, drafts and anything a server-side rule has already filed are all
- *   changes worth syncing and none of them are worth interrupting somebody for.
+ * - **A switched-on scope.** What used to be a hard "inbox only" rule, and is now the user's own
+ *   answer with the inbox's Primary category as its default — see [notifyScopeKeys], which explains
+ *   why that default is not simply `category == "primary"`. Sent mail and drafts are still silent,
+ *   but by falling under no scope anybody can switch on rather than by a rule that also made
+ *   per-label notifications impossible.
+ *
+ * Exactly one [NewMessage] per message, and the type system is not what guarantees it: `filter`
+ * rather than `flatMap` over the matching scopes is, which is why a message carrying three
+ * switched-on labels is one notification. [distinctBy] behind it is belt and braces for a server
+ * that answers the same id twice in one `Email/get`.
  */
 internal fun newArrivals(
     emails: List<de.plmail.jmap.mail.Email>,
     accountKey: String,
     accountName: String,
-    inboxMailboxId: String,
+    inboxMailboxId: String?,
     known: Set<String>,
+    prefs: de.plmail.core.datastore.NotificationPrefs,
+    /** Mailbox binding id to label collapse key, for this account. */
+    bindingKeys: Map<String, String>,
+    /** Thread id to the conversation's inbox category, as the server's own token. */
+    threadCategories: Map<String, String?>,
 ): List<NewMessage> =
     emails
         .filter { de.plmail.core.database.StoreKey.objectKey(accountKey, it.id.value) !in known }
-        .filter { !it.isSeen && it.mailboxes.any { box -> box.value == inboxMailboxId } }
+        .filter { !it.isSeen }
+        .filter { email ->
+            notifyScopeKeys(
+                    email = email,
+                    inboxMailboxId = inboxMailboxId,
+                    threadCategory = email.threadId?.value?.let { threadCategories[it] },
+                    bindingKeys = bindingKeys,
+                )
+                .any(prefs::allows)
+        }
+        .distinctBy { it.id.value }
         .map { it.asNewMessage(accountKey, accountName) }

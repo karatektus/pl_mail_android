@@ -75,6 +75,12 @@
     -->
     <string name="calendar">Calendar</string>
     <string name="push">Push</string>
+    <!--
+      "Notifications", not "Notification settings": the drawer's other entries
+      are nouns for the screens they open, and this one opens the screen that
+      decides which mail is allowed to interrupt.
+    -->
+    <string name="notifications">Notifications</string>
     <string name="diagnostics">Diagnostics</string>
     <string name="accounts">Accounts</string>
     <string name="label_new_title">New label</string>

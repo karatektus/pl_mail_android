@@ -141,4 +141,24 @@
     <string name="accounts_notify">Bei neuer Post benachrichtigen</string>
     <string name="accounts_notify_a11y">Bei neuer Post von %1$s benachrichtigen</string>
     <string name="accounts_muted_explains">Dieses Konto wird weiterhin synchronisiert und zeigt weiterhin ungelesene Nachrichten an. Es meldet sich nur nicht mehr.</string>
+
+    <string name="notifications_title">Benachrichtigungen</string>
+    <string name="notifications_explains">Zunächst meldet sich nur Post aus „Allgemein“. Schalten Sie alles weitere ein, worüber Sie Bescheid wissen möchten. Eine Nachricht, die auf mehrere davon zutrifft, kommt trotzdem als eine einzige Benachrichtigung an.</string>
+
+    <string name="notifications_categories">Posteingangs-Kategorien</string>
+    <string name="notifications_categories_explains">Die Tabs, in die Ihr Server eingehende Post einsortiert.</string>
+
+    <!-- Identisch zur Tab-Leiste in :feature:mail — sonst lässt sich ein Schalter keiner Liste zuordnen. -->
+    <string name="notifications_category_primary">Allgemein</string>
+    <string name="notifications_category_social">Soziale Netzwerke</string>
+    <string name="notifications_category_promotions">Werbung</string>
+    <string name="notifications_category_updates">Benachrichtigungen</string>
+    <string name="notifications_category_forums">Foren</string>
+    <string name="notifications_category_primary_explains">Umfasst auch Post im Posteingang, die Ihr Server noch keiner Kategorie zugeordnet hat.</string>
+
+    <string name="notifications_labels">Labels</string>
+    <string name="notifications_labels_explains">Schalten Sie ein Label ein, um über Post dort informiert zu werden — auch dann, wenn eine Regel auf Ihrem Server sie am Posteingang vorbeigeleitet hat.</string>
+    <string name="notifications_no_labels">Auf dieses Gerät wurden noch keine Labels synchronisiert.</string>
+
+    <string name="notifications_scope_a11y">Über %1$s benachrichtigen</string>
 </resources>

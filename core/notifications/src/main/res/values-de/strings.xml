@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="channel_group_accounts">Konten</string>
-    <string name="channel_description">Neue Nachrichten im Posteingang dieses Kontos.</string>
+    <string name="channel_description">Neue Nachrichten dieses Kontos aus den Labels, die Sie eingeschaltet haben.</string>
 
     <string name="notification_you">Ich</string>
     <string name="no_subject">(kein Betreff)</string>

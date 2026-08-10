@@ -5,7 +5,15 @@
       settings screen lists a channel per account under this heading.
     -->
     <string name="channel_group_accounts">Accounts</string>
-    <string name="channel_description">New mail in this account\'s inbox.</string>
+    <!--
+      No longer "in this account's inbox": which mail reaches this channel is
+      now the user's own choice of labels and categories, made under
+      Notifications. The channel is still one per account and filtering is done
+      before anything is posted. A channel per label would multiply accounts by
+      labels, and channel settings are permanent, so every label somebody
+      renames would strand one.
+    -->
+    <string name="channel_description">New mail from this account, for the labels you have switched on.</string>
 
     <!--
       MessagingStyle needs a name for the reader as well as the sender. It is
