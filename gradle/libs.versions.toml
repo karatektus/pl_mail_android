@@ -15,7 +15,15 @@ ksp = "2.3.10"
 androidxCore = "1.19.0"
 activityCompose = "1.13.0"
 lifecycle = "2.11.0"
-composeBom = "2026.08.00"
+# Held at 2026.06.01 deliberately. 2026.08.00 builds and passes every test, and
+# then crashes on launch in the *minified* build only -- `ClassCastException`
+# inside Compose's measure pass, from R8 merging two classes it should not have.
+# It shipped as v0.0.10 and had to be replaced. Reproduced and bisected on an
+# emulator against the release APK; a debug build launches perfectly, which is
+# why nothing before the release caught it.
+#
+# Do not bump this without installing a *release* build and watching it start.
+composeBom = "2026.06.01"
 material3Adaptive = "1.3.0"
 material3AdaptiveNav = "1.4.0"
 navigation = "2.9.8"

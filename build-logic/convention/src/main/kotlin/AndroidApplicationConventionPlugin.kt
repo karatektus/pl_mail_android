@@ -11,7 +11,7 @@ import org.gradle.kotlin.dsl.configure
  * tag matches this string — so the version is a reviewed change in a commit, not a property of
  * whoever typed the tag. Bump this, commit, then tag the commit.
  */
-private const val VERSION_NAME = "0.0.10"
+private const val VERSION_NAME = "0.0.11"
 
 /**
  * versionCode, computed from versionName rather than stored beside it.
@@ -124,6 +124,29 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     // nudge; what is bought is a build whose colour depends on
                     // this repository rather than on the release calendar.
                     disable += "NewerVersionAvailable"
+
+                    // And the third name for the same idea, disabled after it
+                    // did real damage rather than on principle.
+                    //
+                    // `GradleDependency` is `NewerVersionAvailable` under
+                    // another id, and it was the one still enabled. It failed
+                    // `./gradlew build` on seven "a newer version is
+                    // available" errors, none of which said anything about the
+                    // code; obeying it meant bumping compose-bom from
+                    // 2026.06.01 to 2026.08.00, and **that shipped a release
+                    // that crashed on launch** -- `ClassCastException` inside
+                    // Compose's measure pass, in the minified build only, so no
+                    // unit test and no debug build could see it. v0.0.10 went
+                    // out broken because a linter asked for a version nobody
+                    // had run.
+                    //
+                    // The argument above is unchanged and is now paid for: a
+                    // dependency bump is a decision with a diff and a
+                    // verification behind it. A checker that turns "somebody
+                    // published something" into a build failure does not
+                    // produce that verification -- it produces pressure to skip
+                    // it.
+                    disable += "GradleDependency"
                 }
 
                 testOptions.unitTests {
