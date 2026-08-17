@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -22,6 +23,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -36,6 +42,10 @@ import de.plmail.core.designsystem.LocalPlMailTheme
 import de.plmail.core.designsystem.PlMailAvatar
 import de.plmail.core.designsystem.PlMailLabelChip
 import de.plmail.core.designsystem.PlMailLabelColor
+import de.plmail.core.designsystem.PlMailSurface
+import de.plmail.core.designsystem.PlMailSurfaceKind
+import de.plmail.core.designsystem.PlMailUnreadEmphasis
+import de.plmail.core.designsystem.avatarIndex
 import java.time.LocalDate
 
 /**
@@ -86,6 +96,18 @@ import java.time.LocalDate
  * Everything else uses the ink scale: hierarchy *within* a row is weight and ink, and the accent is
  * otherwise reserved for what the app offers rather than what the mail is — the compose button, the
  * label you are looking at, a link.
+ *
+ * ---
+ *
+ * **Four of the appearance settings land here, and every one of them is read off the theme rather
+ * than passed in.** `LocalPlMailTheme` already reaches this composable and the alternative — four
+ * more parameters — would have to be threaded through `SwipeableThreadRow`, the pane and the list,
+ * none of which have anything to say about them. The one thing genuinely *not* the theme's to
+ * answer is [showsAccount]; see its own note.
+ *
+ * **Standard is byte-identical to what this row has always drawn.** Not approximately: an install
+ * that has never opened the appearance screen renders exactly the pixels the checked-in baselines
+ * hold, which is the only honest way to add a setting to something people are already looking at.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -116,17 +138,115 @@ fun ThreadRow(
      * a list of rows is worth looking at. Every caller in the app takes the default.
      */
     today: LocalDate = LocalDate.now(),
+    /**
+     * Whether this row is in a list showing more than one account at once.
+     *
+     * The caller's answer and not the theme's, and the split is exactly where the knowledge is: the
+     * appearance setting says whether an account mark is *wanted*, and only the screen drawing the
+     * list knows whether there is more than one account for it to distinguish. A row that decided
+     * for itself would mark every conversation in a single-account inbox with the same colour,
+     * which is a decoration rather than information.
+     *
+     * Defaulting to false means every caller in the app today gets no mark, which is correct:
+     * `MailScreen` has not been taught to say yes yet. See the report accompanying this change.
+     */
+    showsAccount: Boolean = false,
+) {
+    PlMailSurface(PlMailSurfaceKind.LIST) {
+        ThreadRowContent(
+            thread = thread,
+            onClick = onClick,
+            modifier = modifier,
+            onLongClick = onLongClick,
+            isSelected = isSelected,
+            labels = labels,
+            hiddenLabels = hiddenLabels,
+            today = today,
+            showsAccount = showsAccount,
+        )
+    }
+}
+
+/**
+ * The row proper, inside the list's own density.
+ *
+ * Split from [ThreadRow] only so that `spacing` is read *after* [PlMailSurface] has re-provided the
+ * theme. Reading it in the same function would read the app-wide density and then draw the row with
+ * it, which is the whole setting quietly not working.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+@Suppress("LongParameterList", "LongMethod")
+private fun ThreadRowContent(
+    thread: ThreadEntity,
+    onClick: () -> Unit,
+    modifier: Modifier,
+    onLongClick: (() -> Unit)?,
+    isSelected: Boolean,
+    labels: List<RowChip>,
+    hiddenLabels: Int,
+    today: LocalDate,
+    showsAccount: Boolean,
 ) {
     val theme = LocalPlMailTheme.current
     val colors = theme.colors
     val spacing = theme.spacing
+    val list = theme.list
     val spoken = thread.spoken(labels, hiddenLabels)
+
+    // Subtle takes the ink promotion off an unread row and leaves the weight
+    // alone; Standard and Strong keep both. See PlMailUnreadEmphasis for why the
+    // three are not symmetric -- this row signals unread with ink where the web
+    // signals it with a tint, so there is nothing here for Subtle to turn down
+    // except the colour.
+    val isQuiet = list.unreadEmphasis == PlMailUnreadEmphasis.SUBTLE
+    val unreadInk = if (isQuiet) colors.inkSoft else colors.ink
+    val unreadMeta = if (isQuiet) colors.inkMuted else colors.ink
+
+    // Strong stands in for the web's row tint with a lift toward `raised`,
+    // because that is the one neutral this palette guarantees is a step off the
+    // page in every theme -- a fixed alpha would be a slab on Solar's cream and
+    // invisible on Dusk. Selection outranks it: a selected row is already
+    // saying something louder.
+    val background =
+        when {
+            isSelected -> colors.accentSoft
+            thread.isUnread && list.unreadEmphasis == PlMailUnreadEmphasis.STRONG ->
+                lerp(colors.surface, colors.raised, STRONG_TINT)
+            else -> colors.surface
+        }
+
+    // The web's Strong draws a 3px accent bar down the leading edge and this is
+    // the same mark. It is the one part of the setting that survives a
+    // translucent pane over a photograph, which is why it is the part worth
+    // copying exactly rather than reinterpreting.
+    val bar =
+        colors.accent.takeIf {
+            thread.isUnread && list.unreadEmphasis == PlMailUnreadEmphasis.STRONG
+        }
+
+    // Seeded from the account rather than assigned, and from the same ramp and
+    // the same hash the avatars use: two accounts open side by side have to be
+    // told apart at a glance, and a colour that agreed with nothing else on the
+    // row would be a second vocabulary to learn.
+    val accountMark =
+        if (showsAccount && list.accountCorner) {
+            colors.avatars[avatarIndex(thread.accountKey, colors.avatars.size)]
+        } else {
+            null
+        }
 
     Row(
         modifier =
             modifier
                 .fillMaxWidth()
-                .background(if (isSelected) colors.accentSoft else colors.surface)
+                .background(background)
+                // Both marks are drawn rather than laid out, which is what keeps
+                // them free: `ThreadRowLayoutTest` asserts that every row in a
+                // list is the same height, and a bar or a corner that took part
+                // in measurement would make an unread row taller than a read one
+                // at one setting and not at another.
+                .marks(bar = bar, corner = accountMark)
                 .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                 // The row is never shorter than a touch target, whatever the
                 // density: a compact list still has to be tappable by someone
@@ -142,7 +262,13 @@ fun ThreadRow(
     ) {
         val seed = thread.participantsAddress ?: thread.participantsSummary
 
-        PlMailAvatar(seed = seed, label = avatarLetter(seed))
+        // Dropped outright rather than replaced with a spacer. The avatar is a
+        // colour and a letter, so a placeholder holding its width would leave a
+        // 40dp hole that says nothing -- and somebody who turned avatars off did
+        // it to get the width back for the subject.
+        if (list.avatars) {
+            PlMailAvatar(seed = seed, label = avatarLetter(seed))
+        }
 
         Column(
             modifier = Modifier.weight(1f),
@@ -159,7 +285,7 @@ fun ThreadRow(
                     // not one you can see across a list. Read rows step down to
                     // inkSoft so the unread ones are the bright text on screen.
                     fontWeight = if (thread.isUnread) FontWeight.Bold else FontWeight.Normal,
-                    color = if (thread.isUnread) colors.ink else colors.inkSoft,
+                    color = if (thread.isUnread) unreadInk else colors.inkSoft,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f, fill = false),
@@ -186,7 +312,7 @@ fun ThreadRow(
                         ?: stringResource(R.string.no_subject),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = if (thread.isUnread) FontWeight.Bold else FontWeight.Normal,
-                color = if (thread.isUnread) colors.ink else colors.inkSoft,
+                color = if (thread.isUnread) unreadInk else colors.inkSoft,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -219,29 +345,39 @@ fun ThreadRow(
                 horizontalArrangement = Arrangement.spacedBy(spacing.tiny),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(
-                    text = thread.snippet,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colors.inkMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    // Weighted, so the chips are measured first and this takes
-                    // what they leave. Compose places children in composition
-                    // order regardless of the order it measured them in, which
-                    // is what lets the snippet lead the line while still being
-                    // the part that gives way -- without the weight it measures
-                    // at the width of the whole paragraph and leaves the chips
-                    // nowhere to be.
-                    //
-                    // Filling rather than `fill = false`, so the chips end flush
-                    // against the date column instead of hugging the end of the
-                    // preview. Hugging is what Gmail does and it looks unplaced
-                    // here: a two-word snippet parks its chip in the middle of
-                    // the row, and a screenful of those is chips scattered at
-                    // eight different offsets rather than a column the eye can
-                    // skip down.
-                    modifier = Modifier.weight(1f),
-                )
+                // Hidden rather than removed at zero preview lines, and the
+                // weighted spacer is what "hidden" has to mean here: the chips
+                // share this line, so a line that stopped existing would put them
+                // hard against the sender's left edge on one setting and flush
+                // right on every other. The row keeps the same skeleton at all
+                // three settings and only the sentence comes and goes.
+                if (list.previewLines == 0) {
+                    Spacer(modifier = Modifier.weight(1f))
+                } else {
+                    Text(
+                        text = thread.snippet,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = colors.inkMuted,
+                        maxLines = list.previewLines,
+                        overflow = TextOverflow.Ellipsis,
+                        // Weighted, so the chips are measured first and this takes
+                        // what they leave. Compose places children in composition
+                        // order regardless of the order it measured them in, which
+                        // is what lets the snippet lead the line while still being
+                        // the part that gives way -- without the weight it measures
+                        // at the width of the whole paragraph and leaves the chips
+                        // nowhere to be.
+                        //
+                        // Filling rather than `fill = false`, so the chips end flush
+                        // against the date column instead of hugging the end of the
+                        // preview. Hugging is what Gmail does and it looks unplaced
+                        // here: a two-word snippet parks its chip in the middle of
+                        // the row, and a screenful of those is chips scattered at
+                        // eight different offsets rather than a column the eye can
+                        // skip down.
+                        modifier = Modifier.weight(1f),
+                    )
+                }
 
                 if (labels.isNotEmpty() || hiddenLabels > 0) {
                     Row(
@@ -338,7 +474,7 @@ fun ThreadRow(
                 // would quietly make every date in the app lighter than the
                 // scale says a caption is.
                 fontWeight = if (thread.isUnread) FontWeight.SemiBold else null,
-                color = if (thread.isUnread) colors.ink else colors.inkMuted,
+                color = if (thread.isUnread) unreadMeta else colors.inkMuted,
             )
 
             Row(
@@ -400,7 +536,73 @@ fun ThreadRow(
  */
 data class RowChip(val name: String, val color: PlMailLabelColor? = null)
 
+/**
+ * The two marks that are painted rather than laid out.
+ *
+ * One modifier for both, because both have the same reason for existing in the draw phase instead
+ * of the layout one: `ThreadRowLayoutTest` holds every row in a list to the same height, and a mark
+ * that occupied space would break that at one appearance setting and not at another — the exact
+ * class of defect that test was written after. Painting them also means the default, where both are
+ * null, touches nothing at all.
+ *
+ * [bar] runs the full height of the leading edge; [corner] is a triangle in the leading top corner,
+ * a shape rather than a dot because the row already spends its dots on unread and this mark must
+ * not be mistaken for one.
+ *
+ * Neither is mirrored for right-to-left. `drawBehind` works in raw pixels with no layout direction
+ * to consult, and a mark on the wrong edge in Arabic is a real defect — worth naming here rather
+ * than discovering, since the app has no RTL locale today and the fix belongs with the one that
+ * adds it.
+ */
+private fun Modifier.marks(bar: Color?, corner: Color?): Modifier =
+    if (bar == null && corner == null) this
+    else
+        drawBehind {
+            bar?.let { drawRect(color = it, size = Size(UNREAD_BAR.toPx(), size.height)) }
+
+            corner?.let {
+                val side = ACCOUNT_CORNER.toPx()
+                val triangle =
+                    Path().apply {
+                        moveTo(0f, 0f)
+                        lineTo(side, 0f)
+                        lineTo(0f, side)
+                        close()
+                    }
+
+                drawPath(triangle, color = it)
+            }
+        }
+
 private val AFFORDANCE = 15.dp
+
+/**
+ * The web's `--unread-bar-w` at Strong, in dp rather than px.
+ *
+ * The same number and not a conversion of it: 3 CSS pixels and 3dp are both "a mark you can see and
+ * not a stripe", and matching the browser's *appearance* matters more here than matching its
+ * physical width on a 420dpi phone — where 3px would be under a millimetre.
+ */
+private val UNREAD_BAR = 3.dp
+
+/**
+ * Small enough to be a corner and not a wedge.
+ *
+ * It sits over the top-left of the avatar's own margin, so anything much larger starts reading as a
+ * second avatar rather than as a mark on the row.
+ */
+private val ACCOUNT_CORNER = 10.dp
+
+/**
+ * How far Strong lifts an unread row off the page.
+ *
+ * The web scales the theme's own unread tint by 1.6; there is no such tint here, so the equivalent
+ * is a fraction of the way toward `raised` — the one neutral every palette guarantees is a visible
+ * step off `surface`. 0.55 was chosen against Solar, where `surface` and `raised` are eight points
+ * apart and the full lift is almost invisible, rather than against Dark, where a smaller number
+ * would have done.
+ */
+private const val STRONG_TINT = 0.55f
 
 /**
  * How much of the snippet's line the chips may take between them.

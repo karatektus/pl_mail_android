@@ -300,7 +300,38 @@ private fun ServerWindow(window: SyncWindow) {
             color = PlMailTheme.colors.inkMuted,
         )
     }
+
+    // Above the backfill line in importance and below it on screen, because it
+    // is drawn in the warning tone and a coloured line at the top of the block
+    // would pull the eye before the account's own name has been read.
+    if (window.needsAttention) {
+        Text(
+            text = window.attentionSentence(),
+            style = MaterialTheme.typography.bodySmall,
+            color = PlMailTheme.colors.warning,
+        )
+    }
 }
+
+/**
+ * What to say about an account that has stopped working.
+ *
+ * Written from the server's *token* rather than rendered from its card. plMail's health cards are
+ * translated Twig with Symfony routes attached, and a phone can use neither — so the wire carries
+ * `attentionKind` and each surface writes its own sentence.
+ *
+ * The fallback is the important branch. A kind this build has never heard of still means the
+ * account has stopped working, and saying so vaguely is far better than saying nothing: the failure
+ * this whole signal exists to end is an inbox that goes quiet with no explanation anywhere.
+ */
+@Composable
+private fun SyncWindow.attentionSentence(): String =
+    when (attentionKind) {
+        "account_reconnect" -> stringResource(R.string.accounts_attention_reconnect)
+        "push_degraded",
+        "push_lapsed" -> stringResource(R.string.accounts_attention_push)
+        else -> stringResource(R.string.accounts_attention_generic)
+    }
 
 /** A short block of prose carrying a tone. Local twin of the diagnostics screen's, same shape. */
 @Composable

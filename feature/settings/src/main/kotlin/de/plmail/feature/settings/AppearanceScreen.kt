@@ -52,10 +52,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailAppearance
 import de.plmail.core.designsystem.PlMailDensity
+import de.plmail.core.designsystem.PlMailFontFamily
 import de.plmail.core.designsystem.PlMailLayout
 import de.plmail.core.designsystem.PlMailPane
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.designsystem.PlMailThemeChoice
+import de.plmail.core.designsystem.PlMailUnreadEmphasis
 import de.plmail.core.designsystem.swatch
 
 /**
@@ -67,11 +69,16 @@ import de.plmail.core.designsystem.swatch
  * drawn from the palettes rather than from static colours: a swatch that is painted rather than
  * sampled is a swatch that can be wrong about the theme it offers.
  *
- * Two axes and three knobs, in the order somebody actually decides them: the palette first, then
- * how it is painted, then how tightly it packs, then the accessibility overrides that outrank all
- * of it. The overrides sit last and are phrased as what they *do* rather than as what they are for
- * — "Panes stay solid" rather than "reduce transparency" — because the person who needs one is
- * looking for the effect.
+ * In the order somebody actually decides them: whether the phone follows the browser at all, then
+ * the palette, then how it is painted, then how tightly it packs, then the type, then the list, and
+ * last the accessibility overrides that outrank all of it. The overrides are phrased as what they
+ * *do* rather than as what they are for — "Panes stay solid" rather than "reduce transparency" —
+ * because the person who needs one is looking for the effect.
+ *
+ * **[MatchTheWeb] is first because it changes what everything under it means**, not because it is
+ * the most important. Every other control on the screen is a shared account preference until that
+ * switch is off, at which point the same controls become this device's alone — and nothing about
+ * their appearance says so, which is exactly why the switch has to be met before them.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -114,10 +121,14 @@ fun AppearanceScreen(onBack: () -> Unit, viewModel: AppearanceViewModel = hiltVi
                     ),
             verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.large),
         ) {
+            MatchTheWeb(appearance, onChange = viewModel::setSyncWithServer)
             Themes(appearance, onChoose = viewModel::choose)
             DynamicColour(appearance, onChange = viewModel::setDynamicColor)
             Layouts(appearance, onChoose = viewModel::choose)
             Densities(appearance, onChoose = viewModel::choose)
+            Surfaces(appearance, viewModel)
+            Typography(appearance, onChoose = viewModel::choose, onScale = viewModel::setFontScale)
+            MailList(appearance, viewModel)
             Accessibility(
                 appearance = appearance,
                 onReduceTransparency = viewModel::setReduceTransparency,
@@ -172,6 +183,31 @@ private fun HomeScreen(viewModel: CalendarLauncherViewModel = hiltViewModel()) {
             onChange = viewModel::setEnabled,
         )
     }
+}
+
+/**
+ * Whether this phone wears the account's appearance or one of its own.
+ *
+ * **First on the screen, because it decides what every control below it means.** Off, the pickers
+ * stop being a shared preference and become this device's own; nothing about them changes visibly,
+ * which is exactly why the switch has to be read before them rather than found afterwards.
+ *
+ * The supporting text says the two things a user cannot work out by trying it, and both are things
+ * they would otherwise only discover by being surprised. That turning it off leaves the browser
+ * alone is a *promise*, not a description — it is the reason `Appearance/set` is never called while
+ * the switch is off, rather than being called with the values the phone happened to have. And that
+ * turning it back on discards this device's choices is the half nobody expects: a merge would be
+ * the intuitive behaviour and there is no correct one, because the phone's month of divergence and
+ * the browser's are both deliberate. Saying so beforehand is cheaper than any merge rule.
+ */
+@Composable
+private fun MatchTheWeb(appearance: PlMailAppearance, onChange: (Boolean) -> Unit) {
+    Toggle(
+        title = stringResource(R.string.appearance_sync),
+        body = stringResource(R.string.appearance_sync_body),
+        isOn = appearance.syncWithServer,
+        onChange = onChange,
+    )
 }
 
 @Composable
@@ -350,6 +386,210 @@ private fun Densities(appearance: PlMailAppearance, onChoose: (PlMailDensity) ->
             chosen = appearance.density,
             label = { stringResource(it.label()) },
             onChoose = onChoose,
+        )
+    }
+}
+
+/**
+ * The three surfaces that may pack tighter or looser than the app does.
+ *
+ * Each offers a fourth option ahead of the three densities, and it is not a "none": "Follow the
+ * overall density" is a value the server stores as null and the only way back from an override.
+ * Drawn as a choice rather than as a clear button because that is what it is — somebody who has
+ * never touched it is *on* that option, and a control that showed nothing selected until they
+ * picked something would be lying about the state.
+ *
+ * **Two of the three are stored, sent and resolved but not yet drawn anywhere.** `sidebarDensity`
+ * and `readingDensity` apply to surfaces `feature/mail` owns and this change could not reach; the
+ * list is wired end to end. They are offered here regardless, because the setting is the account's
+ * rather than this app's — a phone that hid two of the three would quietly drop them out of a value
+ * the browser is still honouring.
+ */
+@Composable
+private fun Surfaces(appearance: PlMailAppearance, viewModel: AppearanceViewModel) {
+    Section(stringResource(R.string.appearance_surface_density)) {
+        SurfaceDensity(
+            label = stringResource(R.string.appearance_surface_sidebar),
+            chosen = appearance.sidebarDensity,
+            onChoose = viewModel::chooseSidebarDensity,
+        )
+        SurfaceDensity(
+            label = stringResource(R.string.appearance_surface_list),
+            chosen = appearance.listDensity,
+            onChoose = viewModel::chooseListDensity,
+        )
+        SurfaceDensity(
+            label = stringResource(R.string.appearance_surface_reading),
+            chosen = appearance.readingDensity,
+            onChoose = viewModel::chooseReadingDensity,
+        )
+
+        Text(
+            text = stringResource(R.string.appearance_surface_density_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = PlMailTheme.colors.inkMuted,
+        )
+    }
+}
+
+@Composable
+private fun SurfaceDensity(
+    label: String,
+    chosen: PlMailDensity?,
+    onChoose: (PlMailDensity?) -> Unit,
+) {
+    val follow = stringResource(R.string.density_follow)
+
+    Column(verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.tiny)) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = PlMailTheme.colors.inkSoft,
+        )
+
+        // Null leads rather than trails, because it is the default and the
+        // reading order of a row of options is an argument about which one is
+        // ordinary. `listOf(null) + entries` rather than a nullable enum with a
+        // FOLLOW member: a member would be a fourth density the server has no
+        // name for, and the wire value it would need is precisely the absence
+        // this list is expressing.
+        Choices(
+            options = SURFACE_DENSITY_OPTIONS,
+            chosen = chosen,
+            label = { density -> density?.let { stringResource(it.label()) } ?: follow },
+            onChoose = onChoose,
+        )
+    }
+}
+
+@Composable
+private fun Typography(
+    appearance: PlMailAppearance,
+    onChoose: (PlMailFontFamily) -> Unit,
+    onScale: (Float) -> Unit,
+) {
+    Section(stringResource(R.string.appearance_typography)) {
+        Choices(
+            options = PlMailFontFamily.entries,
+            chosen = appearance.fontFamily,
+            label = { stringResource(it.label()) },
+            onChoose = onChoose,
+        )
+
+        Text(
+            text = stringResource(R.string.appearance_font_family_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = PlMailTheme.colors.inkMuted,
+        )
+
+        FontScale(appearance, onScale)
+    }
+}
+
+@Composable
+private fun FontScale(appearance: PlMailAppearance, onChange: (Float) -> Unit) {
+    val theme = PlMailTheme.values
+
+    // Local while dragging and committed on release, for the reason PaneAlpha
+    // gives -- and with more force here, because every commit re-lays out every
+    // screen in the app rather than repainting one pane.
+    var dragging by remember(appearance.fontScale) { mutableFloatStateOf(appearance.fontScale) }
+
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = stringResource(R.string.appearance_font_scale),
+                style = MaterialTheme.typography.bodyMedium,
+                color = theme.colors.inkSoft,
+            )
+            Text(
+                text = "${(dragging * 100).toInt()}%",
+                style = MaterialTheme.typography.labelMedium,
+                color = theme.colors.inkMuted,
+            )
+        }
+
+        Slider(
+            value = dragging,
+            onValueChange = { dragging = it },
+            onValueChangeFinished = { onChange(dragging) },
+            valueRange = PlMailAppearance.MIN_FONT_SCALE..PlMailAppearance.MAX_FONT_SCALE,
+            colors =
+                SliderDefaults.colors(
+                    thumbColor = theme.colors.accent,
+                    activeTrackColor = theme.colors.accent,
+                    inactiveTrackColor = theme.colors.line,
+                ),
+        )
+
+        // Said out loud because the two multiply. Somebody who has already set
+        // their phone to 130% and then puts this to 125% is asking for 163%, and
+        // the first thing they will notice is a list row that no longer holds a
+        // subject -- which reads as a bug in the app rather than as arithmetic.
+        Text(
+            text = stringResource(R.string.appearance_font_scale_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = theme.colors.inkMuted,
+        )
+    }
+}
+
+@Composable
+private fun MailList(appearance: PlMailAppearance, viewModel: AppearanceViewModel) {
+    val list = appearance.list
+
+    Section(stringResource(R.string.appearance_list)) {
+        Toggle(
+            title = stringResource(R.string.appearance_list_avatars),
+            body = stringResource(R.string.appearance_list_avatars_body),
+            isOn = list.avatars,
+            onChange = viewModel::setListAvatars,
+        )
+
+        Column(verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.tiny)) {
+            Text(
+                text = stringResource(R.string.appearance_preview_lines),
+                style = MaterialTheme.typography.bodyMedium,
+                color = PlMailTheme.colors.inkSoft,
+            )
+
+            Choices(
+                options = PREVIEW_LINE_OPTIONS,
+                chosen = list.previewLines,
+                label = { stringResource(it.previewLabel()) },
+                onChoose = viewModel::setPreviewLines,
+            )
+        }
+
+        Column(verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.tiny)) {
+            Text(
+                text = stringResource(R.string.appearance_unread_emphasis),
+                style = MaterialTheme.typography.bodyMedium,
+                color = PlMailTheme.colors.inkSoft,
+            )
+
+            Choices(
+                options = PlMailUnreadEmphasis.entries,
+                chosen = list.unreadEmphasis,
+                label = { stringResource(it.label()) },
+                onChoose = viewModel::choose,
+            )
+        }
+
+        // Named for what it does rather than for the property, because the
+        // property's name describes a corner and what the user is choosing is
+        // whether rows say which account they came from. The mark only appears
+        // in a list showing more than one account, and the body says so: a
+        // switch that visibly does nothing on a single-account install is a
+        // switch that gets reported as broken.
+        Toggle(
+            title = stringResource(R.string.appearance_account_corner),
+            body = stringResource(R.string.appearance_account_corner_body),
+            isOn = list.accountCorner,
+            onChange = viewModel::setAccountCorner,
         )
     }
 }
@@ -557,3 +797,41 @@ private fun PlMailDensity.label(): Int =
         PlMailDensity.COSY -> R.string.density_cosy
         PlMailDensity.COMPACT -> R.string.density_compact
     }
+
+private fun PlMailFontFamily.label(): Int =
+    when (this) {
+        PlMailFontFamily.SYSTEM -> R.string.font_system
+        PlMailFontFamily.GROTESK -> R.string.font_grotesk
+        PlMailFontFamily.SERIF -> R.string.font_serif
+        PlMailFontFamily.MONOSPACE -> R.string.font_monospace
+    }
+
+private fun PlMailUnreadEmphasis.label(): Int =
+    when (this) {
+        PlMailUnreadEmphasis.SUBTLE -> R.string.emphasis_subtle
+        PlMailUnreadEmphasis.STANDARD -> R.string.emphasis_standard
+        PlMailUnreadEmphasis.STRONG -> R.string.emphasis_strong
+    }
+
+/**
+ * A count rather than a name, so the option list is the range and cannot drift from it.
+ *
+ * The `else` branch is unreachable — the list below is the only source of these — and is here
+ * because a `when` over an `Int` has to be exhaustive somehow. Falling to the one-line label rather
+ * than throwing: a number this build has never heard of is a newer server's, and an appearance
+ * setting is never worth a crash.
+ */
+private fun Int.previewLabel(): Int =
+    when (this) {
+        0 -> R.string.preview_none
+        2 -> R.string.preview_two
+        else -> R.string.preview_one
+    }
+
+/** The server's `ranges.previewLines`, as the three options a picker can offer. */
+private val PREVIEW_LINE_OPTIONS =
+    (PlMailAppearance.MIN_PREVIEW_LINES..PlMailAppearance.MAX_PREVIEW_LINES).toList()
+
+/** "Follow the overall density" first, then the three densities. See [SurfaceDensity]. */
+private val SURFACE_DENSITY_OPTIONS: List<PlMailDensity?> =
+    listOf<PlMailDensity?>(null) + PlMailDensity.entries

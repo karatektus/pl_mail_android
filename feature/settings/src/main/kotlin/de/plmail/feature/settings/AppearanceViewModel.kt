@@ -4,10 +4,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.AppearanceRepository
+import de.plmail.core.datastore.DensityOverride
 import de.plmail.core.designsystem.PlMailAppearance
 import de.plmail.core.designsystem.PlMailDensity
+import de.plmail.core.designsystem.PlMailFontFamily
 import de.plmail.core.designsystem.PlMailLayout
 import de.plmail.core.designsystem.PlMailThemeChoice
+import de.plmail.core.designsystem.PlMailUnreadEmphasis
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,6 +44,16 @@ class AppearanceViewModel @Inject constructor(private val appearances: Appearanc
                     dynamicColor = settings.dynamicColor,
                     reduceTransparency = settings.reduceTransparency,
                     paneAlpha = settings.paneAlpha,
+                    syncWithServer = settings.syncWithServer,
+                    accountCorner = settings.accountCorner,
+                    listAvatars = settings.listAvatars,
+                    previewLines = settings.previewLines,
+                    unreadEmphasis = settings.unreadEmphasis,
+                    fontFamily = settings.fontFamily,
+                    fontScale = settings.fontScale,
+                    sidebarDensity = settings.sidebarDensity,
+                    listDensity = settings.listDensity,
+                    readingDensity = settings.readingDensity,
                 )
             }
             .stateIn(
@@ -83,6 +96,63 @@ class AppearanceViewModel @Inject constructor(private val appearances: Appearanc
      */
     fun setPaneAlpha(alpha: Float) {
         viewModelScope.launch { appearances.setPaneAlpha(alpha) }
+    }
+
+    /** Written on release, for the reason [setPaneAlpha] gives — and this one also re-lays out. */
+    fun setFontScale(scale: Float) {
+        viewModelScope.launch { appearances.setFontScale(scale) }
+    }
+
+    fun setAccountCorner(shown: Boolean) {
+        viewModelScope.launch { appearances.setAccountCorner(shown) }
+    }
+
+    fun setListAvatars(shown: Boolean) {
+        viewModelScope.launch { appearances.setListAvatars(shown) }
+    }
+
+    fun setPreviewLines(lines: Int) {
+        viewModelScope.launch { appearances.setPreviewLines(lines) }
+    }
+
+    fun choose(emphasis: PlMailUnreadEmphasis) {
+        viewModelScope.launch { appearances.setUnreadEmphasis(emphasis.wire) }
+    }
+
+    fun choose(family: PlMailFontFamily) {
+        viewModelScope.launch { appearances.setFontFamily(family.wire) }
+    }
+
+    /**
+     * The three per-surface densities, and the reason they take a nullable enum.
+     *
+     * Null is the option "follow the overall density", which is a value the user picks rather than
+     * the absence of one — and the only way back from an override. It travels as a
+     * [DensityOverride] with a null `wire` all the way to an explicit JSON null in the patch; the
+     * moment anything on that path writes `?:`, the control stops doing anything at all.
+     */
+    fun chooseSidebarDensity(density: PlMailDensity?) {
+        viewModelScope.launch { appearances.setSidebarDensity(DensityOverride(density?.wire)) }
+    }
+
+    fun chooseListDensity(density: PlMailDensity?) {
+        viewModelScope.launch { appearances.setListDensity(DensityOverride(density?.wire)) }
+    }
+
+    fun chooseReadingDensity(density: PlMailDensity?) {
+        viewModelScope.launch { appearances.setReadingDensity(DensityOverride(density?.wire)) }
+    }
+
+    /**
+     * Whether this phone follows the account's appearance at all.
+     *
+     * The one control on this screen whose effect is not visible in the preview it sits inside:
+     * turning it off changes nothing on screen, because the appearance the phone is already wearing
+     * is exactly the one it keeps. What changes is everything after — see
+     * [AppearanceRepository.setSyncWithServer].
+     */
+    fun setSyncWithServer(enabled: Boolean) {
+        viewModelScope.launch { appearances.setSyncWithServer(enabled) }
     }
 
     private companion object {

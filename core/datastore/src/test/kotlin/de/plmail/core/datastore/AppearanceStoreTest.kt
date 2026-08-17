@@ -6,6 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 
@@ -67,6 +68,56 @@ class AppearanceStoreTest {
         // A slider that reaches zero can make the app unreadable and then hide
         // the screen that would undo it.
         assertEquals(0.5f, store.appearance.first().paneAlpha?.toFloat())
+    }
+
+    @Test
+    fun `a per-surface density keeps absent and follow apart on disk`() = runTest {
+        val store = AppearanceStore(EmittingDataStore())
+
+        // Nothing chosen: no override at all, and the server's answer stands.
+        assertNull(store.appearance.first().listDensity)
+
+        store.setListDensity(DensityOverride("compact"))
+        assertEquals("compact", store.appearance.first().listDensity?.wire)
+
+        // "Follow the overall density", which is a value and not a clear. It has
+        // to survive the round trip through a file that cannot hold a null, and
+        // it has to read back as an override whose payload is null rather than as
+        // no override -- because it is an instruction the server still has to be
+        // told about.
+        store.setListDensity(DensityOverride.Follow)
+
+        val stored = store.appearance.first()
+
+        assertEquals(DensityOverride.Follow, stored.listDensity)
+        assertNull(stored.listDensity?.wire)
+        assertTrue(stored.hasPendingWrites)
+    }
+
+    @Test
+    fun `clearing every override leaves the local-only switches alone`() = runTest {
+        // What re-enabling the sync does. The server has no opinion about
+        // Material You or reduce-transparency, so there is nothing for it to win
+        // and clearing them would be losing a setting to a sync that never asked
+        // about it.
+        val store = AppearanceStore(EmittingDataStore())
+
+        store.setTheme("nord")
+        store.setFontScale(1.25f)
+        store.setListDensity(DensityOverride.Follow)
+        store.setDynamicColor(true)
+        store.setSyncWithServer(false)
+
+        store.clearAllOverrides()
+
+        val stored = store.appearance.first()
+
+        assertFalse(stored.hasPendingWrites)
+        assertNull(stored.theme)
+        assertNull(stored.fontScale)
+        assertNull(stored.listDensity)
+        assertEquals(true, stored.dynamicColor)
+        assertEquals(false, stored.syncWithServer)
     }
 
     @Test

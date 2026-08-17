@@ -107,6 +107,22 @@
     <string name="diagnostics_check_failed">Check failed: %1$s</string>
     <string name="appearance">Appearance</string>
     <string name="appearance_title">Appearance</string>
+
+    <!--
+      The sync switch, first on the screen because it decides what every control
+      below it means.
+
+      Two sentences, and both of them state something the user cannot find out
+      by trying it. That turning it off leaves the web alone is a promise the
+      app keeps by never calling Appearance/set while the switch is off, not a
+      description of what tends to happen. That turning it back on discards the
+      phone's own choices is the half nobody expects — a merge is the intuitive
+      guess and there is no correct merge, because both sides' divergence was
+      deliberate — so it is said in advance rather than discovered afterwards.
+    -->
+    <string name="appearance_sync">Match the web</string>
+    <string name="appearance_sync_body">Keeps this phone looking like plMail in your browser. Turn it off to give the phone its own appearance — your browser keeps exactly what it has now, and nothing you change here is sent. Turning it back on takes the browser\'s settings again and discards the phone\'s.</string>
+
     <string name="appearance_theme">Theme</string>
     <string name="theme_system">Follow the system</string>
     <string name="theme_light">Light</string>
@@ -139,6 +155,53 @@
     <string name="density_comfortable">Comfortable</string>
     <string name="density_cosy">Cosy</string>
     <string name="density_compact">Compact</string>
+
+    <!--
+      The per-surface densities. "Follow" is an option rather than a clear
+      button because it is the state somebody who has never touched this is
+      already in, and a control showing nothing selected would be lying about
+      that.
+    -->
+    <string name="appearance_surface_density">Density per area</string>
+    <string name="density_follow">Follow</string>
+    <string name="appearance_surface_sidebar">Folder list</string>
+    <string name="appearance_surface_list">Mail list</string>
+    <string name="appearance_surface_reading">Reading a message</string>
+    <string name="appearance_surface_density_body">Overrides the density above for one area at a time. The folder list and the reading pane are stored and shared with the web but not yet drawn differently here.</string>
+
+    <string name="appearance_typography">Type</string>
+    <string name="font_system">System</string>
+    <string name="font_grotesk">Grotesk</string>
+    <string name="font_serif">Serif</string>
+    <string name="font_monospace">Mono</string>
+    <string name="appearance_font_family_body">The typeface the app is drawn in. It does not change the font of mail you write.</string>
+    <string name="appearance_font_scale">Text size</string>
+    <!--
+      The compounding is the whole point of saying anything. Somebody already at
+      130% system-wide who sets this to 125% has asked for 163%, and the first
+      thing they see is a list row that no longer holds a subject.
+    -->
+    <string name="appearance_font_scale_body">Applies on top of your device\'s own text size, so the two multiply. For large text, your device setting is the one to use.</string>
+
+    <string name="appearance_list">Mail list</string>
+    <string name="appearance_list_avatars">Show avatars</string>
+    <string name="appearance_list_avatars_body">The coloured circle with the sender\'s initial. Turning it off gives the width back to the subject.</string>
+    <string name="appearance_preview_lines">Preview</string>
+    <string name="preview_none">None</string>
+    <string name="preview_one">One line</string>
+    <string name="preview_two">Two lines</string>
+    <string name="appearance_unread_emphasis">Unread mail</string>
+    <!--
+      Named for how loud each one is rather than for what it draws, because what
+      it draws differs between the phone and the browser: the web varies a tint
+      behind the row and this app varies the ink. Bold stays bold at all three
+      on both.
+    -->
+    <string name="emphasis_subtle">Subtle</string>
+    <string name="emphasis_standard">Standard</string>
+    <string name="emphasis_strong">Strong</string>
+    <string name="appearance_account_corner">Mark which account</string>
+    <string name="appearance_account_corner_body">Colours a corner of each row by the account it arrived in. Only appears in a list showing more than one account at once.</string>
 
     <string name="appearance_accessibility">Accessibility</string>
     <string name="appearance_solid_panes">Keep panes solid</string>
@@ -202,6 +265,15 @@
       promise something no one can see.
     -->
     <string name="accounts_server_backfill_pending">There is older mail still to come; your server has not reached the end of this mailbox yet.</string>
+    <!--
+      An account that has stopped working, in this app's own words rather than
+      the server's rendered card: the wire carries a token, and the repair for
+      the first of these is an OAuth flow that only a browser can finish.
+    -->
+    <string name="accounts_attention_reconnect">This account needs reconnecting. Sign in again in plMail on the web — new mail will not arrive until you do.</string>
+    <string name="accounts_attention_push">Push is not working for this account. Mail still arrives, but on the periodic check rather than immediately.</string>
+    <string name="accounts_attention_generic">This account needs attention. Open plMail on the web to see what is wrong.</string>
+
     <string name="accounts_server_backfill_all">It has fetched all of it.</string>
     <plurals name="accounts_server_backfill_reached">
         <item quantity="one">It has fetched the newest message.</item>

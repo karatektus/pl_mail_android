@@ -78,6 +78,9 @@ object PlMailTheme {
 
     val layout: PlMailLayout
         @Composable @ReadOnlyComposable get() = LocalPlMailTheme.current.layout
+
+    val list: PlMailListStyle
+        @Composable @ReadOnlyComposable get() = LocalPlMailTheme.current.list
 }
 
 /**
@@ -100,6 +103,12 @@ fun PlMailTheme(
         reduceMotion = reduceMotion,
         reduceTransparency = appearance.reduceTransparency,
         surfaces = appearance.surfaces,
+        fontFamily = appearance.fontFamily,
+        fontScale = appearance.fontScale,
+        list = appearance.list,
+        sidebarDensity = appearance.sidebarDensity,
+        listDensity = appearance.listDensity,
+        readingDensity = appearance.readingDensity,
         content = content,
     )
 }
@@ -131,6 +140,12 @@ fun PlMailTheme(
     /** Forces panes opaque whatever [surfaces] asks for. See [PlMailSurfaces]. */
     reduceTransparency: Boolean = false,
     surfaces: PlMailSurfaces = PlMailSurfaces.Opaque,
+    fontFamily: PlMailFontFamily = PlMailFontFamily.SYSTEM,
+    fontScale: Float = 1f,
+    list: PlMailListStyle = PlMailListStyle(),
+    sidebarDensity: PlMailDensity? = null,
+    listDensity: PlMailDensity? = null,
+    readingDensity: PlMailDensity? = null,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
@@ -160,16 +175,49 @@ fun PlMailTheme(
             density = density,
             layout = layout,
             surfaces = if (reduceTransparency) PlMailSurfaces.Opaque else surfaces,
+            list = list,
+            sidebarDensity = sidebarDensity,
+            listDensity = listDensity,
+            readingDensity = readingDensity,
         )
 
     CompositionLocalProvider(LocalPlMailTheme provides values) {
         MaterialTheme(
             colorScheme = colors.asMaterialScheme(),
-            typography = plMailTypography(),
+            typography = plMailTypography(fontFamily, fontScale),
             shapes = shapesFor(values.radii),
             content = content,
         )
     }
+}
+
+/**
+ * A subtree that packs at one surface's own density.
+ *
+ * The app's density is one setting and the server has three more beside it, one per surface, each
+ * of which is either an override or the word "follow". Expressing that as another token every
+ * screen has to remember to read would be expressing it in the one place it is guaranteed to be
+ * forgotten; re-providing the theme means a composable already written against `spacing.medium`
+ * lands in the right density by being inside the right wrapper, and every one of them already is.
+ *
+ * **Identical values are provided unchanged rather than skipped.** The default for all three
+ * surfaces is "follow", so this wrapper is a no-op on almost every install, and a no-op that
+ * conditionally *did not* re-provide would move its content between two different composition
+ * structures the moment somebody changed a density — throwing away the list's scroll position to
+ * change its spacing. Handing back the same instance costs nothing and keeps one shape.
+ */
+@Composable
+fun PlMailSurface(kind: PlMailSurfaceKind, content: @Composable () -> Unit) {
+    val values = LocalPlMailTheme.current
+    val density = values.densityFor(kind)
+
+    val scoped =
+        remember(values, density) {
+            if (density == values.density) values
+            else values.copy(density = density, spacing = spacingFor(density))
+        }
+
+    CompositionLocalProvider(LocalPlMailTheme provides scoped, content = content)
 }
 
 /**
@@ -372,24 +420,37 @@ private val ScrimColor = androidx.compose.ui.graphics.Color(0x99000000)
  * bar: near-white ink on the near-white inverse surface, with the text present in the semantics
  * tree and simply not visible. Leaving the colour unspecified lets each surface answer for its own
  * contents, which is what `contentColorFor` exists to do.
+ *
+ * **[scale] multiplies the size and the line height together, never the size alone.** The ratios in
+ * the table below are what makes mail read as prose rather than as a form, and a scale applied to
+ * the size while the leading stayed fixed would tighten every paragraph as the type grew — the
+ * opposite of what somebody enlarging it wants. `letterSpacing` is deliberately left unscaled: it
+ * is an optical correction for a specific size and enlarging it with the type reintroduces the
+ * gapping it exists to remove.
  */
-internal fun plMailTypography(): Typography {
+internal fun plMailTypography(
+    family: PlMailFontFamily = PlMailFontFamily.SYSTEM,
+    scale: Float = 1f,
+): Typography {
     val base = Typography()
-    val family = FontFamily.SansSerif
+    val fontFamily = family.resolve()
 
     fun style(
         size: androidx.compose.ui.unit.TextUnit,
         weight: FontWeight,
         lineHeight: Float,
         letterSpacing: Float = 0f,
-    ) =
-        TextStyle(
-            fontFamily = family,
-            fontSize = size,
+    ): TextStyle {
+        val scaled = size.value * scale
+
+        return TextStyle(
+            fontFamily = fontFamily,
+            fontSize = scaled.sp,
             fontWeight = weight,
-            lineHeight = (size.value * lineHeight).sp,
+            lineHeight = (scaled * lineHeight).sp,
             letterSpacing = letterSpacing.sp,
         )
+    }
 
     return base.copy(
         headlineLarge = style(TypeScale.display, FontWeight.SemiBold, 1.25f, (-0.5f)),
@@ -405,6 +466,30 @@ internal fun plMailTypography(): Typography {
         labelSmall = style(TypeScale.caption, FontWeight.Medium, 1.3f, 0.2f),
     )
 }
+
+/**
+ * The face Android draws this choice in.
+ *
+ * [PlMailFontFamily.SYSTEM] stays on `SansSerif` rather than moving to `FontFamily.Default`, and
+ * the two are not interchangeable: `Default` is whatever an OEM or the user has substituted for the
+ * UI font, which is arguably the better reading of the word "system" and is also a face this app
+ * has never drawn in. Every screenshot baseline in `:core:ui` was recorded against `SansSerif`, and
+ * a default that shifted the moment this setting arrived would change the appearance of every
+ * install that had not asked for anything — which is precisely what a default is for not doing.
+ *
+ * [PlMailFontFamily.GROTESK] therefore takes `Default`, and on stock Android the two resolve to the
+ * same Roboto. That is honest rather than a gap: the web's grotesk stack asks for Helvetica first
+ * and no Android device has it, so the nearest true answer is "the device's own neutral sans", and
+ * on the phones where that differs — the ones with a substituted UI font — the choice does
+ * something real.
+ */
+private fun PlMailFontFamily.resolve(): FontFamily =
+    when (this) {
+        PlMailFontFamily.SYSTEM -> FontFamily.SansSerif
+        PlMailFontFamily.GROTESK -> FontFamily.Default
+        PlMailFontFamily.SERIF -> FontFamily.Serif
+        PlMailFontFamily.MONOSPACE -> FontFamily.Monospace
+    }
 
 /**
  * Material's shape scale, aimed at the pane radius.

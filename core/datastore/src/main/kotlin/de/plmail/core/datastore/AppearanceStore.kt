@@ -5,6 +5,8 @@ import androidx.datastore.preferences.core.MutablePreferences
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,6 +36,21 @@ import kotlinx.coroutines.flow.map
  * stay local always: Material You is an Android answer to a question the server does not ask, and
  * Android has no system reduce-transparency setting to inherit.
  *
+ * [StoredAppearance.syncWithServer] is the third such value and the one that changes what the other
+ * two paragraphs mean. Off, the overrides above stop being *pending* and become simply what this
+ * device looks like: the repository sends nothing and reads nothing, so [remote] freezes at
+ * whatever was last read and the local record sits on top of it for as long as the switch is off.
+ * Nothing here enforces that — a store cannot know what a network is doing — but the split is what
+ * makes it expressible at all, because "phone differs from browser" is the same shape on disk as
+ * "phone has not managed to send yet".
+ *
+ * **The booleans and the numbers below are typed preferences, never strings, and that is not
+ * tidiness.** `Appearance/set` validates `accountCorner` and `listAvatars` with `requireBool` and
+ * `previewLines` with `requireInt`, and both refuse the loose spellings — `"1"`, `"true"`, `1.0` —
+ * that a value round-tripped through `toString()` would arrive as. The patch is validated whole, so
+ * one stringly-typed switch would take the theme sent beside it down with it. Keeping the type from
+ * disk to the wire is what makes that unspellable rather than merely avoided.
+ *
  * Every field is nullable-by-absence and resolved by the caller, which is what makes an unknown
  * value — a theme this version does not have, a file written by a newer build — degrade to the
  * default instead of crashing at launch. Appearance is not worth a crash loop.
@@ -50,7 +67,20 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
                     density = stored[DENSITY],
                     dynamicColor = stored[DYNAMIC_COLOR] ?: false,
                     reduceTransparency = stored[REDUCE_TRANSPARENCY] ?: false,
+                    // Absent reads as on. A user who has never seen the switch is
+                    // a user whose phone follows the browser, which is what every
+                    // install before this one did.
+                    syncWithServer = stored[SYNC_WITH_SERVER] ?: true,
                     paneAlpha = stored[PANE_ALPHA],
+                    accountCorner = stored[ACCOUNT_CORNER],
+                    listAvatars = stored[LIST_AVATARS],
+                    previewLines = stored[PREVIEW_LINES],
+                    unreadEmphasis = stored[UNREAD_EMPHASIS],
+                    fontFamily = stored[FONT_FAMILY],
+                    fontScale = stored[FONT_SCALE],
+                    sidebarDensity = stored[SIDEBAR_DENSITY]?.asOverride(),
+                    listDensity = stored[LIST_DENSITY]?.asOverride(),
+                    readingDensity = stored[READING_DENSITY]?.asOverride(),
                 )
             }
             // The theme sits above every screen in the app, so a recomposition
@@ -69,6 +99,21 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
                     layout = stored[REMOTE_LAYOUT],
                     density = stored[REMOTE_DENSITY],
                     paneAlpha = stored[REMOTE_PANE_ALPHA],
+                    accountCorner = stored[REMOTE_ACCOUNT_CORNER],
+                    listAvatars = stored[REMOTE_LIST_AVATARS],
+                    previewLines = stored[REMOTE_PREVIEW_LINES],
+                    unreadEmphasis = stored[REMOTE_UNREAD_EMPHASIS],
+                    fontFamily = stored[REMOTE_FONT_FAMILY],
+                    fontScale = stored[REMOTE_FONT_SCALE],
+                    // Plain nullable strings here, unlike their local
+                    // counterparts: on the server's own copy an absent key and a
+                    // null both mean "this surface follows the global density",
+                    // so there is no third state to keep apart. The distinction
+                    // only exists for an override this device has made and not
+                    // yet sent, where "follow" is an instruction.
+                    sidebarDensity = stored[REMOTE_SIDEBAR_DENSITY],
+                    listDensity = stored[REMOTE_LIST_DENSITY],
+                    readingDensity = stored[REMOTE_READING_DENSITY],
                     state = stored[REMOTE_STATE],
                 )
             }
@@ -87,6 +132,15 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
             stored.put(REMOTE_LAYOUT, remote.layout)
             stored.put(REMOTE_DENSITY, remote.density)
             stored.put(REMOTE_PANE_ALPHA, remote.paneAlpha)
+            stored.put(REMOTE_ACCOUNT_CORNER, remote.accountCorner)
+            stored.put(REMOTE_LIST_AVATARS, remote.listAvatars)
+            stored.put(REMOTE_PREVIEW_LINES, remote.previewLines)
+            stored.put(REMOTE_UNREAD_EMPHASIS, remote.unreadEmphasis)
+            stored.put(REMOTE_FONT_FAMILY, remote.fontFamily)
+            stored.put(REMOTE_FONT_SCALE, remote.fontScale)
+            stored.put(REMOTE_SIDEBAR_DENSITY, remote.sidebarDensity)
+            stored.put(REMOTE_LIST_DENSITY, remote.listDensity)
+            stored.put(REMOTE_READING_DENSITY, remote.readingDensity)
             stored.put(REMOTE_STATE, remote.state)
         }
     }
@@ -103,14 +157,36 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
 
         preferences.edit { stored ->
             properties.forEach { property ->
-                when (property) {
-                    "theme" -> stored.remove(THEME)
-                    "layout" -> stored.remove(LAYOUT)
-                    "density" -> stored.remove(DENSITY)
-                    "paneAlpha" -> stored.remove(PANE_ALPHA)
-                }
+                OVERRIDES[property]?.let { key -> stored.remove(key) }
             }
         }
+    }
+
+    /**
+     * Drops every override at once, whether or not the server has ever seen it.
+     *
+     * What "match the web again" means, and the reason re-enabling the sync is server-wins by
+     * construction rather than by a merge rule somebody has to get right. A device that had been
+     * running its own appearance holds overrides that were deliberately never sent; keeping them
+     * across the re-enable would push a month of divergence into the browser on the next flush,
+     * which is the opposite of what the switch says it does.
+     *
+     * The three local-only flags are not overrides and are not touched: they answer questions the
+     * server does not ask, so there is nothing for it to win.
+     */
+    suspend fun clearAllOverrides() {
+        preferences.edit { stored -> OVERRIDES.values.forEach { key -> stored.remove(key) } }
+    }
+
+    /**
+     * Whether this device follows the server's appearance at all.
+     *
+     * Local-only and deliberately so: it is a fact about this phone, and a phone that announced "I
+     * have stopped listening" to the account would be telling every other device something none of
+     * them can act on.
+     */
+    suspend fun setSyncWithServer(enabled: Boolean) {
+        preferences.edit { it[SYNC_WITH_SERVER] = enabled }
     }
 
     suspend fun setTheme(wire: String) {
@@ -145,7 +221,66 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
         preferences.edit { it[PANE_ALPHA] = alpha.coerceIn(MIN_ALPHA, 1f).toString() }
     }
 
+    suspend fun setAccountCorner(shown: Boolean) {
+        preferences.edit { it[ACCOUNT_CORNER] = shown }
+    }
+
+    suspend fun setListAvatars(shown: Boolean) {
+        preferences.edit { it[LIST_AVATARS] = shown }
+    }
+
+    /**
+     * Clamped here as well as on the server, and the two clamps are not redundant.
+     *
+     * The screen is its own preview: an out-of-range number would be drawn before the server ever
+     * saw it, and `previewLines = 5` is five lines of snippet in a list whose whole promise is that
+     * every row is the same height. The server's clamp corrects the stored value a round trip
+     * later, which is a round trip too late.
+     */
+    suspend fun setPreviewLines(lines: Int) {
+        preferences.edit {
+            it[PREVIEW_LINES] = lines.coerceIn(MIN_PREVIEW_LINES, MAX_PREVIEW_LINES)
+        }
+    }
+
+    suspend fun setUnreadEmphasis(wire: String) {
+        preferences.edit { it[UNREAD_EMPHASIS] = wire }
+    }
+
+    suspend fun setFontFamily(wire: String) {
+        preferences.edit { it[FONT_FAMILY] = wire }
+    }
+
+    /** Clamped for the same reason [setPreviewLines] is: this is drawn before it is sent. */
+    suspend fun setFontScale(scale: Float) {
+        preferences.edit { it[FONT_SCALE] = scale.coerceIn(MIN_FONT_SCALE, MAX_FONT_SCALE) }
+    }
+
+    suspend fun setSidebarDensity(override: DensityOverride) {
+        preferences.edit { it[SIDEBAR_DENSITY] = override.stored() }
+    }
+
+    suspend fun setListDensity(override: DensityOverride) {
+        preferences.edit { it[LIST_DENSITY] = override.stored() }
+    }
+
+    suspend fun setReadingDensity(override: DensityOverride) {
+        preferences.edit { it[READING_DENSITY] = override.stored() }
+    }
+
     private fun MutablePreferences.put(key: Preferences.Key<String>, value: String?) {
+        if (value == null) remove(key) else set(key, value)
+    }
+
+    private fun MutablePreferences.put(key: Preferences.Key<Boolean>, value: Boolean?) {
+        if (value == null) remove(key) else set(key, value)
+    }
+
+    private fun MutablePreferences.put(key: Preferences.Key<Int>, value: Int?) {
+        if (value == null) remove(key) else set(key, value)
+    }
+
+    private fun MutablePreferences.put(key: Preferences.Key<Float>, value: Float?) {
         if (value == null) remove(key) else set(key, value)
     }
 
@@ -155,13 +290,72 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
         val DENSITY = stringPreferencesKey("appearance_density")
         val DYNAMIC_COLOR = booleanPreferencesKey("appearance_dynamic_color")
         val REDUCE_TRANSPARENCY = booleanPreferencesKey("appearance_reduce_transparency")
+        val SYNC_WITH_SERVER = booleanPreferencesKey("appearance_sync_with_server")
         val PANE_ALPHA = stringPreferencesKey("appearance_pane_alpha")
+        val ACCOUNT_CORNER = booleanPreferencesKey("appearance_account_corner")
+        val LIST_AVATARS = booleanPreferencesKey("appearance_list_avatars")
+        val PREVIEW_LINES = intPreferencesKey("appearance_preview_lines")
+        val UNREAD_EMPHASIS = stringPreferencesKey("appearance_unread_emphasis")
+        val FONT_FAMILY = stringPreferencesKey("appearance_font_family")
+        val FONT_SCALE = floatPreferencesKey("appearance_font_scale")
+        val SIDEBAR_DENSITY = stringPreferencesKey("appearance_sidebar_density")
+        val LIST_DENSITY = stringPreferencesKey("appearance_list_density")
+        val READING_DENSITY = stringPreferencesKey("appearance_reading_density")
 
         val REMOTE_THEME = stringPreferencesKey("appearance_remote_theme")
         val REMOTE_LAYOUT = stringPreferencesKey("appearance_remote_layout")
         val REMOTE_DENSITY = stringPreferencesKey("appearance_remote_density")
         val REMOTE_PANE_ALPHA = stringPreferencesKey("appearance_remote_pane_alpha")
+        val REMOTE_ACCOUNT_CORNER = booleanPreferencesKey("appearance_remote_account_corner")
+        val REMOTE_LIST_AVATARS = booleanPreferencesKey("appearance_remote_list_avatars")
+        val REMOTE_PREVIEW_LINES = intPreferencesKey("appearance_remote_preview_lines")
+        val REMOTE_UNREAD_EMPHASIS = stringPreferencesKey("appearance_remote_unread_emphasis")
+        val REMOTE_FONT_FAMILY = stringPreferencesKey("appearance_remote_font_family")
+        val REMOTE_FONT_SCALE = floatPreferencesKey("appearance_remote_font_scale")
+        val REMOTE_SIDEBAR_DENSITY = stringPreferencesKey("appearance_remote_sidebar_density")
+        val REMOTE_LIST_DENSITY = stringPreferencesKey("appearance_remote_list_density")
+        val REMOTE_READING_DENSITY = stringPreferencesKey("appearance_remote_reading_density")
         val REMOTE_STATE = stringPreferencesKey("appearance_remote_state")
+
+        /**
+         * The overrides, keyed by the wire property they are sent as.
+         *
+         * A map rather than a `when`, because there are now two callers with opposite needs —
+         * "clear the four the server just accepted" and "clear all of them" — and a second `when`
+         * listing the same thirteen names is a list that goes out of date the first time a
+         * fourteenth property arrives. Absence from this map is what makes the three local-only
+         * flags unclearable rather than merely unlisted.
+         */
+        val OVERRIDES: Map<String, Preferences.Key<*>> =
+            mapOf(
+                "theme" to THEME,
+                "layout" to LAYOUT,
+                "density" to DENSITY,
+                "paneAlpha" to PANE_ALPHA,
+                "accountCorner" to ACCOUNT_CORNER,
+                "listAvatars" to LIST_AVATARS,
+                "previewLines" to PREVIEW_LINES,
+                "unreadEmphasis" to UNREAD_EMPHASIS,
+                "fontFamily" to FONT_FAMILY,
+                "fontScale" to FONT_SCALE,
+                "sidebarDensity" to SIDEBAR_DENSITY,
+                "listDensity" to LIST_DENSITY,
+                "readingDensity" to READING_DENSITY,
+            )
+
+        const val MIN_PREVIEW_LINES = 0
+        const val MAX_PREVIEW_LINES = 2
+
+        /**
+         * The type-size bounds, and the same numbers the server publishes in `ranges.fontScale`.
+         *
+         * Narrow on purpose. This scales the app's own type on top of whatever the user has already
+         * set system-wide, and the two multiply — a phone at 130% font size with this at 150% is an
+         * app whose list rows no longer hold a subject. Android's own accessibility setting is the
+         * one that should go large; this is for closing the gap between it and the browser.
+         */
+        const val MIN_FONT_SCALE = 0.875f
+        const val MAX_FONT_SCALE = 1.25f
 
         /**
          * The floor on translucency.
@@ -189,12 +383,70 @@ data class StoredAppearance(
     val density: String? = null,
     val dynamicColor: Boolean = false,
     val reduceTransparency: Boolean = false,
+    /** See [AppearanceStore.setSyncWithServer]. On for anyone who has never touched the switch. */
+    val syncWithServer: Boolean = true,
     val paneAlpha: String? = null,
+    val accountCorner: Boolean? = null,
+    val listAvatars: Boolean? = null,
+    val previewLines: Int? = null,
+    val unreadEmphasis: String? = null,
+    val fontFamily: String? = null,
+    val fontScale: Float? = null,
+    val sidebarDensity: DensityOverride? = null,
+    val listDensity: DensityOverride? = null,
+    val readingDensity: DensityOverride? = null,
 ) {
     /** Whether anything here still has to reach the server. */
     val hasPendingWrites: Boolean
-        get() = theme != null || layout != null || density != null || paneAlpha != null
+        get() =
+            theme != null ||
+                layout != null ||
+                density != null ||
+                paneAlpha != null ||
+                accountCorner != null ||
+                listAvatars != null ||
+                previewLines != null ||
+                unreadEmphasis != null ||
+                fontFamily != null ||
+                fontScale != null ||
+                sidebarDensity != null ||
+                listDensity != null ||
+                readingDensity != null
 }
+
+/**
+ * A per-surface density this device has chosen, where "chose to follow the global one" is a choice.
+ *
+ * Three states have to survive the trip to disk and only two of them are values: no override at
+ * all, an override naming a density, and an override that says *follow* — which is the only way
+ * back from one of the other two. Written as `String?` alone the third would be indistinguishable
+ * from the first, and the symptom is precise: somebody sets the folder list to Compact, changes
+ * their mind, taps "Follow the overall density", and the control writes nothing at all because a
+ * null local value is what "untouched" already means. The wrapper is what makes the outer null and
+ * the inner null different questions.
+ *
+ * [wire] is null for follow, and that is deliberately the same null `AppearancePatch` sends as a
+ * JSON null — the two nulls mean the same thing and the value passes through untranslated.
+ */
+@JvmInline
+value class DensityOverride(val wire: String?) {
+    companion object {
+        /** Put the surface back on the global density. Sent as an explicit JSON null. */
+        val Follow = DensityOverride(null)
+    }
+}
+
+/**
+ * The empty string, standing for "follow", because DataStore cannot hold a null.
+ *
+ * A sentinel rather than a second boolean key beside each density: two keys that must agree is two
+ * keys that can disagree, and a half-written pair reads as an override of a density named `""`.
+ * Nothing else can ever produce an empty string here — every real value comes from `Density`'s
+ * vocabulary — so the sentinel cannot collide with a legitimate one.
+ */
+private fun DensityOverride.stored(): String = wire.orEmpty()
+
+private fun String.asOverride(): DensityOverride = DensityOverride(ifEmpty { null })
 
 /**
  * The server's appearance, as last read, plus the state token that read came with.
@@ -208,6 +460,15 @@ data class RemoteAppearance(
     val layout: String? = null,
     val density: String? = null,
     val paneAlpha: String? = null,
+    val accountCorner: Boolean? = null,
+    val listAvatars: Boolean? = null,
+    val previewLines: Int? = null,
+    val unreadEmphasis: String? = null,
+    val fontFamily: String? = null,
+    val fontScale: Float? = null,
+    val sidebarDensity: String? = null,
+    val listDensity: String? = null,
+    val readingDensity: String? = null,
     /** `Appearance/get`'s state, for the next write's `ifInState`. Null before the first read. */
     val state: String? = null,
 )

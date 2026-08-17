@@ -58,6 +58,13 @@ data class AppearanceGetResult(
  * [paneBlur] is carried and never rendered. Compose blurs a composable's *own* content and has no
  * backdrop filter, so a "frosted" pane on Android would blur the text written on it rather than the
  * list behind it. Keeping the value means a phone never writes somebody's web-side frosting away.
+ *
+ * [sidebarDensity], [listDensity] and [readingDensity] are nullable **on purpose and not by
+ * accident of decoding**: on this object null is the server's own answer, meaning "this surface
+ * follows the global [density]", and it is the only way back from a per-surface override. The
+ * server always sends all three keys, so on a `get` there is no absent case to tell apart — the
+ * distinction that does matter is in [AppearancePatch], where absent and null are two different
+ * instructions.
  */
 @Serializable
 data class Appearance(
@@ -73,6 +80,15 @@ data class Appearance(
     val backgroundPreset: String? = null,
     val backgroundSolid: String? = null,
     val scrimAlpha: Float? = null,
+    val accountCorner: Boolean? = null,
+    val listAvatars: Boolean? = null,
+    val previewLines: Int? = null,
+    val unreadEmphasis: String? = null,
+    val fontFamily: String? = null,
+    val fontScale: Float? = null,
+    val sidebarDensity: String? = null,
+    val listDensity: String? = null,
+    val readingDensity: String? = null,
 ) {
     /**
      * The same object with everything the server reported changed applied on top.
@@ -89,6 +105,27 @@ data class Appearance(
             if (key in reported) (reported[key] as? JsonPrimitive)?.content?.toFloatOrNull()
             else null
 
+        fun int(key: String) =
+            if (key in reported) (reported[key] as? JsonPrimitive)?.content?.toIntOrNull() else null
+
+        fun bool(key: String) =
+            if (key in reported) (reported[key] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+            else null
+
+        /**
+         * The three nullable densities, where `?:` would be a bug.
+         *
+         * Every other property here folds an unreported key and a reported null into the same
+         * answer, which is right when null is meaningless for that property. For a per-surface
+         * density null is the value that says "follow the global density" — so a server that
+         * reports `{"listDensity": null}`, because clearing an override was a change the client did
+         * not ask for, has to be believed. Written `?:` instead, the override would survive in the
+         * client's copy and be re-sent on the next write, which is the surface silently refusing to
+         * be cleared.
+         */
+        fun surfaceDensity(key: String, current: String?) =
+            if (key in reported) (reported[key] as? JsonPrimitive)?.contentOrNull() else current
+
         return copy(
             theme = string("theme") ?: theme,
             layout = string("layout") ?: layout,
@@ -101,6 +138,15 @@ data class Appearance(
             backgroundPreset = string("backgroundPreset") ?: backgroundPreset,
             backgroundSolid = string("backgroundSolid") ?: backgroundSolid,
             scrimAlpha = float("scrimAlpha") ?: scrimAlpha,
+            accountCorner = bool("accountCorner") ?: accountCorner,
+            listAvatars = bool("listAvatars") ?: listAvatars,
+            previewLines = int("previewLines") ?: previewLines,
+            unreadEmphasis = string("unreadEmphasis") ?: unreadEmphasis,
+            fontFamily = string("fontFamily") ?: fontFamily,
+            fontScale = float("fontScale") ?: fontScale,
+            sidebarDensity = surfaceDensity("sidebarDensity", sidebarDensity),
+            listDensity = surfaceDensity("listDensity", listDensity),
+            readingDensity = surfaceDensity("readingDensity", readingDensity),
         )
     }
 
@@ -150,8 +196,10 @@ class AppearanceSet(private val patch: AppearancePatch, private val ifInState: S
  * The properties one write touches, and nothing else.
  *
  * Built rather than constructed so that "unset" and "set to null" stay different things: a null in
- * this map is a real instruction — clear the accent override — while an absent key means the server
- * keeps whatever it has.
+ * this map is a real instruction — clear the accent override, put a surface back on the global
+ * density — while an absent key means the server keeps whatever it has. That distinction is load
+ * bearing for [Builder.sidebarDensity] and its two siblings and is the reason those take a nullable
+ * string rather than being split into a setter and a clearer.
  */
 class AppearancePatch private constructor(private val fields: Map<String, JsonElement>) {
 
@@ -175,6 +223,67 @@ class AppearancePatch private constructor(private val fields: Map<String, JsonEl
 
         /** Out of range is clamped by the server and the clamp is reported. Send what was asked. */
         fun paneAlpha(alpha: Float) = apply { fields["paneAlpha"] = JsonPrimitive(alpha) }
+
+        /**
+         * The two switches, and the one place a `Boolean` may not become a `String`.
+         *
+         * `Appearance/set` runs these through `requireBool`, which takes a real JSON `true`/`false`
+         * and refuses `"1"`, `"0"` and `"true"` — the spelling the server's own web pane posts,
+         * because its form fields hold the string in a DOM node. A client sending `"0"` almost
+         * certainly means false and would have been silently given true, so the loose spelling is
+         * refused outright rather than coerced. `JsonPrimitive(Boolean)` is what makes that
+         * impossible to get wrong here, and it is the reason nothing between the store and this
+         * builder carries one of these as text: a boolean that spends any part of its journey as a
+         * string is one `toString()` away from failing the whole patch, and the patch is validated
+         * whole — so a theme sent beside a stringly-typed switch would not land either.
+         */
+        fun accountCorner(shown: Boolean) = apply {
+            fields["accountCorner"] = JsonPrimitive(shown)
+        }
+
+        /** See [accountCorner] — a real JSON boolean, never `"1"`. */
+        fun listAvatars(shown: Boolean) = apply { fields["listAvatars"] = JsonPrimitive(shown) }
+
+        /**
+         * How many lines of preview a list row shows: none, one or two.
+         *
+         * Sent as a JSON integer because `requireInt` demands one — `1.0` is refused as surely as
+         * `"1"` — and clamped to 0..2 by the server, which reports the number it used.
+         */
+        fun previewLines(lines: Int) = apply { fields["previewLines"] = JsonPrimitive(lines) }
+
+        fun unreadEmphasis(wire: String) = apply {
+            fields["unreadEmphasis"] = JsonPrimitive(wire)
+        }
+
+        fun fontFamily(wire: String) = apply { fields["fontFamily"] = JsonPrimitive(wire) }
+
+        /** Clamped to the published `ranges.fontScale` by the server, which reports the clamp. */
+        fun fontScale(scale: Float) = apply { fields["fontScale"] = JsonPrimitive(scale) }
+
+        /**
+         * A per-surface density override, or null to put the surface back on the global one.
+         *
+         * **Null here is a value and not an omission**, which is the whole reason this takes a
+         * nullable string: a patch that simply left the key out would mean "leave the override
+         * alone", so a user who had set the folder list to Compact and then chose "Follow the
+         * overall density" would tap a control that wrote nothing. Sending an explicit JSON null is
+         * the only way back, and the server reads these three with `array_key_exists` rather than
+         * `isset` for exactly that reason.
+         */
+        fun sidebarDensity(wire: String?) = apply {
+            fields["sidebarDensity"] = wire?.let(::JsonPrimitive) ?: JsonNull
+        }
+
+        /** See [sidebarDensity]: null clears the override rather than leaving it alone. */
+        fun listDensity(wire: String?) = apply {
+            fields["listDensity"] = wire?.let(::JsonPrimitive) ?: JsonNull
+        }
+
+        /** See [sidebarDensity]: null clears the override rather than leaving it alone. */
+        fun readingDensity(wire: String?) = apply {
+            fields["readingDensity"] = wire?.let(::JsonPrimitive) ?: JsonNull
+        }
 
         internal fun build() = AppearancePatch(fields.toMap())
     }

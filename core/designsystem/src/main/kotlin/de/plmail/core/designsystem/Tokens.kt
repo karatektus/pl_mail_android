@@ -323,6 +323,100 @@ value class PlMailSurfaces(val alpha: Float) {
 }
 
 /**
+ * The typeface the *interface* is drawn in, and never the one a message is composed in.
+ *
+ * The server's own `FontFamily`, by name and in its order. The two are a pair of settings that
+ * share a word and nothing else: the composer's font picker writes `font-family` into the message
+ * HTML and travels to the recipient, and this one never leaves the app's chrome.
+ *
+ * **Every value is a face the device already has.** Nothing here downloads a webfont — a phone on a
+ * plane has to be able to draw its own settings screen — which is why the list is four rather than
+ * forty, and why [GROTESK] is honest about being Android's own sans rather than the Helvetica the
+ * web's stack asks for first. That substitution is the whole difference between the two platforms
+ * here and it is not worth a warning: a grotesk is a grotesk.
+ */
+enum class PlMailFontFamily(val wire: String) {
+    SYSTEM("system"),
+    GROTESK("grotesk"),
+    SERIF("serif"),
+    MONOSPACE("monospace");
+
+    companion object {
+        fun fromWire(value: String?): PlMailFontFamily =
+            entries.firstOrNull { it.wire == value } ?: SYSTEM
+    }
+}
+
+/**
+ * How loudly the list says a row is unread.
+ *
+ * The server's `UnreadEmphasis`, and **the bold weight is not part of it at any setting** — that is
+ * the signal which survives a colour-blind reader and a photograph behind a translucent pane, so it
+ * stays. What varies there is a tint behind the row (a multiplier of 0, 1 and 1.6 on the theme's
+ * own unread alpha) and an accent bar down the leading edge, 3px at [STRONG] and absent otherwise.
+ *
+ * **Android's three settings are deliberately not symmetric about the middle one, and that
+ * asymmetry is forced.** This row has never had a tint — unread here is carried by weight *and* a
+ * step up the ink scale, which is a different mechanism the web does not use — so there is no `1.0`
+ * tint for [STANDARD] to be the identity of. What [STANDARD] is the identity of is today's
+ * rendering, exactly and pixel for pixel, because an existing install must not change appearance
+ * the day this setting arrives. That leaves [STRONG] to add something (the bar, plus a neutral lift
+ * toward `raised` that stands in for the web's tint) and [SUBTLE] to take something away — and the
+ * only thing available to take is the ink promotion, since the weight is not on the table. So
+ * Subtle is a read row's colours at an unread row's weight, which is quieter than Standard without
+ * being silent.
+ */
+enum class PlMailUnreadEmphasis(val wire: String) {
+    SUBTLE("subtle"),
+    STANDARD("standard"),
+    STRONG("strong");
+
+    companion object {
+        fun fromWire(value: String?): PlMailUnreadEmphasis =
+            entries.firstOrNull { it.wire == value } ?: STANDARD
+    }
+}
+
+/**
+ * The three surfaces that may pack at their own density.
+ *
+ * Named after what the user is looking at rather than after a composable, because that is what the
+ * setting says: the folder list, the message list, the message itself. Which composable draws each
+ * of them is `feature/mail`'s business and changes; the surfaces do not.
+ */
+enum class PlMailSurfaceKind {
+    SIDEBAR,
+    LIST,
+    READING,
+}
+
+/**
+ * How the conversation list draws a row, as the four settings that are about the list and not about
+ * the app.
+ *
+ * Grouped rather than spread across [PlMailThemeValues] because `ThreadRow` reads all four together
+ * and nothing else reads any of them — and because a row is the one composable in this app measured
+ * fifty at a time, where one lookup beating four is worth the type.
+ *
+ * [previewLines] is 0, 1 or 2: none, one clipped line, two wrapped ones. Zero does not remove the
+ * line the preview shares with the label chips — the chips keep it, and the row keeps its height,
+ * which is the property `ThreadRowLayoutTest` exists to hold.
+ */
+@Immutable
+data class PlMailListStyle(
+    val avatars: Boolean = true,
+    val previewLines: Int = 1,
+    val unreadEmphasis: PlMailUnreadEmphasis = PlMailUnreadEmphasis.STANDARD,
+    /**
+     * Whether a row may mark which account it arrived in.
+     *
+     * A permission rather than an instruction: the mark only means anything in a list showing more
+     * than one account at once, and the row cannot know whether it is in one. See `ThreadRow`.
+     */
+    val accountCorner: Boolean = true,
+)
+
+/**
  * The whole appearance choice, resolved.
  *
  * The one place the stored strings become types, and the one place a future `Appearance` from the
@@ -341,7 +435,30 @@ data class PlMailAppearance(
     val dynamicColor: Boolean = false,
     val reduceTransparency: Boolean = false,
     val surfaces: PlMailSurfaces = PlMailSurfaces.Opaque,
+    val syncWithServer: Boolean = true,
+    val fontFamily: PlMailFontFamily = PlMailFontFamily.SYSTEM,
+    val fontScale: Float = 1f,
+    val list: PlMailListStyle = PlMailListStyle(),
+    /**
+     * A surface's own density, or null to follow [density].
+     *
+     * Null is the value the server holds and not an absence, which is why these are nullable enums
+     * rather than being defaulted to [density] here: the appearance screen has to be able to draw
+     * "Follow the overall density" as the selected option, and a resolver that had already
+     * substituted the global one could not tell that state from a deliberate match.
+     */
+    val sidebarDensity: PlMailDensity? = null,
+    val listDensity: PlMailDensity? = null,
+    val readingDensity: PlMailDensity? = null,
 ) {
+    /** What a surface actually packs at: its own answer, or the app-wide one. */
+    fun densityFor(kind: PlMailSurfaceKind): PlMailDensity =
+        when (kind) {
+            PlMailSurfaceKind.SIDEBAR -> sidebarDensity
+            PlMailSurfaceKind.LIST -> listDensity
+            PlMailSurfaceKind.READING -> readingDensity
+        } ?: density
+
     companion object {
         /**
          * The floor on pane translucency, and the reason it is not zero.
@@ -352,6 +469,24 @@ data class PlMailAppearance(
          */
         const val MIN_PANE_ALPHA = 0.5f
 
+        /**
+         * The bounds on the app's own type scale, matching the server's published `fontScale`
+         * range.
+         *
+         * This multiplies whatever the user has already set system-wide rather than replacing it,
+         * so the two compound: a phone at 130% with this at 150% is a list row that can no longer
+         * hold a subject. Android's own accessibility setting is the one meant to go large; this
+         * exists to close the gap between it and the browser.
+         */
+        const val MIN_FONT_SCALE = 0.875f
+
+        const val MAX_FONT_SCALE = 1.25f
+
+        const val MIN_PREVIEW_LINES = 0
+
+        const val MAX_PREVIEW_LINES = 2
+
+        @Suppress("LongParameterList")
         fun of(
             theme: String?,
             layout: String?,
@@ -359,6 +494,16 @@ data class PlMailAppearance(
             dynamicColor: Boolean,
             reduceTransparency: Boolean,
             paneAlpha: String?,
+            syncWithServer: Boolean = true,
+            accountCorner: Boolean? = null,
+            listAvatars: Boolean? = null,
+            previewLines: Int? = null,
+            unreadEmphasis: String? = null,
+            fontFamily: String? = null,
+            fontScale: Float? = null,
+            sidebarDensity: String? = null,
+            listDensity: String? = null,
+            readingDensity: String? = null,
         ): PlMailAppearance =
             PlMailAppearance(
                 theme = PlMailThemeChoice.fromWire(theme),
@@ -368,7 +513,33 @@ data class PlMailAppearance(
                 reduceTransparency = reduceTransparency,
                 surfaces =
                     PlMailSurfaces(paneAlpha?.toFloatOrNull()?.coerceIn(MIN_PANE_ALPHA, 1f) ?: 1f),
+                syncWithServer = syncWithServer,
+                fontFamily = PlMailFontFamily.fromWire(fontFamily),
+                // Clamped again here, after the store and before the server. Not
+                // belt and braces: this resolver is also what a first paint from
+                // the session hint goes through, so it sees numbers no local
+                // control has ever bounded.
+                fontScale = fontScale?.coerceIn(MIN_FONT_SCALE, MAX_FONT_SCALE) ?: 1f,
+                list =
+                    PlMailListStyle(
+                        avatars = listAvatars ?: true,
+                        previewLines =
+                            previewLines?.coerceIn(MIN_PREVIEW_LINES, MAX_PREVIEW_LINES) ?: 1,
+                        unreadEmphasis = PlMailUnreadEmphasis.fromWire(unreadEmphasis),
+                        accountCorner = accountCorner ?: true,
+                    ),
+                // `fromWire` is not reachable here, and that is the point: it
+                // folds an unknown value into COMFORTABLE, which would turn "this
+                // surface follows the overall density" into "this surface is
+                // pinned to Comfortable" -- the one per-surface state that is not
+                // an override, silently becoming one.
+                sidebarDensity = sidebarDensity?.let(::densityOrNull),
+                listDensity = listDensity?.let(::densityOrNull),
+                readingDensity = readingDensity?.let(::densityOrNull),
             )
+
+        private fun densityOrNull(wire: String): PlMailDensity? =
+            PlMailDensity.entries.firstOrNull { it.wire == wire }
     }
 }
 
@@ -382,7 +553,25 @@ data class PlMailThemeValues(
     val density: PlMailDensity,
     val layout: PlMailLayout,
     val surfaces: PlMailSurfaces = PlMailSurfaces.Opaque,
-)
+    val list: PlMailListStyle = PlMailListStyle(),
+    /**
+     * The per-surface densities, carried here rather than resolved away.
+     *
+     * [PlMailSurface] is what turns one of them into the [spacing] a subtree sees, and it needs the
+     * unresolved answer to know whether there is anything to change.
+     */
+    val sidebarDensity: PlMailDensity? = null,
+    val listDensity: PlMailDensity? = null,
+    val readingDensity: PlMailDensity? = null,
+) {
+    /** See [PlMailAppearance.densityFor]. */
+    fun densityFor(kind: PlMailSurfaceKind): PlMailDensity =
+        when (kind) {
+            PlMailSurfaceKind.SIDEBAR -> sidebarDensity
+            PlMailSurfaceKind.LIST -> listDensity
+            PlMailSurfaceKind.READING -> readingDensity
+        } ?: density
+}
 
 internal fun spacingFor(density: PlMailDensity): PlMailSpacing {
     val scale = density.scale

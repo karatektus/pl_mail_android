@@ -350,12 +350,29 @@ data class ContactsCapability(val defaultSuggestions: Int = 8, val maxSuggestion
  *
  * [themes] is read rather than assumed because it is how a client discovers a theme it does not
  * have — `paper` is one today — without having to be told.
+ *
+ * [unreadEmphases] and [fontFamilies] arrived with the server's v0.0.35/v0.0.36 releases and are
+ * empty on anything older. Empty is therefore "this server does not offer the setting", not "this
+ * server offers none of them": a client that drew a picker from a hardcoded list would show three
+ * choices against a server that refuses all three with `invalidProperties`, and the patch is
+ * validated whole, so the refusal would take the rest of the write down with it.
  */
 data class AppearanceCapability(
     val hint: AppearanceHint = AppearanceHint(),
     val themes: List<String> = emptyList(),
     val layouts: List<String> = emptyList(),
     val densities: List<String> = emptyList(),
+    val unreadEmphases: List<String> = emptyList(),
+    val fontFamilies: List<String> = emptyList(),
+    /**
+     * The clamps, keyed by property — `paneAlpha`, `paneBlur`, `radius`, `scrimAlpha`, `mainAlpha`,
+     * and since v0.0.36 `previewLines` and `fontScale`.
+     *
+     * Parsed by name rather than into a field per knob, which is what let the two new ones arrive
+     * with no change here at all. `previewLines` publishes whole numbers and is read as a float
+     * like the rest; the server clamps it and reports the integer it stored, so nothing downstream
+     * has to round.
+     */
     val ranges: Map<String, ClosedRange> = emptyMap(),
 ) {
     /** The bounds for one numeric knob, or null when this server does not publish it. */
@@ -383,6 +400,8 @@ data class AppearanceCapability(
                 themes = strings("themes"),
                 layouts = strings("layouts"),
                 densities = strings("densities"),
+                unreadEmphases = strings("unreadEmphases"),
+                fontFamilies = strings("fontFamilies"),
                 ranges =
                     (json["ranges"] as? JsonObject)
                         .orEmpty()
@@ -439,8 +458,29 @@ data class ClosedRange(val min: Float, val max: Float) {
  * [backfillPending] means "there is mail still coming", not "a worker is running this second".
  * Nothing records the latter, and a client that worded it as progress would be inventing a
  * guarantee.
+ *
+ * [needsAttention] answers a third question and the sharpest one: **has this account stopped
+ * working?** A dead OAuth grant is otherwise invisible over JMAP — the account stays in the
+ * session, every method keeps answering, and no mail ever arrives again, so the app shows an inbox
+ * that has simply gone quiet with nothing to explain it. [attentionKind] is the server's own token
+ * for what kind of stopped, so this app can write its own sentence rather than render somebody
+ * else's translated card, and [attentionSeverity] says whether it is worth interrupting for.
+ *
+ * All three of the attention fields default to "fine". An older plMail publishes none of them, and
+ * reading silence as trouble would put a warning on every account of every server that predates the
+ * feature.
  */
-data class SyncWindow(val backfillTarget: Int? = null, val backfillPending: Boolean = false) {
+data class SyncWindow(
+    val backfillTarget: Int? = null,
+    val backfillPending: Boolean = false,
+    val needsAttention: Boolean = false,
+    /**
+     * `account_reconnect`, `push_degraded`, `push_lapsed`, … or null. Never parsed into an enum.
+     */
+    val attentionKind: String? = null,
+    /** `critical`, `warning` or `notice`, or null. */
+    val attentionSeverity: String? = null,
+) {
     companion object {
         fun from(json: JsonObject): SyncWindow =
             SyncWindow(
@@ -448,6 +488,21 @@ data class SyncWindow(val backfillTarget: Int? = null, val backfillPending: Bool
                 backfillPending =
                     (json["backfillPending"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
                         ?: false,
+                needsAttention =
+                    (json["needsAttention"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+                        ?: false,
+                // Kept as the wire token rather than resolved to an enum, for
+                // the reason `Mailbox.color` is: a kind a newer server invents
+                // has to survive to the screen, where it can at least be shown
+                // as "this account needs attention", instead of being erased by
+                // a `when` written today.
+                //
+                // `wordOrNull` rather than a plain cast, because JsonNull *is* a
+                // JsonPrimitive and its content is the four characters "null" --
+                // and the server sends an explicit null here for every working
+                // account, which is nearly all of them.
+                attentionKind = json["attentionKind"]?.wordOrNull(),
+                attentionSeverity = json["attentionSeverity"]?.wordOrNull(),
             )
     }
 }
@@ -536,3 +591,16 @@ data class FcmConfig(
 }
 
 private fun JsonPrimitive.contentOrNullIfBlank(): String? = content.takeIf { it.isNotBlank() }
+
+/**
+ * A JSON string's value, or null for anything that is not one.
+ *
+ * The guard that matters is `JsonNull`: it is a [JsonPrimitive] like any other and its `content` is
+ * the literal text `null`, so the obvious `as? JsonPrimitive` leaves a field carrying the *word*
+ * null — which every `when` downstream then reads as a value it does not recognise, for the case
+ * that is supposed to mean "nothing to report".
+ */
+private fun kotlinx.serialization.json.JsonElement.wordOrNull(): String? =
+    (this as? JsonPrimitive)
+        ?.takeIf { it !is kotlinx.serialization.json.JsonNull }
+        ?.contentOrNullIfBlank()

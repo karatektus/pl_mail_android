@@ -2,6 +2,7 @@ package de.plmail.core.data
 
 import de.plmail.core.datastore.AppearanceStore
 import de.plmail.core.datastore.CredentialStore
+import de.plmail.core.datastore.DensityOverride
 import de.plmail.core.datastore.RemoteAppearance
 import de.plmail.core.datastore.ServerConnection
 import de.plmail.core.datastore.StoredAppearance
@@ -41,6 +42,12 @@ import org.robolectric.annotation.Config
  *
  * None of that was covered. It runs under Robolectric because `AppearanceStore` is DataStore and
  * `AccountClients` is the real one over a scripted transport; nothing here needs a device.
+ *
+ * There is now a fourth answer that is not a plain success, and it is the one the user asked for:
+ * **the sync is off.** Both directions have to stop, and the direction that matters is the write —
+ * a phone given its own appearance must leave the browser's alone, which means literally no
+ * `Appearance/set`, not one carrying the values it happens to hold. That is asserted against the
+ * recorded requests rather than against the store, because the store cannot tell the difference.
  */
 @RunWith(RobolectricTestRunner::class)
 // sdk = 36 for the reason the other Robolectric suites here give: a library
@@ -91,7 +98,111 @@ class AppearanceRepositoryTest {
         assertEquals("solar", settings.theme)
     }
 
+    @Test
+    fun `a surface density that says follow is not the same as one nobody has set`() {
+        // The `?:` bug the whole `DensityOverride` wrapper exists to make
+        // unspellable. Both records below hold a null for the list, and they
+        // mean opposite things: the local one is a user who has just tapped
+        // "Follow the overall density" and the remote one is the compact
+        // override they are trying to get rid of. Written `local?.wire ?: remote`
+        // the tap resolves back to "compact" and the control does nothing at all.
+        val cleared =
+            resolve(
+                local = StoredAppearance(listDensity = DensityOverride.Follow),
+                remote = RemoteAppearance(listDensity = "compact", sidebarDensity = "cosy"),
+            )
+
+        assertNull(cleared.listDensity)
+
+        // And the untouched surface beside it still takes the server's answer,
+        // which is what says the clear was per-property rather than wholesale.
+        assertEquals("cosy", cleared.sidebarDensity)
+    }
+
     // ------------------------------------------------------------ the flush
+
+    @Test
+    fun `nothing reaches Appearance-set while the sync is off`() = runTest {
+        // The promise the switch's own supporting text makes, and the only one
+        // on this screen that cannot be checked by looking at the phone: the
+        // browser is left exactly as its owner had it. A single `Appearance/set`
+        // leaving the device here would silently push this phone's private
+        // appearance into every other device on the account.
+        val store = AppearanceStore(InMemoryPreferences())
+        val transport = scripted {
+            // Deliberately empty. Anything the repository sends past discovery
+            // fails the script rather than being quietly answered, so this
+            // asserts the absence twice over.
+        }
+
+        val repository = repository(store, transport)
+
+        store.setRemote(RemoteAppearance(theme = "light", state = "s1"))
+        repository.setSyncWithServer(false)
+
+        repository.setTheme("nord")
+        repository.setFontScale(1.25f)
+        repository.setListAvatars(false)
+        repository.refresh()
+
+        assertEquals(emptyList(), transport.methodNames())
+
+        // On screen immediately regardless, because the store is the preview and
+        // an override with nowhere to go is still an override.
+        assertEquals("nord", repository.settings.first().theme)
+        assertEquals(1.25f, repository.settings.first().fontScale)
+    }
+
+    @Test
+    fun `turning the sync back on discards this device's own appearance`() = runTest {
+        // Server-wins, and by construction rather than by a merge rule: the
+        // overrides are dropped *before* the read, so there is no window in which
+        // a month of local divergence could be flushed into the browser. The
+        // intuitive alternative -- keep the phone's changes and send them -- is
+        // the one thing the switch promises not to do.
+        val store = AppearanceStore(InMemoryPreferences())
+        val transport = scripted { getting(theme = "solar", layout = "boxed") }
+        val repository = repository(store, transport)
+
+        store.setRemote(RemoteAppearance(theme = "light", state = "s1"))
+        repository.setSyncWithServer(false)
+        repository.setTheme("nord")
+        repository.setFontScale(1.25f)
+
+        repository.setSyncWithServer(true)
+
+        // One `Appearance/get` and no `Appearance/set`: the phone asked what the
+        // account looks like and told it nothing.
+        assertEquals(listOf("get"), transport.methodNames())
+
+        val settings = repository.settings.first()
+
+        assertEquals("solar", settings.theme)
+        assertNull(settings.fontScale)
+        assertNull(store.appearance.first().theme)
+    }
+
+    @Test
+    fun `the local-only switches survive a re-enable`() = runTest {
+        // They are not overrides and there is nothing for the server to win:
+        // Material You and reduce-transparency answer questions it does not ask,
+        // so clearing them here would be losing a setting to a sync that has no
+        // opinion about it.
+        val store = AppearanceStore(InMemoryPreferences())
+        val transport = scripted { getting(theme = "solar", layout = "boxed") }
+        val repository = repository(store, transport)
+
+        repository.setDynamicColor(true)
+        repository.setReduceTransparency(true)
+        repository.setSyncWithServer(false)
+        repository.setSyncWithServer(true)
+
+        val settings = repository.settings.first()
+
+        assertTrue(settings.dynamicColor)
+        assertTrue(settings.reduceTransparency)
+        assertTrue(settings.syncWithServer)
+    }
 
     @Test
     fun `a stateMismatch is retried once, re-read, and the user's own change survives it`() =

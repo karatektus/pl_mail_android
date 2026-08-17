@@ -83,6 +83,10 @@
     <string name="diagnostics_check_failed">Prüfung fehlgeschlagen: %1$s</string>
     <string name="appearance">Darstellung</string>
     <string name="appearance_title">Darstellung</string>
+
+    <string name="appearance_sync">Wie im Web</string>
+    <string name="appearance_sync_body">Hält dieses Telefon so, wie plMail in Ihrem Browser aussieht. Ausgeschaltet bekommt das Telefon seine eigene Darstellung — Ihr Browser behält genau das, was er jetzt hat, und nichts, was Sie hier ändern, wird gesendet. Beim Wiedereinschalten gelten wieder die Einstellungen des Browsers; die des Telefons werden verworfen.</string>
+
     <string name="appearance_theme">Farbschema</string>
     <string name="theme_system">Wie das System</string>
     <string name="theme_light">Hell</string>
@@ -104,6 +108,36 @@
     <string name="density_comfortable">Bequem</string>
     <string name="density_cosy">Mittel</string>
     <string name="density_compact">Kompakt</string>
+
+    <string name="appearance_surface_density">Dichte je Bereich</string>
+    <string name="density_follow">Wie oben</string>
+    <string name="appearance_surface_sidebar">Ordnerliste</string>
+    <string name="appearance_surface_list">Mailliste</string>
+    <string name="appearance_surface_reading">Nachricht lesen</string>
+    <string name="appearance_surface_density_body">Überschreibt die Dichte oben für einen einzelnen Bereich. Ordnerliste und Lesebereich werden gespeichert und mit dem Web geteilt, hier aber noch nicht unterschiedlich gezeichnet.</string>
+
+    <string name="appearance_typography">Schrift</string>
+    <string name="font_system">System</string>
+    <string name="font_grotesk">Grotesk</string>
+    <string name="font_serif">Serif</string>
+    <string name="font_monospace">Mono</string>
+    <string name="appearance_font_family_body">Die Schrift, in der die App gezeichnet wird. Die Schrift geschriebener Mails ändert sie nicht.</string>
+    <string name="appearance_font_scale">Textgröße</string>
+    <string name="appearance_font_scale_body">Wirkt zusätzlich zur Textgröße Ihres Geräts, beide multiplizieren sich also. Für wirklich große Schrift ist die Geräteeinstellung die richtige.</string>
+
+    <string name="appearance_list">Mailliste</string>
+    <string name="appearance_list_avatars">Avatare zeigen</string>
+    <string name="appearance_list_avatars_body">Der farbige Kreis mit dem Anfangsbuchstaben des Absenders. Ausgeschaltet gewinnt der Betreff die Breite zurück.</string>
+    <string name="appearance_preview_lines">Vorschau</string>
+    <string name="preview_none">Keine</string>
+    <string name="preview_one">Eine Zeile</string>
+    <string name="preview_two">Zwei Zeilen</string>
+    <string name="appearance_unread_emphasis">Ungelesene Mail</string>
+    <string name="emphasis_subtle">Dezent</string>
+    <string name="emphasis_standard">Normal</string>
+    <string name="emphasis_strong">Deutlich</string>
+    <string name="appearance_account_corner">Konto kennzeichnen</string>
+    <string name="appearance_account_corner_body">Färbt eine Ecke jeder Zeile nach dem Konto, in dem die Mail angekommen ist. Erscheint nur in einer Liste, die mehrere Konten gleichzeitig zeigt.</string>
 
     <string name="appearance_accessibility">Barrierefreiheit</string>
     <string name="appearance_solid_panes">Flächen deckend halten</string>
@@ -132,6 +166,10 @@
     <string name="accounts_window_empty">Von diesem Konto liegt noch nichts auf diesem Gerät.</string>
 
     <string name="accounts_server_backfill_pending">Es kommt noch ältere Post; Ihr Server ist in diesem Postfach noch nicht am Ende angelangt.</string>
+    <string name="accounts_attention_reconnect">Dieses Konto muss neu verbunden werden. Melden Sie sich in plMail im Web erneut an — bis dahin kommt keine neue Post an.</string>
+    <string name="accounts_attention_push">Push funktioniert für dieses Konto nicht. Post kommt weiterhin an, aber erst bei der regelmäßigen Prüfung statt sofort.</string>
+    <string name="accounts_attention_generic">Dieses Konto braucht Aufmerksamkeit. Öffnen Sie plMail im Web, um zu sehen, was nicht stimmt.</string>
+
     <string name="accounts_server_backfill_all">Er hat alles davon geholt.</string>
     <plurals name="accounts_server_backfill_reached">
         <item quantity="one">Er hat die neueste Nachricht geholt.</item>
