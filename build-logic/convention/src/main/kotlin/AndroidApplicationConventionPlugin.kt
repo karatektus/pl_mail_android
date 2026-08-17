@@ -11,7 +11,7 @@ import org.gradle.kotlin.dsl.configure
  * tag matches this string — so the version is a reviewed change in a commit, not a property of
  * whoever typed the tag. Bump this, commit, then tag the commit.
  */
-private const val VERSION_NAME = "0.0.8"
+private const val VERSION_NAME = "0.0.9"
 
 /**
  * versionCode, computed from versionName rather than stored beside it.
