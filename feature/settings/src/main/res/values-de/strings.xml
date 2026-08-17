@@ -114,7 +114,7 @@
     <string name="appearance_surface_sidebar">Ordnerliste</string>
     <string name="appearance_surface_list">Mailliste</string>
     <string name="appearance_surface_reading">Nachricht lesen</string>
-    <string name="appearance_surface_density_body">Überschreibt die Dichte oben für einen einzelnen Bereich. Ordnerliste und Lesebereich werden gespeichert und mit dem Web geteilt, hier aber noch nicht unterschiedlich gezeichnet.</string>
+    <string name="appearance_surface_density_body">Überschreibt die Dichte oben für einen einzelnen Bereich.</string>
 
     <string name="appearance_typography">Schrift</string>
     <string name="font_system">System</string>

@@ -54,6 +54,8 @@ import de.plmail.core.data.MailCategory
 import de.plmail.core.data.MailView
 import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailLabelColor
+import de.plmail.core.designsystem.PlMailSurface
+import de.plmail.core.designsystem.PlMailSurfaceKind
 import de.plmail.core.designsystem.PlMailTheme
 
 /**
@@ -132,6 +134,48 @@ fun LabelSidebar(
     onAppearance: () -> Unit,
     onAccounts: () -> Unit,
     modifier: Modifier = Modifier,
+) {
+    // The user's sidebar density, where they have chosen one that differs from the
+    // overall setting. Wrapping the whole drawer rather than its rows: the group
+    // headings, the divider inset and the "New label" button all read the same
+    // spacing scale, and a density that moved only the rows would leave them
+    // sitting at gaps chosen for a different one.
+    PlMailSurface(PlMailSurfaceKind.SIDEBAR) {
+        SidebarContent(
+            labels = labels,
+            showCategories = showCategories,
+            populatedCategories = populatedCategories,
+            newCategories = newCategories,
+            selected = selected,
+            onSelect = onSelect,
+            onCreate = onCreate,
+            onCalendar = onCalendar,
+            onPush = onPush,
+            onNotifications = onNotifications,
+            onDiagnostics = onDiagnostics,
+            onAppearance = onAppearance,
+            onAccounts = onAccounts,
+            modifier = modifier,
+        )
+    }
+}
+
+@Composable
+private fun SidebarContent(
+    labels: List<Label>,
+    showCategories: Boolean,
+    populatedCategories: Set<MailCategory>,
+    newCategories: Set<MailCategory>,
+    selected: MailView,
+    onSelect: (MailView) -> Unit,
+    onCreate: () -> Unit,
+    onCalendar: (() -> Unit)?,
+    onPush: () -> Unit,
+    onNotifications: () -> Unit,
+    onDiagnostics: () -> Unit,
+    onAppearance: () -> Unit,
+    onAccounts: () -> Unit,
+    modifier: Modifier,
 ) {
     val theme = PlMailTheme.values
 

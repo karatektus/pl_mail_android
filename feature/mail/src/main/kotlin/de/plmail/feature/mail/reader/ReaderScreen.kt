@@ -61,6 +61,8 @@ import de.plmail.core.data.MailAction
 import de.plmail.core.database.AttachmentEntity
 import de.plmail.core.designsystem.PlMailAvatar
 import de.plmail.core.designsystem.PlMailDivider
+import de.plmail.core.designsystem.PlMailSurface
+import de.plmail.core.designsystem.PlMailSurfaceKind
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.ui.R as UiR
 import de.plmail.core.ui.asListDate
@@ -188,52 +190,59 @@ fun ReaderScreen(
     // A Scaffold rather than a bare LazyColumn: the reader is a top-level pane
     // and nothing above it applies window insets, so without this the subject
     // renders underneath the status bar.
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
-        topBar = {
-            ReaderBar(
-                subject =
-                    state.subject?.takeIf { it.isNotBlank() }
-                        ?: stringResource(UiR.string.no_subject),
-                isSnoozed = state.snoozedUntil != null,
-                onBack = onBack,
-                onAction = onAction,
-                onLabel = onLabel,
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbars) },
-        bottomBar = {
-            // The conversation's newest message, expanded or not. A thread is
-            // answered at its end; the per-message row inside each card is what
-            // answers a particular one.
-            state.messages.lastOrNull()?.let { newest ->
-                ReaderActionBar(
-                    onReply = { onReply(newest.email.emailId, false) },
-                    onForward = { onForward(newest.email.emailId) },
+    // The user's reading density, where they have chosen one differing from the
+    // overall setting. Around the Scaffold rather than around the message body:
+    // the toolbar, the header block and the attachment strip are all part of
+    // reading a message, and a density that moved only the prose would leave
+    // the furniture around it at gaps chosen for a different one.
+    PlMailSurface(PlMailSurfaceKind.READING) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            topBar = {
+                ReaderBar(
+                    subject =
+                        state.subject?.takeIf { it.isNotBlank() }
+                            ?: stringResource(UiR.string.no_subject),
+                    isSnoozed = state.snoozedUntil != null,
+                    onBack = onBack,
+                    onAction = onAction,
+                    onLabel = onLabel,
                 )
-            }
-        },
-    ) { insets ->
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(insets)) {
-            items(items = state.messages, key = { it.email.uid }) { message ->
-                Message(
-                    message = message,
-                    isDark = isDark,
-                    palette = palette,
-                    busyAttachments = state.busyAttachments,
-                    onToggle = { viewModel.toggleExpanded(message.email.uid) },
-                    onShowImages = { viewModel.allowRemoteImages(message.email.uid) },
-                    onToggleOriginal = { viewModel.toggleOriginal(message.email.uid) },
-                    onDisplayed = { viewModel.markRead(accountKey, message.email.uid) },
-                    onOpenAttachment = viewModel::openAttachment,
-                    onSaveAttachment = { attachment ->
-                        saving = attachment
-                        savePicker.launch(attachment.name ?: DEFAULT_SAVE_NAME)
-                    },
-                    onShowSource = { viewModel.showSource(message) },
-                    onReply = { all -> onReply(message.email.emailId, all) },
-                    onForward = { onForward(message.email.emailId) },
-                )
+            },
+            snackbarHost = { SnackbarHost(snackbars) },
+            bottomBar = {
+                // The conversation's newest message, expanded or not. A thread is
+                // answered at its end; the per-message row inside each card is what
+                // answers a particular one.
+                state.messages.lastOrNull()?.let { newest ->
+                    ReaderActionBar(
+                        onReply = { onReply(newest.email.emailId, false) },
+                        onForward = { onForward(newest.email.emailId) },
+                    )
+                }
+            },
+        ) { insets ->
+            LazyColumn(modifier = Modifier.fillMaxSize().padding(insets)) {
+                items(items = state.messages, key = { it.email.uid }) { message ->
+                    Message(
+                        message = message,
+                        isDark = isDark,
+                        palette = palette,
+                        busyAttachments = state.busyAttachments,
+                        onToggle = { viewModel.toggleExpanded(message.email.uid) },
+                        onShowImages = { viewModel.allowRemoteImages(message.email.uid) },
+                        onToggleOriginal = { viewModel.toggleOriginal(message.email.uid) },
+                        onDisplayed = { viewModel.markRead(accountKey, message.email.uid) },
+                        onOpenAttachment = viewModel::openAttachment,
+                        onSaveAttachment = { attachment ->
+                            saving = attachment
+                            savePicker.launch(attachment.name ?: DEFAULT_SAVE_NAME)
+                        },
+                        onShowSource = { viewModel.showSource(message) },
+                        onReply = { all -> onReply(message.email.emailId, all) },
+                        onForward = { onForward(message.email.emailId) },
+                    )
+                }
             }
         }
     }

@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -36,6 +37,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.LocalPlMailTheme
@@ -147,8 +149,10 @@ fun ThreadRow(
      * for itself would mark every conversation in a single-account inbox with the same colour,
      * which is a decoration rather than information.
      *
-     * Defaulting to false means every caller in the app today gets no mark, which is correct:
-     * `MailScreen` has not been taught to say yes yet. See the report accompanying this change.
+     * Defaulting to false because most callers have no opinion — the reader's header, a preview, a
+     * search result. `MailScreen` is the one that answers it, from whether the account list holds
+     * more than one: on a single-account install every row would carry the same mark, which is
+     * decoration rather than information.
      */
     showsAccount: Boolean = false,
 ) {
@@ -549,24 +553,42 @@ data class RowChip(val name: String, val color: PlMailLabelColor? = null)
  * a shape rather than a dot because the row already spends its dots on unread and this mark must
  * not be mistaken for one.
  *
- * Neither is mirrored for right-to-left. `drawBehind` works in raw pixels with no layout direction
- * to consult, and a mark on the wrong edge in Arabic is a real defect — worth naming here rather
- * than discovering, since the app has no RTL locale today and the fix belongs with the one that
- * adds it.
+ * **Both mirror for right-to-left.** "Leading" is a layout idea and these are drawn in raw pixels,
+ * so the obvious version puts them on the left always — which in Arabic is the *trailing* edge, and
+ * a mark that means "this row starts here" on the side where rows end is worse than no mark. The
+ * draw scope carries the layout direction, so the origin is chosen rather than assumed.
  */
 private fun Modifier.marks(bar: Color?, corner: Color?): Modifier =
     if (bar == null && corner == null) this
     else
         drawBehind {
-            bar?.let { drawRect(color = it, size = Size(UNREAD_BAR.toPx(), size.height)) }
+            val rtl = layoutDirection == LayoutDirection.Rtl
+
+            bar?.let {
+                val width = UNREAD_BAR.toPx()
+
+                drawRect(
+                    color = it,
+                    topLeft = Offset(if (rtl) size.width - width else 0f, 0f),
+                    size = Size(width, size.height),
+                )
+            }
 
             corner?.let {
                 val side = ACCOUNT_CORNER.toPx()
+
+                // The right angle sits in the leading top corner and the
+                // hypotenuse falls away from it, so mirroring is the x
+                // coordinates reflected about the row's width rather than a
+                // different shape.
+                val edge = if (rtl) size.width else 0f
+                val inward = if (rtl) size.width - side else side
+
                 val triangle =
                     Path().apply {
-                        moveTo(0f, 0f)
-                        lineTo(side, 0f)
-                        lineTo(0f, side)
+                        moveTo(edge, 0f)
+                        lineTo(inward, 0f)
+                        lineTo(edge, side)
                         close()
                     }
 

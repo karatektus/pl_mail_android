@@ -183,6 +183,32 @@ constructor(
     }
 
     /**
+     * Whether the list on screen merges more than one account.
+     *
+     * What decides whether a row carries its account's mark: on a single-account install every row
+     * would carry the same one, which is decoration rather than information — and the setting that
+     * turns the mark on is the user's, so it must not become the reason a mark appears where it
+     * says nothing.
+     *
+     * The account *list* rather than the rows: a merge of two accounts where one happens to have
+     * contributed nothing to the current page is still a list where the marks mean something, and
+     * deriving this from the rows would flicker the mark on and off as the user scrolled.
+     */
+    val isMerged: StateFlow<Boolean> =
+        mail
+            .observeAccounts()
+            .map { it.size > 1 }
+            .distinctUntilChanged()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                // False until told otherwise: an unmarked row is the shape this
+                // list has always had, and a mark that appears a frame late is
+                // better than one that appears and then vanishes.
+                initialValue = false,
+            )
+
+    /**
      * Whether this server classifies mail, for the one thing that needs it: the list's title.
      *
      * Deliberately not what decides which list is drawn — see [MailView.START].

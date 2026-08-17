@@ -45,6 +45,14 @@ fun SwipeableThreadRow(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
     onAction: (MailAction) -> Unit,
+    /**
+     * Whether the row should carry its account's mark.
+     *
+     * Passed down rather than derived, because this composable can see one conversation and the
+     * question is about the whole list: a mark saying "this one is from your work address" means
+     * nothing on a list where every row is.
+     */
+    showsAccount: Boolean = false,
 ) {
     // Scoped to the conversation, not to the position in the list.
     //
@@ -74,6 +82,7 @@ fun SwipeableThreadRow(
                 ThreadRow(
                     thread = thread,
                     onClick = onClick,
+                    showsAccount = showsAccount,
                     onLongClick = onLongClick,
                     isSelected = isSelected,
                     // The one place the server's colour token becomes a colour

@@ -136,6 +136,9 @@ fun MailScreen(
     // classifies nothing. Nothing about which list is *shown* waits on this --
     // see MailView.START for why that distinction matters.
     val hasCategories by viewModel.hasCategories.collectAsStateWithLifecycle()
+    // Whether a row should carry its account's mark: only where the list is
+    // actually a merge, or every row would wear the same one.
+    val isMerged by viewModel.isMerged.collectAsStateWithLifecycle()
 
     // The in-process half of making `NeedsRepage` mean anything. A sync that
     // finds the server can no longer answer from this account's stored position
@@ -370,6 +373,7 @@ fun MailScreen(
                     isSyncing = isSyncing,
                     selection = selection,
                     arrivals = arrivals,
+                    isMerged = isMerged,
                     onOpenCategory = { viewModel.show(MailView.Category(it)) },
                     onShown = viewModel::threadsShown,
                     onThreadSelected = onThreadSelected,
@@ -467,6 +471,8 @@ private fun ThreadList(
      * ordered with the mail, scrolling away when the user starts reading. See [CategoryBundleRow].
      */
     arrivals: List<CategoryArrivals>,
+    /** Whether this list merges more than one account, so a row's account mark means something. */
+    isMerged: Boolean,
     onOpenCategory: (MailCategory) -> Unit,
     /**
      * Told which conversations have actually been drawn, so the New marker can be retired.
@@ -571,6 +577,7 @@ private fun ThreadList(
                     SwipeableThreadRow(
                         thread = thread,
                         isSelected = thread.uid in selection,
+                        showsAccount = isMerged,
                         // Resolved per row rather than precomputed for the page:
                         // it is a set intersection over a list the sidebar already
                         // holds in memory, and doing it here means a label renamed

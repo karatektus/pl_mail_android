@@ -167,7 +167,7 @@
     <string name="appearance_surface_sidebar">Folder list</string>
     <string name="appearance_surface_list">Mail list</string>
     <string name="appearance_surface_reading">Reading a message</string>
-    <string name="appearance_surface_density_body">Overrides the density above for one area at a time. The folder list and the reading pane are stored and shared with the web but not yet drawn differently here.</string>
+    <string name="appearance_surface_density_body">Overrides the density above for one area at a time.</string>
 
     <string name="appearance_typography">Type</string>
     <string name="font_system">System</string>
