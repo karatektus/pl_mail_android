@@ -98,6 +98,7 @@ constructor(
                         identityId = identity.identityId,
                         name = identity.name,
                         email = identity.email,
+                        htmlSignature = identity.htmlSignature,
                     )
                 }
                 .sortedBy { ordered.indexOfFirst { account -> account.uid == it.accountKey } }
@@ -285,9 +286,30 @@ constructor(
      * connection that failed, a server that refused for a reason this client did not anticipate —
      * is thrown, because "cancelled" must never be shown for a message that is on its way.
      *
-     * A successful cancel leaves the draft in Drafts. There is nothing to fetch afterwards:
-     * `EmailSubmission/get` answers `notFound` for a cancelled submission, because there is no row
-     * to hold that state.
+     * A successful cancel leaves the draft in Drafts.
+     *
+     * ## The server's `updated` is advisory, and this is why it is checked
+     *
+     * plMail's *web* cancel became atomic in v0.0.35: `MessageRepository::cancelSend()` is one
+     * conditional `UPDATE … WHERE send_claimed_at IS NULL AND sent_at IS NULL` and it reports
+     * whether it won, so the browser now says "too late, already sent" instead of confirming a
+     * cancellation that did not happen. **`EmailSubmissionSetMethod` was not given the same
+     * treatment.** It is a plain ORM write with no claim guard, so it answers `updated` for a
+     * submission the send worker has already claimed and is delivering — and the mail goes out
+     * under a message this app has just told the user was called back.
+     *
+     * So the set is treated as a request and `EmailSubmission/get` as the answer. That read is the
+     * one the reconciler already relies on and its behaviour is probed rather than assumed — see
+     * [ScheduledSendReconciler]: a cancelled submission comes back `canceled`, keeping its
+     * `sendAt`. Anything else that still resolves means the mail is on its way, which is
+     * [CancelOutcome.AlreadySent] — the same outcome the server's own `cannotUnsend` produces, and
+     * a state the user can act on.
+     *
+     * A confirmation that cannot be *fetched* is not treated as a failure. `notFound` is what an
+     * older plMail answers for a cancelled submission, having no row to hold the state, and a read
+     * that throws is a connection that dropped after a write the server accepted. Neither is
+     * evidence the mail went, and reporting "already sent" for a cancel that worked would be the
+     * same lie in the other direction.
      */
     override suspend fun cancel(accountKey: String, submissionId: String): CancelOutcome {
         val account =
@@ -309,7 +331,12 @@ constructor(
             )
         }
 
-        return CancelOutcome.Cancelled
+        // Swallowed rather than propagated: see above. The write was accepted,
+        // and a read that fails afterwards says nothing about whether it stuck.
+        val confirmed = runCatching { releasedAt(accountKey, submissionId) }.getOrNull()
+
+        return if (confirmed != null && !confirmed.isCanceled) CancelOutcome.AlreadySent
+        else CancelOutcome.Cancelled
     }
 
     /**

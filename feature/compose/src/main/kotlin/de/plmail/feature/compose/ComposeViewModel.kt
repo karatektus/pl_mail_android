@@ -15,6 +15,7 @@ import de.plmail.core.data.SendQueue
 import de.plmail.core.data.StagedAttachment
 import de.plmail.jmap.mail.DraftComposer
 import de.plmail.jmap.mail.EmailAddress
+import de.plmail.jmap.mail.Signatures
 import java.time.Instant
 import javax.inject.Inject
 import kotlinx.coroutines.FlowPreview
@@ -133,13 +134,20 @@ constructor(
     fun setIdentity(identity: SendIdentity) {
         val changedAccount = identity.accountKey != _state.value.draft.accountKey
 
+        // The signature follows the address, and ONLY the signature: the swap is
+        // scoped to the marked block, so a paragraph already typed above it is
+        // untouched. Changing From must never cost somebody what they have
+        // written -- the same rule, and the same marker, as the web composer's.
         edit { draft ->
+            val body = Signatures.replaceSignature(draft.bodyHtml, identity.htmlSignature)
+
             if (!changedAccount) {
-                draft.copy(identityId = identity.identityId)
+                draft.copy(identityId = identity.identityId, bodyHtml = body)
             } else {
                 draft.copy(
                     accountKey = identity.accountKey,
                     identityId = identity.identityId,
+                    bodyHtml = body,
                     emailId = null,
                     // The blobs belong to the old account too; BlobResolver
                     // filters by account and would refuse them.
@@ -318,6 +326,7 @@ constructor(
                     ComposeDraft(
                         accountKey = identity.accountKey,
                         identityId = identity.identityId,
+                        bodyHtml = Signatures.block(identity.htmlSignature),
                     ),
                 isLoading = false,
             )
@@ -366,6 +375,10 @@ constructor(
                         to = composed.to,
                         cc = composed.cc,
                         subject = composed.subject.orEmpty(),
+                        // Above the quote, because the quote is held beside the
+                        // draft and appended at save. A sign-off under somebody
+                        // else's message is a sign-off nobody reads.
+                        bodyHtml = Signatures.block(identity.htmlSignature),
                         inReplyTo = composed.inReplyTo,
                         references = composed.references,
                     ),
@@ -407,6 +420,7 @@ constructor(
                         accountKey = identity.accountKey,
                         identityId = identity.identityId,
                         subject = composed.subject.orEmpty(),
+                        bodyHtml = Signatures.block(identity.htmlSignature),
                         // The original's own files travel with the forward, by
                         // blob id -- nothing is downloaded to the phone and
                         // re-uploaded to the server it came from.

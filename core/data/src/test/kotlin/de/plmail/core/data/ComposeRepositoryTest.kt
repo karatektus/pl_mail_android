@@ -487,6 +487,83 @@ class ComposeRepositoryTest {
             )
     }
 
+    // ---------------------------------------------- calling a send back
+
+    /**
+     * **The server's `updated` is not proof, and this is the test that says so.**
+     *
+     * plMail's web cancel became atomic in v0.0.35 — one conditional UPDATE guarded on
+     * `send_claimed_at`, reporting whether it won — but `EmailSubmissionSetMethod` was left as a
+     * plain ORM write with no guard. So JMAP answers `updated` for a submission the send worker has
+     * already claimed, and the mail goes out under a banner saying it was called back. The set is
+     * treated as a request; `EmailSubmission/get` is the answer.
+     */
+    @Test
+    fun `a cancel the server confirms but has already sent reports it as sent`() = runTest {
+        seedAccounts(single = true)
+
+        val repository = repository(transport = cancelAnswering(undoStatus = "final"))
+
+        assertEquals(CancelOutcome.AlreadySent, repository.cancel(testAccountKey, "9"))
+    }
+
+    @Test
+    fun `a cancel the server confirms and did apply is a cancel`() = runTest {
+        seedAccounts(single = true)
+
+        val repository = repository(transport = cancelAnswering(undoStatus = "canceled"))
+
+        assertEquals(CancelOutcome.Cancelled, repository.cancel(testAccountKey, "9"))
+    }
+
+    /**
+     * An older plMail, which has no row to hold a cancelled submission and answers `notFound`.
+     *
+     * Silence is not evidence the mail went. Reading it as "already sent" would be the same lie in
+     * the other direction, and on every cancel those servers process.
+     */
+    @Test
+    fun `a cancel a server cannot confirm either way is still a cancel`() = runTest {
+        seedAccounts(single = true)
+
+        val repository = repository(transport = cancelAnswering(undoStatus = null))
+
+        assertEquals(CancelOutcome.Cancelled, repository.cancel(testAccountKey, "9"))
+    }
+
+    /**
+     * Answers the cancel with `updated`, then the confirming get with whatever [undoStatus] says.
+     *
+     * Null puts the id in `notFound`, which is the older server's answer for a submission it has
+     * cancelled. Routed on call order rather than on the body, because both requests go to the same
+     * `apiUrl` and telling them apart by inspecting JSON would be a second parser in a test.
+     */
+    private fun cancelAnswering(undoStatus: String?): JmapTransport {
+        val get =
+            if (undoStatus == null) """{"list":[],"notFound":["9"]}"""
+            else """{"list":[{"id":"9","emailId":"1","undoStatus":"$undoStatus"}],"notFound":[]}"""
+
+        val bodies =
+            listOf(
+                """{"methodResponses":[["EmailSubmission/set",{"updated":{"9":null}},"c0"]]}""",
+                """{"methodResponses":[["EmailSubmission/get",$get,"c0"]]}""",
+            )
+
+        var api = 0
+
+        return RecordingTransport { request ->
+            val body =
+                if (request.url.endsWith("/jmap/api")) bodies[minOf(api++, bodies.lastIndex)]
+                else TEST_SESSION
+
+            HttpResponse(
+                status = 200,
+                headers = mapOf("Content-Type" to "application/json"),
+                body = body.encodeToByteArray(),
+            )
+        }
+    }
+
     private fun repository(
         transport: JmapTransport = RecordingTransport.alwaysReturning(TEST_SESSION),
         prefs: AccountPrefsStore = AccountPrefsStore(InMemoryPreferences()),

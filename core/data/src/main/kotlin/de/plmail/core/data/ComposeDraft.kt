@@ -1,6 +1,7 @@
 package de.plmail.core.data
 
 import de.plmail.jmap.mail.EmailAddress
+import de.plmail.jmap.mail.Signatures
 
 /**
  * What is being written, independent of both the screen and the wire.
@@ -62,12 +63,17 @@ data class ComposeDraft(
      *
      * A composer opened and closed again must not litter Drafts with an empty message, and a reply
      * carries a quoted body from the first frame — so the quote alone does not count as content.
+     *
+     * **Nor does the signature**, for exactly the same reason and it is the newer half of this: a
+     * composer now opens with the sending address's sign-off already in the body, so a body that is
+     * *only* a signature is still a message nobody has written. Without this every opened-and-
+     * abandoned composer would leave a draft behind containing the user's own name.
      */
     fun isEmpty(quotedHtml: String): Boolean =
         !hasRecipients &&
             subject.isBlank() &&
             attachments.isEmpty() &&
-            bodyHtml.removeSuffix(quotedHtml).isBlankHtml()
+            Signatures.replaceSignature(bodyHtml.removeSuffix(quotedHtml), null).isBlankHtml()
 }
 
 /**
@@ -101,6 +107,14 @@ data class SendIdentity(
     val identityId: String,
     val name: String?,
     val email: String,
+    /**
+     * What this address signs with, as HTML, or empty for one that signs with nothing.
+     *
+     * Carried on the identity rather than looked up when it is needed, because the composer swaps
+     * it the instant the From menu closes — see [de.plmail.jmap.mail.Signatures]. A signature
+     * fetched at that moment would arrive after the user had started typing under it.
+     */
+    val htmlSignature: String = "",
 ) {
     /**
      * What the From row shows.
