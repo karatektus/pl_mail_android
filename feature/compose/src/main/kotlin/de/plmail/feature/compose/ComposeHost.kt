@@ -9,7 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.adaptive.currentWindowAdaptiveInfo
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -120,7 +120,7 @@ fun ComposeHost(request: ComposeRequest?, onClose: () -> Unit, behind: @Composab
 
 @Composable
 private fun hasRoomForADialog(): Boolean =
-    currentWindowAdaptiveInfo().windowSizeClass.hasRoomForADialog()
+    currentWindowAdaptiveInfoV2().windowSizeClass.hasRoomForADialog()
 
 /**
  * Whether the window can hold a dialog without it becoming the screen in all but name.

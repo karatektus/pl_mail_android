@@ -6,6 +6,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
+import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
@@ -281,6 +282,14 @@ data class InlineImage(val bytes: ByteArray, val mimeType: String) {
  * Default-deny: anything not explicitly recognised is refused, so a scheme nobody thought about
  * fails closed rather than reaching the network.
  */
+// The handler this asks for is `onRenderProcessGone` below, and it is a real
+// one: it detaches the view, destroys it and returns true. The androidx.webkit
+// check does not recognise the Kotlin override -- it reports the class and its
+// supertype rather than a missing member -- so this is a checker limitation
+// rather than a waiver. If a future webkit release starts seeing it, delete
+// this line; if anybody deletes the override, put the suppression back only
+// after putting the override back.
+@Suppress("MissingOnRenderProcessGone")
 private class MessageClient(
     private val remoteImages: RemoteImages,
     private val inlineImage: (String) -> InlineImage?,
@@ -319,6 +328,32 @@ private class MessageClient(
      */
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
         true
+
+    /**
+     * The renderer died. Take the view down rather than the app.
+     *
+     * WebView runs the message in a **separate process**, and when that process is killed — the
+     * system reclaiming memory, or the renderer falling over on the message itself — the default
+     * behaviour is to raise the failure into this one. Returning false, which is what not
+     * overriding this amounts to, crashes the app.
+     *
+     * That is not a hypothetical here. This view renders whatever HTML somebody was sent: a mail
+     * with a ten-megapixel background, a table thousands of rows deep, a marketing template that
+     * animates. On a phone under memory pressure the renderer is exactly what the system kills
+     * first, and losing the whole app to a newsletter is the worst possible reading of "the message
+     * could not be displayed".
+     *
+     * The view is detached and destroyed before returning, because a WebView whose renderer has
+     * gone is unusable and holding one leaks the surface it was attached to. What the reader shows
+     * afterwards is an empty message body — the header, the actions and the way back are all
+     * outside this view and survive, which is the point.
+     */
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        (view.parent as? ViewGroup)?.removeView(view)
+        view.destroy()
+
+        return true
+    }
 
     private companion object {
         /**
