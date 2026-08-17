@@ -119,6 +119,11 @@ internal suspend fun PlMailDatabase.seedThread(
     labelKeys: String = inboxLabelKey,
     category: String? = null,
     receivedAt: Long = 5_000,
+    /** Read by default, so a test about the new-mail digest has to say it means unread. */
+    isUnread: Boolean = false,
+    /** The server's New marker. Off by default, so a test about it has to say so. */
+    isNew: Boolean = false,
+    sender: String = "",
 ) {
     threads()
         .upsert(
@@ -130,6 +135,39 @@ internal suspend fun PlMailDatabase.seedThread(
                     latestReceivedAt = receivedAt,
                     labelKeys = labelKeys,
                     category = category,
+                    isUnread = isUnread,
+                    isNew = isNew,
+                    participantsSummary = sender,
+                )
+            )
+        )
+}
+
+/**
+ * Puts a conversation in a list, without going through the projection.
+ *
+ * What the digest joins against: it asks which conversations are *in the inbox feed* rather than
+ * reading the thread's own labels, because a category is an inbox idea and the server never
+ * unclassifies mail.
+ */
+internal suspend fun PlMailDatabase.seedFeedEntry(
+    feedId: String,
+    threadId: String,
+    accountKey: String = testAccountKey,
+    sortDate: Long = 5_000,
+) {
+    val uid = StoreKey.objectKey(accountKey, threadId)
+
+    feed()
+        .upsertEntries(
+            listOf(
+                FeedEntryEntity(
+                    uid = "$feedId#$uid",
+                    feedId = feedId,
+                    sortDate = sortDate,
+                    accountKey = accountKey,
+                    threadId = threadId,
+                    emailId = threadId,
                 )
             )
         )

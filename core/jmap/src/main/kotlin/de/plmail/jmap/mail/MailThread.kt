@@ -45,6 +45,25 @@ data class MailThread(
      * enum written today.
      */
     val category: String? = null,
+    /**
+     * Whether this conversation is still **new**: never put in front of the user, and arrived
+     * inside the server's own newness window.
+     *
+     * plMail's third Thread extension, and deliberately **not** the same axis as unread. A
+     * conversation read on a laptop is still new to a client that has never drawn its row, and
+     * retiring the marker marks nothing read. The two are allowed to disagree — that is the feature
+     * rather than an accident of it.
+     *
+     * The window (24 hours, `MessageThread::NEW_WINDOW`) is applied server-side against one clock
+     * reading per response, so two threads in one answer cannot straddle the boundary. Re-deriving
+     * it here would be a second copy of a constant that drifts the day somebody changes it, which
+     * is why this arrives resolved rather than as a `listedAt` timestamp.
+     *
+     * Defaulting to **false** rather than true: a plMail that predates the extension sends nothing,
+     * and reading silence as "everything is new" would light every category the first time an older
+     * server was synced. Absence of evidence is not news.
+     */
+    val isNew: Boolean = false,
 ) {
     val isSnoozed: Boolean
         get() = snoozedUntil != null

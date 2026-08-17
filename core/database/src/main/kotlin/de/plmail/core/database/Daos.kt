@@ -168,6 +168,99 @@ interface ThreadDao {
      */
     @Query("SELECT EXISTS(SELECT 1 FROM threads WHERE category IS NOT NULL LIMIT 1)")
     fun observeHasCategories(): Flow<Boolean>
+
+    /**
+     * The same answer once, for the sync path, which has no business collecting a flow.
+     *
+     * What decides whether an *unclassified* conversation may interrupt — see
+     * [de.plmail.core.data.notifyScopeKeys]. False on a device that has cached nothing yet, which
+     * is the safe direction: everything in the inbox counts as Primary until the first sync proves
+     * the server classifies, rather than a first run that says nothing at all.
+     */
+    @Query("SELECT EXISTS(SELECT 1 FROM threads WHERE category IS NOT NULL LIMIT 1)")
+    suspend fun hasCategories(): Boolean
+
+    /**
+     * Which inbox categories hold a conversation at all.
+     *
+     * What decides whether a category is offered as a destination — the same rule the web applies
+     * to its tab strip, so the phone and the browser show the same set rather than each being
+     * defensibly different. Membership rather than unread: a tab with fifty read promotions in it
+     * is a tab, and one with nothing in it is a promise the server cannot keep.
+     *
+     * Joined against the inbox feed rather than read off the thread row, because a category is an
+     * *inbox* idea: the server never unclassifies mail, so a conversation dragged to Trash keeps
+     * saying "promotions" and would hold a tab open over an empty list.
+     */
+    @Query(
+        """
+        SELECT DISTINCT threads.category FROM threads
+        INNER JOIN feed_entries
+            ON feed_entries.accountKey = threads.accountKey
+            AND feed_entries.threadId = threads.threadId
+            AND feed_entries.feedId = :inboxFeedId
+        WHERE threads.category IS NOT NULL
+        """
+    )
+    fun observePopulatedCategories(inboxFeedId: String): Flow<List<String>>
+
+    /**
+     * The inbox conversations the server still calls **new**, newest first.
+     *
+     * What the digest above Primary and the sidebar's dots are both drawn from. `isNew` is the
+     * server's own marker — never displayed to this user, and inside plMail's newness window — so
+     * this asks no question about time and holds no window of its own. That is the whole change
+     * from the local approximation it replaced: two clients now read one fact instead of each
+     * keeping a private guess that could only agree by coincidence.
+     *
+     * Joined against the inbox feed rather than read off the thread row alone, for the same reason
+     * [observePopulatedCategories] is: the server never unclassifies mail, so a conversation
+     * dragged to Trash keeps saying "promotions" and would otherwise be announced from the bin.
+     *
+     * Not grouped in SQL. The digest needs the senders behind each count as well as the count, and
+     * the result is bounded by what is genuinely new rather than by the size of the mailbox.
+     */
+    @Query(
+        """
+        SELECT threads.* FROM threads
+        INNER JOIN feed_entries
+            ON feed_entries.accountKey = threads.accountKey
+            AND feed_entries.threadId = threads.threadId
+            AND feed_entries.feedId = :inboxFeedId
+        WHERE threads.category IS NOT NULL
+          AND threads.isNew = 1
+        ORDER BY threads.latestReceivedAt DESC
+        """
+    )
+    fun observeNew(inboxFeedId: String): Flow<List<ThreadEntity>>
+
+    /**
+     * The conversations whose displays have not been reported to the server yet.
+     *
+     * The read half of [de.plmail.core.data.ShownThreads]: rows this device has drawn while the
+     * server still believes nobody has seen them. Bounded because it can only ever hold what is new
+     * — an account with nothing new answers with nothing, which is the ordinary case and has to
+     * cost one indexed read.
+     */
+    @Query(
+        """
+        SELECT * FROM threads
+        WHERE accountKey = :accountKey AND isNew = 1 AND threadId IN (:threadIds)
+        """
+    )
+    suspend fun stillNew(accountKey: String, threadIds: List<String>): List<ThreadEntity>
+
+    /**
+     * Retires the marker locally, for conversations the server has been told about.
+     *
+     * Written straight away rather than waiting for the next sync, and that is what stops the
+     * digest flickering: the rows leave the bundle the moment the report is accepted, instead of
+     * staying until an `Email/changes` happens to re-fetch the conversation.
+     */
+    @Query(
+        "UPDATE threads SET isNew = 0 WHERE accountKey = :accountKey AND threadId IN (:threadIds)"
+    )
+    suspend fun clearNew(accountKey: String, threadIds: List<String>)
 }
 
 @Dao

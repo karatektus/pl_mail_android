@@ -3,8 +3,10 @@ package de.plmail.feature.mail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import de.plmail.core.data.CategoryDigest
 import de.plmail.core.data.Label
 import de.plmail.core.data.LabelRepository
+import de.plmail.core.data.MailCategory
 import de.plmail.core.data.MailRepository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +19,9 @@ import kotlinx.coroutines.launch
 
 /** The label list the navigation draws, straight from the cache. */
 @HiltViewModel
-class SidebarViewModel @Inject constructor(labels: LabelRepository, accounts: MailRepository) :
+class SidebarViewModel
+@Inject
+constructor(labels: LabelRepository, accounts: MailRepository, digest: CategoryDigest) :
     ViewModel() {
 
     /**
@@ -50,6 +54,31 @@ class SidebarViewModel @Inject constructor(labels: LabelRepository, accounts: Ma
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
                 initialValue = false,
             )
+
+    /**
+     * Which categories are worth a row, as [CategoryDigest.populated] decides.
+     *
+     * Primary alone to begin with, which is the set that is always true: it is drawn whatever the
+     * cache holds, so the drawer never opens on a gap where the inbox should be and then fills it
+     * in.
+     */
+    val populatedCategories: StateFlow<Set<MailCategory>> =
+        digest.populated.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = setOf(MailCategory.PRIMARY),
+        )
+
+    /** Which categories carry a new-mail dot. */
+    val newCategories: StateFlow<Set<MailCategory>> =
+        digest.hasNew.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            // Empty rather than unknown: a dot that appears a frame late is a
+            // dot arriving with its evidence, and one that appears and vanishes
+            // teaches people not to trust it.
+            initialValue = emptySet(),
+        )
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L

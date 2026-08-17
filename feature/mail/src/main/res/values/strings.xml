@@ -184,6 +184,34 @@
     <string name="category_updates">Updates</string>
     <string name="category_forums">Forums</string>
 
+    <!--
+      The new-mail bundle above Primary. "3 new" rather than "3 unread": the
+      claim is that this arrived since you last looked at that tab, which is a
+      narrower and more useful thing than the unread count the sidebar would
+      have shown.
+    -->
+    <plurals name="category_new_count">
+        <item quantity="one">%1$d new</item>
+        <item quantity="other">%1$d new</item>
+    </plurals>
+
+    <!--
+      "Rail Europe, Duolingo and 2 more". A plural rather than a string even
+      though English inflects nothing here: the count is grammatical in
+      languages this app is not yet translated into, and a translator reaching
+      for the other form should find it rather than have to ask for it.
+    -->
+    <plurals name="category_senders_and_more">
+        <item quantity="one">%1$s and %2$d more</item>
+        <item quantity="other">%1$s and %2$d more</item>
+    </plurals>
+
+    <!--
+      What TalkBack says for the dot on a sidebar category. The dot has no
+      number behind it, so neither does this.
+    -->
+    <string name="category_has_new_a11y">New mail</string>
+
     <string name="label_color">Colour</string>
     <string name="label_color_none">No colour</string>
 

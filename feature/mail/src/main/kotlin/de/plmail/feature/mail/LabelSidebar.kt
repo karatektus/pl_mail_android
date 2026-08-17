@@ -1,13 +1,17 @@
 package de.plmail.feature.mail
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Label
 import androidx.compose.material.icons.automirrored.outlined.Send
@@ -40,6 +44,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -61,32 +67,51 @@ import de.plmail.core.designsystem.PlMailTheme
  * label somebody is looking for behind a control they have to remember to open, and mail labels are
  * two deep at most in practice.
  *
- * **The inbox categories live here too, indented under Inbox**, and that placement is Gmail's
+ * **The inbox categories live here, in the Inbox row's place**, and that placement is Gmail's
  * rather than an invention. Gmail on Android does not put its tabs over the list — that is the web
- * — it puts them in the drawer, immediately below the inbox and above the other system labels, and
- * the product owner's brief was to follow it rather than design something new. It also happens to
- * be the only place they can go here: this app's navigation *is* a list of destinations, and a tab
- * strip over the list would be a second navigation control disagreeing with the first about where
- * the user is.
+ * — it puts them in the drawer at the top, above the other system labels, and the product owner's
+ * brief was to follow it rather than design something new. It also happens to be the only place
+ * they can go here: this app's navigation *is* a list of destinations, and a tab strip over the
+ * list would be a second navigation control disagreeing with the first about where the user is.
  *
- * The one thing that is not Gmail's is that **Inbox stays the whole inbox**. Gmail's Inbox becomes
- * Primary when tabs are on; here it cannot, because plMail leaves a conversation it has never
- * classified in no category at all — so an Inbox that meant Primary would hide mail on a server
- * whose category backfill has not run. Inbox is "All inboxes" and Primary narrows it, which is the
- * same pair Gmail offers when several accounts are set up.
+ * **There is no whole-inbox row where the categories are drawn**, which is the part that changed.
+ * It used to sit above them, indented them under itself, and be where the app opened — so every
+ * launch landed on the one list the tabs exist to break up. Gmail's Inbox *becomes* Primary when
+ * tabs are on and so does this one: see [MailView], and
+ * [de.plmail.core.data.FeedRepository.category] for how Primary stays honest on a plMail that
+ * classifies nothing. On such a server there are no category rows and the Inbox label keeps its
+ * own, which is the same destination under the name that is true there.
  */
 @Composable
 fun LabelSidebar(
     labels: List<Label>,
     /**
-     * Whether to draw the category group at all.
+     * Whether to draw the category rows at all.
      *
      * False on a plMail that predates the extension, where every conversation's category is null
      * and all five destinations would be permanently empty. Five dead rows in a drawer is worse
      * than no rows: it says the server has a feature it does not have, and the only way to find out
-     * is to open each one.
+     * is to open each one. The Inbox row is drawn instead, and means the same list.
      */
     showCategories: Boolean,
+    /**
+     * Which categories hold mail, as the local cache sees it.
+     *
+     * The web's own rule, and worth copying exactly so the phone and the browser show the same tabs
+     * rather than each being defensibly different: Primary is always drawn, a category is drawn
+     * while it holds a conversation, and the one being *read* survives its own emptying until the
+     * user navigates away — otherwise archiving the last promotion pulls the list out from under
+     * the person reading it.
+     */
+    populatedCategories: Set<MailCategory>,
+    /**
+     * Which categories have mail that has arrived and never been looked at.
+     *
+     * Drawn as a dot rather than a number, for the reason the rows carry no count: the device can
+     * honestly say *that* something arrived without being able to say how much the server thinks
+     * there is. The same signal [de.plmail.core.data.CategoryDigest] puts at the top of Primary.
+     */
+    newCategories: Set<MailCategory>,
     selected: MailView,
     onSelect: (MailView) -> Unit,
     onCreate: () -> Unit,
@@ -147,6 +172,33 @@ fun LabelSidebar(
                 )
             }
 
+            // In its place, not above it. The categories *are* the inbox where
+            // the server classifies, so a whole-inbox row beside them would be a
+            // sixth destination holding the union of the other five -- which is
+            // the list this navigation was reorganised to stop opening on.
+            if (showCategories && label.role == INBOX_ROLE) {
+                MailCategory.entries
+                    .filter { it in populatedCategories || selected == MailView.Category(it) }
+                    .forEach { category ->
+                        SidebarItem(
+                            selected = selected == MailView.Category(category),
+                            onClick = { onSelect(MailView.Category(category)) },
+                            icon = category.icon(),
+                            text = category.displayName(),
+                            // No count: the only number this device could show is
+                            // how many unread of that category it has *paged*, and
+                            // a badge that disagreed with the web's would be worse
+                            // than no badge -- the server publishes no per-category
+                            // total over JMAP. What it shows instead is a dot for
+                            // mail that has arrived and not been looked at, which
+                            // is a claim the device can actually keep.
+                            hasNew = category in newCategories,
+                        )
+                    }
+
+                return@items
+            }
+
             SidebarItem(
                 selected = selected.selects(label),
                 onClick = { onSelect(MailView.Labelled(label)) },
@@ -161,28 +213,6 @@ fun LabelSidebar(
                 text = label.displayName(),
                 badge = label.unreadThreads,
             )
-
-            // Straight under Inbox, before Sent. The list is already ordered
-            // with the inbox first, so this is "after the first row" rather than
-            // a position anybody has to maintain.
-            if (showCategories && label.role == INBOX_ROLE) {
-                MailCategory.entries.forEach { category ->
-                    SidebarItem(
-                        selected = selected == MailView.Category(category),
-                        onClick = { onSelect(MailView.Category(category)) },
-                        icon = category.icon(),
-                        text = category.displayName(),
-                        // Indented past the icons above, so they read as
-                        // subdivisions of the inbox rather than as five more
-                        // top-level places. No count: the only number this device
-                        // could show is how many unread of that category it has
-                        // *paged*, and a badge that disagreed with the web's
-                        // would be worse than no badge -- the server publishes no
-                        // per-category total over JMAP.
-                        indent = CATEGORY_INDENT,
-                    )
-                }
-            }
         }
 
         item {
@@ -337,15 +367,25 @@ private fun SidebarItem(
     text: String,
     tint: PlMailLabelColor? = null,
     badge: Int = 0,
-    indent: androidx.compose.ui.unit.Dp = 0.dp,
+    /**
+     * Whether to mark this row as holding mail that has arrived and not been seen.
+     *
+     * A dot rather than a count, and it takes the badge slot rather than sitting beside it: two
+     * marks in one row would have the reader working out which of them they are being told about. A
+     * row never has both — the categories carry no count and the labels carry no dot.
+     */
+    hasNew: Boolean = false,
 ) {
     val theme = PlMailTheme.values
     val colored = tint?.let { theme.colors.labelColor(it) }
 
+    // Resolved out here: the badge slot is not a composable scope a string
+    // resource can be reached from once it is inside a `semantics` block.
+    val newDescription = stringResource(R.string.category_has_new_a11y)
+
     NavigationDrawerItem(
         selected = selected,
         onClick = onClick,
-        modifier = Modifier.padding(start = indent),
         icon = { Icon(imageVector = icon, contentDescription = null) },
         label = {
             Text(
@@ -358,13 +398,24 @@ private fun SidebarItem(
             )
         },
         badge = {
-            if (badge > 0) {
-                Text(
-                    text = badge.toString(),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = theme.colors.accent,
-                )
+            when {
+                badge > 0 ->
+                    Text(
+                        text = badge.toString(),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = theme.colors.accent,
+                    )
+
+                hasNew ->
+                    Box(
+                        modifier =
+                            Modifier.size(NEW_DOT)
+                                .background(color = theme.colors.accent, shape = CircleShape)
+                                .semantics {
+                                    contentDescription = newDescription
+                                }
+                    )
             }
         },
         colors =
@@ -388,14 +439,14 @@ private fun SidebarItem(
 /**
  * Whether this view is the one that label draws.
  *
- * The Inbox label and the unified inbox are the same mail seen two ways, so browsing the inbox has
- * to light the Inbox row — the feed layer collapses them for the same reason.
+ * Primary lights the Inbox row, because on a server with no classifier that row is how Primary is
+ * reached and what it is called — the feed layer collapses the two for the same reason. Where the
+ * categories *are* drawn there is no Inbox row for this to light, so the case costs nothing there.
  */
 private fun MailView.selects(label: Label): Boolean =
     when (this) {
-        MailView.Inbox -> label.role == INBOX_ROLE
         is MailView.Labelled -> this.label.key == label.key
-        is MailView.Category -> false
+        is MailView.Category -> category == MailCategory.PRIMARY && label.role == INBOX_ROLE
     }
 
 /** Where the user's own labels start, so exactly one rule is drawn above the first of them. */
@@ -422,7 +473,7 @@ private fun Label.icon(): ImageVector =
     }
 
 /** The glyph for a category, matching what Gmail uses for the same five tabs. */
-private fun MailCategory.icon(): ImageVector =
+internal fun MailCategory.icon(): ImageVector =
     when (this) {
         MailCategory.PRIMARY -> Icons.Outlined.Person
         MailCategory.SOCIAL -> Icons.Outlined.People
@@ -432,13 +483,12 @@ private fun MailCategory.icon(): ImageVector =
     }
 
 /**
- * How far the categories sit in from the labels.
+ * The new-mail dot, in the slot a count would occupy.
  *
- * Fixed rather than scaled by density: what it has to clear is the icon column, which is Material's
- * own and does not move with the spacing scale. A density-scaled indent would leave the five rows
- * almost aligned with Inbox in compact, which reads as a layout mistake rather than a hierarchy.
+ * Small enough to read as punctuation rather than as a control: it is not tappable on its own, the
+ * whole row is.
  */
-private val CATEGORY_INDENT = 16.dp
+private val NEW_DOT = 8.dp
 
 private const val INBOX_ROLE = "inbox"
 

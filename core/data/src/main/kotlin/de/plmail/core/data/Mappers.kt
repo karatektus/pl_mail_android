@@ -111,6 +111,11 @@ fun Identity.toEntity(accountKey: String, sortIndex: Int = 0): IdentityEntity =
         identityId = id.value,
         name = name,
         email = email,
+        // The HTML form, not `textSignature`. The server derives the text one
+        // from this at read time and the composer's body is HTML throughout, so
+        // taking the derived value would mean rebuilding markup the server had
+        // already flattened -- and losing whatever the user actually wrote.
+        htmlSignature = htmlSignature,
         sortIndex = sortIndex,
     )
 
@@ -275,6 +280,11 @@ fun MailThread.toEntity(
         // moment a thread arrived across two pages with its newest message in
         // the second.
         category = category,
+        // The server's own marker, carried through unchanged. Not derived from
+        // `isUnread` beside it and not from the received time: newness is
+        // "never displayed AND inside the window", and both halves are facts
+        // only the server holds.
+        isNew = isNew,
         // The union across the conversation's messages, not the newest one's.
         // A label applied to a single reply is a label the conversation
         // carries -- that is what the sidebar's count says and what browsing the

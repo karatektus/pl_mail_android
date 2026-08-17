@@ -161,6 +161,23 @@ data class ThreadEntity(
      */
     val category: String? = null,
     /**
+     * Whether this conversation is still **new**: the server's own marker, not a local guess.
+     *
+     * Never put in front of the user, and arrived inside plMail's newness window — see
+     * [de.plmail.jmap.mail.MailThread.isNew]. Deliberately not the same axis as [isUnread], and the
+     * two are allowed to disagree: mail read on a laptop is still new to a device that has never
+     * drawn its row.
+     *
+     * Denormalised here for the reason every other column on this row is: the digest above Primary
+     * and the sidebar's dots both read it for every cached conversation, and a join per row is what
+     * this table exists to avoid.
+     *
+     * This replaced a local approximation — a per-category "last opened" timestamp — which was the
+     * best a client could do while the server published nothing. The approximation could only ever
+     * agree with the browser by coincidence; this is the same fact both surfaces read.
+     */
+    val isNew: Boolean = false,
+    /**
      * Which labels this conversation carries, as collapse *keys*, comma-separated.
      *
      * Denormalised onto the row for the same reason every other field here is: the list draws fifty
@@ -465,5 +482,19 @@ data class IdentityEntity(
     val identityId: String,
     val name: String? = null,
     val email: String,
+    /**
+     * The sign-off this address signs with, as the server's own HTML, or empty for one that signs
+     * with nothing.
+     *
+     * Stored rather than fetched when the composer opens, because the composer has to insert it
+     * into the body on the *first* frame: a signature that arrives after a round trip appears under
+     * the cursor of somebody who has already started typing. `Identity/get` is refreshed beside
+     * `Mailbox/get` on every directory refresh, so this is at most a minute stale.
+     *
+     * Empty is a real answer and not a missing one — plMail distinguishes an alias that inherits
+     * the account's signature from one explicitly set to none, and resolves that *before* it
+     * answers, so what arrives here is already the final value for this address.
+     */
+    val htmlSignature: String = "",
     val sortIndex: Int = 0,
 )

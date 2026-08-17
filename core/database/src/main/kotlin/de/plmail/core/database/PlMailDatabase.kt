@@ -8,9 +8,10 @@ import androidx.room.RoomDatabase
 /**
  * The local cache.
  *
- * **Version 4**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
+ * **Version 6**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
  * `labelKeys`; version 3 gave `MailboxEntity` a `color` and `ThreadEntity` a `category`; version 4
- * adds the three calendar tables. Rather than writing a migration each bump deliberately falls
+ * added the three calendar tables; version 5 gave `IdentityEntity` its `htmlSignature`; version 6
+ * gives `ThreadEntity` its `isNew`. Rather than writing a migration each bump deliberately falls
  * through to dropping the database and syncing again — which is exactly what the schema's central
  * constraint was for. Every row here is reconstructible from the server (see `Entities.kt`), so the
  * cost of the drop is one page of mail per list the user opens, and the alternative is the first
@@ -27,6 +28,11 @@ import androidx.room.RoomDatabase
  * **Two columns, one bump.** They arrived in the same session and each is a wipe-and-resync on its
  * own; shipping them as versions 3 and 4 would have cost a second full re-sync for nothing. Anyone
  * adding a third column before this ships should join it to this one rather than adding version 4.
+ *
+ * Version 5 is the policy working as intended rather than an exception to it. A signature is read
+ * straight back off `Identity/get`, which the directory refresh already calls beside `Mailbox/get`,
+ * so the drop costs one request the app was going to make anyway — and the column exists precisely
+ * so the composer does not have to wait for it.
  *
  * The exported schemas are still checked in and `MigrationTest` still validates them, because that
  * is what catches an entity and its exported description drifting apart — a drift which, on the day
@@ -51,7 +57,7 @@ import androidx.room.RoomDatabase
             CalendarEventEntity::class,
             CalendarOccurrenceEntity::class,
         ],
-    version = 4,
+    version = 6,
     exportSchema = true,
 )
 abstract class PlMailDatabase : RoomDatabase() {

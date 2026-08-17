@@ -59,8 +59,10 @@ import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import de.plmail.core.data.ActionTarget
+import de.plmail.core.data.CategoryArrivals
 import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
+import de.plmail.core.data.MailCategory
 import de.plmail.core.data.MailView
 import de.plmail.core.data.rowLabels
 import de.plmail.core.database.ThreadEntity
@@ -89,7 +91,7 @@ fun MailScreen(
     // exist to prevent. :app owns the swap.
     onSearch: () -> Unit,
     onCompose: () -> Unit,
-    view: MailView = MailView.Inbox,
+    view: MailView = MailView.START,
     /**
      * Opens the calendar, or null where this install has no calendar.
      *
@@ -127,6 +129,13 @@ fun MailScreen(
     val offline by viewModel.offline.collectAsStateWithLifecycle()
     val selection by viewModel.selection.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
+    // Empty on every list but Primary -- the ViewModel decides that, so this
+    // screen has no rule about where a digest belongs.
+    val arrivals by viewModel.arrivals.collectAsStateWithLifecycle()
+    // Only to title the list: Primary is called Inbox on a server that
+    // classifies nothing. Nothing about which list is *shown* waits on this --
+    // see MailView.START for why that distinction matters.
+    val hasCategories by viewModel.hasCategories.collectAsStateWithLifecycle()
 
     // The in-process half of making `NeedsRepage` mean anything. A sync that
     // finds the server can no longer answer from this account's stored position
@@ -187,7 +196,7 @@ fun MailScreen(
                     // and "Work/Invoices" as a screen title is noise. A system
                     // role takes the app's word for it rather than the server's,
                     // which is English whatever the device is set to.
-                    title = { Text(view.displayTitle()) },
+                    title = { Text(view.displayTitle(hasCategories)) },
                     colors =
                         TopAppBarDefaults.topAppBarColors(
                             // The bar is part of the page rather than a
@@ -360,6 +369,9 @@ fun MailScreen(
                     viewing = label,
                     isSyncing = isSyncing,
                     selection = selection,
+                    arrivals = arrivals,
+                    onOpenCategory = { viewModel.show(MailView.Category(it)) },
+                    onShown = viewModel::threadsShown,
                     onThreadSelected = onThreadSelected,
                     onToggleSelected = viewModel::toggleSelected,
                     onAction = { thread, action ->
@@ -448,11 +460,33 @@ private fun ThreadList(
     /** Whether a delta sync is still running behind the pull. See [hasNothingToShow]. */
     isSyncing: Boolean,
     selection: Set<String>,
+    /**
+     * The new-mail bundles for the other categories, or empty on any list but Primary.
+     *
+     * Above the rows rather than in a bar of their own, because they *are* rows: places to go,
+     * ordered with the mail, scrolling away when the user starts reading. See [CategoryBundleRow].
+     */
+    arrivals: List<CategoryArrivals>,
+    onOpenCategory: (MailCategory) -> Unit,
+    /**
+     * Told which conversations have actually been drawn, so the New marker can be retired.
+     *
+     * Reported from the list rather than from the pager, because "shown" has to mean shown: paging
+     * fetches conversations nobody has looked at, and so do a notification and the body prefetcher.
+     * See [de.plmail.core.data.ShownThreads].
+     */
+    onShown: (List<ThreadEntity>) -> Unit,
     onThreadSelected: (ThreadEntity) -> Unit,
     onToggleSelected: (String) -> Unit,
     onAction: (ThreadEntity, MailAction) -> Unit,
 ) {
-    if (threads.itemCount == 0) {
+    // The bundles survive an empty list, and that case is the whole reason this
+    // is a condition rather than an early return on `itemCount`. An empty
+    // Primary with three categories full of unread mail is exactly when
+    // somebody most needs to be told where their mail went -- and it is the
+    // state a well-triaged inbox is in most of the time. Drawing "Nothing here
+    // yet" over it would be the app losing the user's mail on their behalf.
+    if (threads.itemCount == 0 && arrivals.isEmpty()) {
         // "Nothing here" and "still looking" are different answers, and showing
         // the first while the first page is in flight tells someone their inbox
         // is empty when it is not.
@@ -496,6 +530,24 @@ private fun ThreadList(
             // list's children.
             contentPadding = PaddingValues(bottom = FAB_CLEARANCE),
         ) {
+            // Above the mail, and inside the same scroller. A pinned header
+            // would hold four rows of other people's promotions permanently
+            // over the list somebody opened the app to read; scrolling away is
+            // what makes this a courtesy rather than a tax.
+            items(items = arrivals, key = { "bundle:${it.category.wire}" }) { bundle ->
+                CategoryBundleRow(
+                    arrivals = bundle,
+                    onClick = { onOpenCategory(bundle.category) },
+                )
+            }
+
+            // Between the digest and the mail, so the two read as two things.
+            // Full bleed rather than indented like the row dividers below: this
+            // one separates *sections*, and the inset rules separate peers.
+            if (arrivals.isNotEmpty() && threads.itemCount > 0) {
+                item(key = "bundle:rule") { PlMailDivider() }
+            }
+
             items(
                 count = threads.itemCount,
                 // Keyed on the row's own identity, so an inserted message does not
@@ -505,6 +557,17 @@ private fun ThreadList(
                 val thread = threads[index]
 
                 if (thread != null) {
+                    // Reported once per row per appearance, not on every
+                    // recomposition: a scroll recomposes a row for a swipe
+                    // offset or a selection change, and keying the effect on
+                    // the row's identity is what keeps that from queueing the
+                    // same id a hundred times. The reporter narrows against the
+                    // cache as well, so a genuine re-appearance costs a query
+                    // rather than a request.
+                    LaunchedEffect(thread.uid) {
+                        if (thread.isNew) onShown(listOf(thread))
+                    }
+
                     SwipeableThreadRow(
                         thread = thread,
                         isSelected = thread.uid in selection,

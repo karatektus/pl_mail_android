@@ -7,6 +7,8 @@ import androidx.paging.cachedIn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.AccountsRepository
 import de.plmail.core.data.ActionTarget
+import de.plmail.core.data.CategoryArrivals
+import de.plmail.core.data.CategoryDigest
 import de.plmail.core.data.Connectivity
 import de.plmail.core.data.DeltaSync
 import de.plmail.core.data.FeedRepository
@@ -18,6 +20,7 @@ import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
 import de.plmail.core.data.MailView
 import de.plmail.core.data.Outbox
+import de.plmail.core.data.ShownThreads
 import de.plmail.core.data.UndoableAction
 import de.plmail.core.database.ThreadEntity
 import javax.inject.Inject
@@ -82,6 +85,8 @@ constructor(
     private val actions: MailActions,
     private val labelRepository: LabelRepository,
     private val deltaSync: DeltaSync,
+    private val digest: CategoryDigest,
+    private val shownThreads: ShownThreads,
     connectivity: Connectivity,
     outbox: Outbox,
     accounts: AccountsRepository,
@@ -178,6 +183,20 @@ constructor(
     }
 
     /**
+     * Whether this server classifies mail, for the one thing that needs it: the list's title.
+     *
+     * Deliberately not what decides which list is drawn — see [MailView.START].
+     */
+    val hasCategories: StateFlow<Boolean> =
+        labelRepository
+            .observeHasCategories()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = false,
+            )
+
+    /**
      * Every label, for the "Label as" sheet. The sidebar reads the same list through its own VM.
      */
     val labels: StateFlow<List<Label>> =
@@ -213,7 +232,7 @@ constructor(
         _labelSheet.update { null }
     }
 
-    private val shown = MutableStateFlow<MailView>(MailView.Inbox)
+    private val shown = MutableStateFlow(MailView.START)
 
     /** Which list the screen is showing. */
     fun show(view: MailView) {
@@ -221,23 +240,58 @@ constructor(
     }
 
     /**
+     * Records that these conversations have been drawn.
+     *
+     * What retires the New marker — for the browser as well as for this device, because it goes to
+     * the server rather than into a local note. Called from the list as rows compose, so "shown"
+     * means shown rather than fetched: paging, a notification and the body prefetcher all put
+     * conversations on the device without anybody having seen them.
+     *
+     * Cheap to call repeatedly. [ShownThreads] narrows against the cache before it queues anything,
+     * so a list redrawing the same page reports nothing.
+     */
+    fun threadsShown(rows: List<ThreadEntity>) {
+        rows
+            .groupBy { it.accountKey }
+            .forEach { (accountKey, forAccount) ->
+                shownThreads.report(accountKey, forAccount.map { it.threadId })
+            }
+    }
+
+    /**
+     * The categories with mail the user has not looked at, for the rows above Primary.
+     *
+     * Drawn only on Primary, and filtered here rather than in the screen so the flow is not
+     * recomputed for every other list: the digest is about mail that is *elsewhere*, and elsewhere
+     * has no meaning while the user is browsing a label.
+     */
+    val arrivals: StateFlow<List<CategoryArrivals>> =
+        combine(shown, digest.arrivals) { view, found ->
+                if (view == MailView.START) found else emptyList()
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = emptyList(),
+            )
+
+    /**
      * Which list is on screen, as the feed layer understands it.
      *
-     * The Inbox label and the unified inbox are the same mail seen two ways, so both collapse to
-     * [MailView.Inbox] here and neither restarts the other. That is not tidiness: the sidebar
-     * arrives a moment after the first frame, so the list is created showing the inbox and then
-     * told about the Inbox label — and without this the second one cancels the page already in
-     * flight and starts again for the same rows.
+     * The Inbox *label* collapses onto [MailView.START], because on this app's navigation they are
+     * one destination reached two ways — the sidebar draws an Inbox row on a server with no
+     * classifier, and Primary is what that row means. Collapsing is not tidiness: the sidebar
+     * arrives a moment after the first frame, so the list is created showing Primary and then told
+     * about the Inbox label, and without this the second one cancels the page already in flight and
+     * starts again for the same rows.
      *
-     * A **category** does not collapse into it, and must not. Primary is a narrower list than the
-     * inbox, not the same one under another name: the server leaves an unclassified conversation
-     * out of every category, so folding them would silently drop mail from whichever of the two ran
-     * second.
+     * The other four categories do not collapse into anything, and must not. Each is a narrower
+     * list, and folding them would silently drop mail from whichever ran second.
      */
     private val shownFeed: Flow<MailView> =
         shown
             .map { view ->
-                if (view is MailView.Labelled && view.label.role == INBOX_ROLE) MailView.Inbox
+                if (view is MailView.Labelled && view.label.role == INBOX_ROLE) MailView.START
                 else view
             }
             .distinctUntilChanged { old, new -> old.feedId == new.feedId }

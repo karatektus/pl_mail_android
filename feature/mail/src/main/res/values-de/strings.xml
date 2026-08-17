@@ -135,6 +135,18 @@
     <string name="category_updates">Benachrichtigungen</string>
     <string name="category_forums">Foren</string>
 
+    <plurals name="category_new_count">
+        <item quantity="one">%1$d neu</item>
+        <item quantity="other">%1$d neu</item>
+    </plurals>
+
+    <plurals name="category_senders_and_more">
+        <item quantity="one">%1$s und %2$d weitere</item>
+        <item quantity="other">%1$s und %2$d weitere</item>
+    </plurals>
+
+    <string name="category_has_new_a11y">Neue Nachrichten</string>
+
     <string name="label_color">Farbe</string>
     <string name="label_color_none">Keine Farbe</string>
 
