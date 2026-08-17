@@ -40,6 +40,13 @@ sealed interface NotifiableScope {
  * [LabelRepository.observeHasCategories]. Five permanently meaningless switches would be worse than
  * none, and on such a server the default still works: everything in the inbox counts as Primary, so
  * the Inbox label switch is the honest control and the categories say nothing they cannot keep.
+ *
+ * The two are **mutually exclusive**, and that is what stops the screen contradicting itself. The
+ * categories and the Inbox label describe one body of mail partitioned two ways, and scopes are
+ * matched with `any` — so offering both put a switch on the screen that silently overrode the five
+ * above it, and turning Promotions off could not take back what turning Inbox on had granted. Where
+ * the categories are drawn they are the inbox's controls and Inbox is not listed; where they are
+ * not, Inbox is.
  */
 data class NotifiableScopes(
     val categories: List<NotifiableScope.Category> = emptyList(),
@@ -76,6 +83,11 @@ constructor(private val labels: LabelRepository, private val store: Notification
                         },
                 labels =
                     all.filter { it.role !in NEVER_NOTIFIABLE_ROLES }
+                        // The inbox is covered by the five switches above it
+                        // wherever those are drawn, and a scope the announcing
+                        // path no longer raises must not keep a switch here: a
+                        // control that does nothing is worse than a missing one.
+                        .filter { !(hasCategories && it.role == INBOX_ROLE) }
                         .map {
                             NotifiableScope.Labelled(
                                 label = it,
@@ -94,5 +106,9 @@ constructor(private val labels: LabelRepository, private val store: Notification
      */
     suspend fun setEnabled(key: String, enabled: Boolean) {
         store.setEnabled(key, enabled)
+    }
+
+    private companion object {
+        const val INBOX_ROLE = "inbox"
     }
 }

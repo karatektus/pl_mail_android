@@ -116,10 +116,14 @@ class NewArrivalsTest {
      *
      * The notification is keyed on the thread, so a null there would key every unthreaded message
      * to the same notification and each would replace the last.
+     *
+     * Set against a server with no classifier, because that is the only one on which an unthreaded
+     * message is announced at all: with no conversation there is no category, and on a classifying
+     * server that is the unclassified case below. The id fallback is what this is about either way.
      */
     @Test
     fun `an unthreaded message falls back to its own id`() {
-        val found = arrivals(email("5").copy(threadId = null))
+        val found = arrivals(email("5").copy(threadId = null), serverClassifies = false)
 
         assertEquals("5", found.single().threadId)
     }
@@ -147,23 +151,82 @@ class NewArrivalsTest {
     /**
      * **The case that must never go silent.**
      *
-     * A plMail that predates the classifier, or one whose backfill has not run, reports null for
-     * every conversation it has. Reading null as "not Primary" would mean a phone that never makes
-     * a sound for any message the user owns, and nothing on the screen would say why. Primary here
-     * is not "the server said primary" but "in the inbox and not filed under one of the other
-     * four".
+     * A plMail that predates the classifier, or one whose backfill has never run, reports null for
+     * every conversation it has. Reading null as "not Primary" there would mean a phone that never
+     * makes a sound for any message the user owns, and nothing on the screen would say why. On such
+     * a server the inbox is one undifferentiated list, and Primary is the switch that describes it.
      */
     @Test
-    fun `an unclassified conversation counts as primary`() {
-        val found = arrivals(email("5"), categories = emptyMap())
+    fun `on a server with no classifier everything in the inbox counts as primary`() {
+        val found = arrivals(email("5"), categories = emptyMap(), serverClassifies = false)
 
         assertEquals(listOf("5"), found.map { it.emailId })
     }
 
-    /** A sixth category invented by a newer server falls the same way, and for the same reason. */
+    /**
+     * **The bug: notifications for every category rather than Primary alone.**
+     *
+     * The same null, on a server that *does* classify, means something entirely different — this
+     * conversation has not been classified — and the server's own inbox query puts it in no tab.
+     * Announcing it as Primary made every conversation the classifier had not reached ring the
+     * phone, which is indistinguishable from Primary being the only switch that ever mattered.
+     */
+    @Test
+    fun `an unclassified conversation is silent where the server does classify`() {
+        assertTrue(arrivals(email("5"), categories = emptyMap()).isEmpty())
+    }
+
+    /**
+     * A sixth category invented by a newer server still falls to Primary, and the asymmetry with
+     * the case above is deliberate: the server said *something* and only this build is out of date.
+     * A name this app has never heard of is far more likely to be mail worth hearing about than a
+     * promotion, and reading it as Primary is what keeps a server upgrade from silencing a phone.
+     */
     @Test
     fun `a category this build cannot name counts as primary`() {
         val found = arrivals(email("5"), categories = mapOf("t5" to "purchases"))
+
+        assertEquals(listOf("5"), found.map { it.emailId })
+    }
+
+    // --- The inbox label is not a sixth switch over the five -------------------
+
+    /**
+     * **The other half of the bug.**
+     *
+     * The inbox is a mailbox like any other, so it resolves to a label key and used to contribute
+     * one on top of the category scope. Scopes are matched with `any`, so switching Inbox on
+     * announced every category regardless of the five switches above it — and switching Promotions
+     * off could not take it back. Where the categories are drawn they are the inbox's controls.
+     */
+    @Test
+    fun `the inbox label does not override the category switches`() {
+        val prefs = NotificationPrefs(enabled = setOf("label:label-inbox"))
+
+        val quiet = arrivals(email("5"), categories = mapOf("t5" to "promotions"), prefs = prefs)
+
+        assertTrue(quiet.isEmpty())
+    }
+
+    /**
+     * And on a server with no classifier it is the honest control, so it keeps working. There are
+     * no category switches to contradict there — the settings screen draws none.
+     */
+    @Test
+    fun `the inbox label still speaks where there are no categories`() {
+        val prefs =
+            NotificationPrefs(
+                enabled = setOf("label:label-inbox"),
+                disabled = setOf("category:primary"),
+            )
+
+        val found =
+            arrivals(
+                email("5"),
+                categories = emptyMap(),
+                prefs = prefs,
+                serverClassifies = false,
+            )
 
         assertEquals(listOf("5"), found.map { it.emailId })
     }
@@ -261,7 +324,17 @@ class NewArrivalsTest {
         vararg emails: Email,
         known: Set<String> = emptySet(),
         prefs: NotificationPrefs = untouched,
-        categories: Map<String, String?> = emptyMap(),
+        /**
+         * Null classifies every conversation under test as Primary, which is what a working plMail
+         * reports for ordinary mail and therefore the right background for cases about something
+         * else. Pass a map — `emptyMap()` included — to say what the server actually answered.
+         */
+        categories: Map<String, String?>? = null,
+        /**
+         * Defaults to the *classifying* server, because that is what every plMail in service is and
+         * what the interesting cases are about. The unclassified-server cases say so explicitly.
+         */
+        serverClassifies: Boolean = true,
     ): List<NewMessage> =
         newArrivals(
             emails = emails.toList(),
@@ -271,7 +344,9 @@ class NewArrivalsTest {
             known = known,
             prefs = prefs,
             bindingKeys = bindings,
-            threadCategories = categories,
+            threadCategories =
+                categories ?: emails.mapNotNull { it.threadId?.value }.associateWith { "primary" },
+            serverClassifies = serverClassifies,
         )
 
     private fun email(

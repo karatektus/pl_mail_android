@@ -268,6 +268,13 @@ constructor(
                 it.mailboxId to it.labelKey
             }
 
+        // Whether this server classifies mail at all, which is what tells an
+        // unclassified conversation apart from one on a server that classifies
+        // nothing -- see notifyScopeKeys. Read once per hydration like the
+        // others; it is a fact about the server, so it cannot change halfway
+        // down one catch-up.
+        val classifies = database.threads().hasCategories()
+
         ids.chunked(HYDRATION_CHUNK).forEach { chunk ->
             val request = RequestBuilder()
             val get = request.add(EmailGet(accountId, ids = chunk))
@@ -321,6 +328,7 @@ constructor(
                         // and a notification that disagreed with the tab the
                         // mail lands in would be the harder bug to believe.
                         threadCategories = conversations.associate { it.id.value to it.category },
+                        serverClassifies = classifies,
                     )
                 }
 

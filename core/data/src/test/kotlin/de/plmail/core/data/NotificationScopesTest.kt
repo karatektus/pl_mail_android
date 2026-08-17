@@ -80,10 +80,14 @@ class NotificationScopesTest {
             assertTrue(it in NEVER_NOTIFIABLE_ROLES, it)
         }
 
-        // Inbox keeps its switch -- it is the "everything, whatever the
-        // classifier decided" control -- and so does a label the user made,
-        // which carries no role at all. The repository filters on `role !in`
-        // this set, so a null role has to fall through it.
+        // Inbox is not in this set, and that is deliberate: it is still the
+        // honest control on a server with no classifier. Where the five
+        // category switches *are* drawn it is suppressed instead, by
+        // NotificationSettingsRepository rather than here, because the reason
+        // is about what else is on the screen rather than about the role.
+        //
+        // A label the user made carries no role at all, and the repository
+        // filters on `role !in` this set, so a null role has to fall through it.
         val userMade: String? = null
 
         assertFalse("inbox" in NEVER_NOTIFIABLE_ROLES)

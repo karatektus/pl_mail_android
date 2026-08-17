@@ -81,6 +81,14 @@ internal fun newArrivals(
     bindingKeys: Map<String, String>,
     /** Thread id to the conversation's inbox category, as the server's own token. */
     threadCategories: Map<String, String?>,
+    /**
+     * Whether this server classifies mail into inbox categories at all.
+     *
+     * What tells an *unclassified* conversation apart from a server that classifies nothing — see
+     * [notifyScopeKeys], which explains why those two need opposite answers and why conflating them
+     * announced every category as Primary.
+     */
+    serverClassifies: Boolean,
 ): List<NewMessage> =
     emails
         .filter { de.plmail.core.database.StoreKey.objectKey(accountKey, it.id.value) !in known }
@@ -91,6 +99,7 @@ internal fun newArrivals(
                     inboxMailboxId = inboxMailboxId,
                     threadCategory = email.threadId?.value?.let { threadCategories[it] },
                     bindingKeys = bindingKeys,
+                    serverClassifies = serverClassifies,
                 )
                 .any(prefs::allows)
         }

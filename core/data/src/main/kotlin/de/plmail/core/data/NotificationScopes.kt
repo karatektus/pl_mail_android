@@ -88,21 +88,34 @@ fun NotificationPrefs.allows(key: String): Boolean =
  * newest message in a thread, and the server folds a thread's categories most-recent-wins, so a
  * newsletter somebody replied to has become a conversation and is announced as one.
  *
- * **An unclassified conversation counts as Primary, and that is a deliberate disagreement with the
- * tabs.** `MailThread.category` documents that null is not Primary, because a tab drawn that way
- * would show mail the web's own Primary tab does not have. Notifications invert that argument
- * exactly: a tab that is missing a conversation is visible — the user is looking at it — whereas a
- * notification that never arrives is indistinguishable from mail that never came, and this app's
- * users have to be able to work out why their phone is quiet. A plMail that predates the
- * classifier, or one whose backfill has not run, reports null for every conversation it has; on the
- * tab reading that means one empty tab, and on this reading it would mean **silence for every
- * message the user owns**. The same fall-through covers a category a newer server invents that this
- * build cannot name. So the rule is not "category equals primary" but the one Gmail's own tab
- * states:
+ * **[serverClassifies] decides what an unclassified conversation means**, and getting that wrong is
+ * what made every category interrupt. Null on `MailThread.category` has two completely different
+ * causes and they need opposite answers:
  *
- * > in the inbox, and not classified into one of the non-primary categories this build knows.
+ * - **The server has no classifier at all** — a plMail predating the extension, or one whose
+ *   backfill has never run. Every conversation reads null, so a rule of "null is not Primary" means
+ *   **silence for every message the user owns**, with nothing on screen saying why. Here the inbox
+ *   is one undifferentiated list and Primary is simply the switch that describes it.
+ * - **The server classifies, but not this conversation.** Then null means *unclassified*, the
+ *   server's own inbox query puts it in no tab, and folding it into Primary announces as Primary
+ *   mail that the web's Primary tab does not contain. This is the direction that fires for
+ *   everything, because it catches every conversation the classifier has not reached.
  *
- * Label scopes are separate and do not require the inbox. That is what makes per-label
+ * A wire token this build cannot *name* is a third case and still falls to Primary. The server said
+ * something; only this build is out of date, and "a category I have never heard of" is much more
+ * likely to be mail worth hearing about than a promotion. That keeps the forward-compatibility the
+ * five known tokens would otherwise lose without reopening the hole.
+ *
+ * **The inbox binding contributes no label scope where the categories describe the same mail.** The
+ * inbox is a mailbox like any other, so it resolves to a label key and used to add one — which made
+ * the Inbox switch a master override sitting on top of the five category switches and matched with
+ * `any`. Somebody who wanted to hear about their mail turned Inbox on and got every category, and
+ * no amount of switching Promotions off could take it back, because the two scopes describe one
+ * body of mail partitioned two ways. Where the server classifies, the categories *are* the inbox's
+ * controls and the label is suppressed; where it does not, there are no category switches and the
+ * Inbox label is the honest one, so it stays.
+ *
+ * Other label scopes are separate and do not require the inbox. That is what makes per-label
  * notifications worth having: a server-side rule that files mail under Work and skips the inbox is
  * exactly the case somebody switches Work on for. Nothing has to exclude Sent or Drafts to keep
  * that safe — those carry no category scope because they are not in the inbox, and their label
@@ -113,18 +126,30 @@ internal fun notifyScopeKeys(
     inboxMailboxId: String?,
     threadCategory: String?,
     bindingKeys: Map<String, String>,
+    /** Whether this server classifies mail into inbox categories at all. */
+    serverClassifies: Boolean,
 ): Set<String> {
     val scopes = mutableSetOf<String>()
 
     val boxes = email.mailboxes.map { it.value }
 
     if (inboxMailboxId != null && inboxMailboxId in boxes) {
-        val category = MailCategory.fromWire(threadCategory) ?: MailCategory.PRIMARY
+        val category = MailCategory.fromWire(threadCategory)
 
-        scopes += NotifyScope.Category(category).key
+        when {
+            category != null -> scopes += NotifyScope.Category(category).key
+
+            // Unclassified on a server that does classify: no category scope,
+            // exactly as the server's own tabs do it.
+            threadCategory != null || !serverClassifies -> scopes += NotifyScope.PRIMARY.key
+        }
     }
 
     boxes.forEach { box ->
+        // See above: where the categories cover the inbox, the Inbox label would
+        // be a sixth switch that overrides the five.
+        if (serverClassifies && box == inboxMailboxId) return@forEach
+
         bindingKeys[box]?.let { scopes += NotifyScope.Labelled(it).key }
     }
 
