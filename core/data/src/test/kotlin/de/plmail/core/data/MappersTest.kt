@@ -336,6 +336,84 @@ class MappersTest {
             sortOrder = sortOrder,
         )
 
+    // --- inbox membership ----------------------------------------------------
+
+    /**
+     * **The column that replaced a join which had quietly stopped being true.**
+     *
+     * The digest and the category list used to ask whether a conversation had a row in the
+     * unified-inbox feed. That held only while something paged that feed, and the moment the
+     * whole-inbox destination was retired nothing did — so both queries answered nothing at all, on
+     * every install, and every fixture that seeded the feed row by hand hid it.
+     *
+     * So membership is recorded on the conversation, by the one function on both write paths.
+     */
+    @Test
+    fun `a conversation in the inbox is recorded as being in it`() {
+        val row =
+            thread("t1")
+                .toEntity(
+                    accountKey,
+                    listOf(email(id = "1", mailboxIds = mapOf("1" to true)).toEntity(accountKey)),
+                    bindings = mapOf("1" to "lbl-inbox", "2" to "lbl-work"),
+                    inboxKey = "lbl-inbox",
+                )
+
+        assertTrue(row.isInInbox)
+    }
+
+    @Test
+    fun `a conversation filed elsewhere is not in the inbox`() {
+        val row =
+            thread("t1")
+                .toEntity(
+                    accountKey,
+                    listOf(email(id = "1", mailboxIds = mapOf("2" to true)).toEntity(accountKey)),
+                    bindings = mapOf("1" to "lbl-inbox", "2" to "lbl-work"),
+                    inboxKey = "lbl-inbox",
+                )
+
+        assertFalse(row.isInInbox)
+    }
+
+    /**
+     * An account whose mailboxes have never synced has no inbox key to compare against. Not in the
+     * inbox is the safe reading: a conversation that cannot be *placed* is one the digest must not
+     * announce, and the next sync writes the truth.
+     */
+    @Test
+    fun `a conversation that cannot be placed is not claimed for the inbox`() {
+        val row =
+            thread("t1")
+                .toEntity(
+                    accountKey,
+                    listOf(email(id = "1", mailboxIds = mapOf("1" to true)).toEntity(accountKey)),
+                    bindings = emptyMap(),
+                    inboxKey = null,
+                )
+
+        assertFalse(row.isInInbox)
+    }
+
+    /**
+     * Exact match, not substring. Collapse keys are server-issued ids and one can be a prefix of
+     * another — `"7" in "17,23"` is true, and a conversation in label 17 would be claimed for an
+     * inbox bound to 7.
+     */
+    @Test
+    fun `a collapse key that is a prefix of another does not count as membership`() {
+        val row =
+            thread("t1")
+                .toEntity(
+                    accountKey,
+                    listOf(email(id = "1", mailboxIds = mapOf("2" to true)).toEntity(accountKey)),
+                    bindings = mapOf("1" to "7", "2" to "17"),
+                    inboxKey = "7",
+                )
+
+        assertFalse(row.isInInbox)
+    }
+
     private fun thread(id: String, emailIds: List<String> = emptyList()): MailThread =
         MailThread(id = ThreadId(id), emailIds = emailIds.map(::EmailId))
 }

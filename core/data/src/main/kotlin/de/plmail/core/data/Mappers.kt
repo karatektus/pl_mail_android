@@ -247,9 +247,22 @@ fun MailThread.toEntity(
      * thread would be the read-time join the whole table exists to avoid, moved to write time.
      */
     bindings: Map<String, String> = emptyMap(),
+    /**
+     * This account's Inbox collapse key, or null where its mailboxes have never synced.
+     *
+     * Null reads as "not in the inbox", which is the safe direction: a conversation that cannot be
+     * placed is one the digest must not announce, and the next sync — after the mailbox list
+     * arrives — writes the truth.
+     */
+    inboxKey: String? = null,
 ): ThreadEntity {
     val dated = messages.sortedBy { it.receivedAt ?: Long.MIN_VALUE }
     val newest = dated.lastOrNull()
+
+    // Computed once and used twice: the row stores it, and inbox membership is
+    // an exact match within it rather than a substring test -- one collapse key
+    // can be a prefix of another, and `"7" in "17,23"` is true.
+    val carried = messages.labelKeysVia(bindings)
 
     return ThreadEntity(
         uid = StoreKey.objectKey(accountKey, id.value),
@@ -285,11 +298,15 @@ fun MailThread.toEntity(
         // "never displayed AND inside the window", and both halves are facts
         // only the server holds.
         isNew = isNew,
+        // Membership resolved here rather than joined at read time, because the
+        // list draws fifty of these -- the same argument every other
+        // denormalised column on this row is here for.
+        isInInbox = inboxKey != null && inboxKey in carried.split(","),
         // The union across the conversation's messages, not the newest one's.
         // A label applied to a single reply is a label the conversation
         // carries -- that is what the sidebar's count says and what browsing the
         // label shows, so a row that disagreed would be the odd one out.
-        labelKeys = messages.labelKeysVia(bindings),
+        labelKeys = carried,
     )
 }
 

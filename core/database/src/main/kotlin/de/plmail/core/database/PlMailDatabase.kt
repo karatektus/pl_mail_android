@@ -8,15 +8,16 @@ import androidx.room.RoomDatabase
 /**
  * The local cache.
  *
- * **Version 6**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
+ * **Version 7**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
  * `labelKeys`; version 3 gave `MailboxEntity` a `color` and `ThreadEntity` a `category`; version 4
  * added the three calendar tables; version 5 gave `IdentityEntity` its `htmlSignature`; version 6
- * gives `ThreadEntity` its `isNew`. Rather than writing a migration each bump deliberately falls
- * through to dropping the database and syncing again — which is exactly what the schema's central
- * constraint was for. Every row here is reconstructible from the server (see `Entities.kt`), so the
- * cost of the drop is one page of mail per list the user opens, and the alternative is the first
- * hand-written migration in a schema designed never to need one, plus a backfill that would have to
- * reconstruct labels by string matching `mailboxIds` against `mailboxes` in SQL.
+ * gave `ThreadEntity` its `isNew`, and version 7 its `isInInbox`. Rather than writing a migration
+ * each bump deliberately falls through to dropping the database and syncing again — which is
+ * exactly what the schema's central constraint was for. Every row here is reconstructible from the
+ * server (see `Entities.kt`), so the cost of the drop is one page of mail per list the user opens,
+ * and the alternative is the first hand-written migration in a schema designed never to need one,
+ * plus a backfill that would have to reconstruct labels by string matching `mailboxIds` against
+ * `mailboxes` in SQL.
  *
  * Version 4 is a pure addition and Room could have been given an empty migration for it — three
  * `CREATE TABLE`s and nothing to move. It is a destructive bump anyway, because the value of the
@@ -57,7 +58,7 @@ import androidx.room.RoomDatabase
             CalendarEventEntity::class,
             CalendarOccurrenceEntity::class,
         ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 abstract class PlMailDatabase : RoomDatabase() {

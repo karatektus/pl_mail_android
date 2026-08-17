@@ -151,6 +151,11 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
             // the exact path the denormalised table exists to keep cheap.
             val bindings = database.mailboxes().bindingKeys(accountKey)
 
+            // Which collapse key *is* the inbox, so each summarised row can
+            // record whether it is in it. Read once beside the bindings and for
+            // the same reason.
+            val inboxKey = database.mailboxes().byRole(accountKey, INBOX_ROLE)?.labelKey()
+
             // Read back rather than reusing `emails`: the summary has to cover
             // every message the thread now has, not just the ones in this page.
             database
@@ -165,6 +170,7 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
                                 accountKey,
                                 database.emails().inThread(accountKey, threadId),
                                 bindings,
+                                inboxKey,
                             )
 
                         // Every field on that row is derived from the messages
@@ -307,6 +313,10 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
 
     /** The composite key for one account on one server. */
     fun accountKey(server: String, accountId: String): String = StoreKey.account(server, accountId)
+
+    private companion object {
+        const val INBOX_ROLE = "inbox"
+    }
 }
 
 /**

@@ -178,6 +178,24 @@ data class ThreadEntity(
      */
     val isNew: Boolean = false,
     /**
+     * Whether this conversation is in the inbox.
+     *
+     * Denormalised for the same reason [category] is, and it replaced a join that quietly stopped
+     * being true: the digest and the category list used to ask "is there a row for this
+     * conversation in the unified-inbox feed", which held right up until the unified inbox stopped
+     * being a destination anybody pages. `FeedProjection` only maintains feeds that are *live* — a
+     * list somebody has opened — so a feed with no pager is a feed with no rows, and both queries
+     * silently answered nothing at all.
+     *
+     * A column on the conversation cannot go stale that way. It is written by `storeEmails`, which
+     * is on **both** paths that put a conversation on the device — the pagers and the delta sync —
+     * so it is true from the first page rather than from the first sync after it.
+     *
+     * Membership, not category. A conversation the server has classified keeps its category
+     * wherever it is filed, so the bin's promotions would be announced as inbox mail without this.
+     */
+    val isInInbox: Boolean = false,
+    /**
      * Which labels this conversation carries, as collapse *keys*, comma-separated.
      *
      * Denormalised onto the row for the same reason every other field here is: the list draws fifty

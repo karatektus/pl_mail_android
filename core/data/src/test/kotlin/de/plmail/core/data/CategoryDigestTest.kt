@@ -37,8 +37,6 @@ class CategoryDigestTest {
     private lateinit var database: PlMailDatabase
     private lateinit var digest: CategoryDigest
 
-    private val inbox = Feed.UNIFIED_INBOX.id
-
     @Before
     fun open() {
         database = inMemoryDatabase()
@@ -114,11 +112,10 @@ class CategoryDigestTest {
             "t1",
             category = MailCategory.PROMOTIONS.wire,
             isNew = true,
+            isInInbox = false,
             sender = "Rail Europe",
         )
 
-        // Deliberately no feed entry: the conversation is cached and classified,
-        // and it is not in the inbox.
         assertTrue(digest.arrivals.first().isEmpty())
     }
 
@@ -164,8 +161,13 @@ class CategoryDigestTest {
     /** A category a newer server invents has no row here to tap through to. */
     @Test
     fun `a category this build cannot name is not announced`() = runTest {
-        database.seedThread("t1", category = "purchases", isNew = true, sender = "A Shop")
-        database.seedFeedEntry(inbox, "t1")
+        database.seedThread(
+            "t1",
+            category = "purchases",
+            isNew = true,
+            isInInbox = true,
+            sender = "A Shop",
+        )
 
         assertTrue(digest.arrivals.first().isEmpty())
     }
@@ -205,11 +207,20 @@ class CategoryDigestTest {
     /** A conversation the inbox no longer holds takes its tab with it. */
     @Test
     fun `a category is not offered for mail that has left the inbox`() = runTest {
-        database.seedThread("t1", category = MailCategory.PROMOTIONS.wire)
+        database.seedThread("t1", category = MailCategory.PROMOTIONS.wire, isInInbox = false)
 
         assertTrue(MailCategory.PROMOTIONS !in digest.populated.first())
     }
 
+    /**
+     * Mail arriving in the inbox, and **nothing else** — no feed rows, no cursors, no list ever
+     * opened.
+     *
+     * That absence is the assertion hiding in the fixture. These queries used to join against the
+     * unified-inbox feed, which held only while something paged it; retiring that pager left both
+     * of them answering nothing at all, on every install, and no test noticed because every fixture
+     * here obligingly seeded the feed row by hand. A conversation on the device is enough.
+     */
     private suspend fun arrived(
         threadId: String,
         category: MailCategory,
@@ -222,9 +233,8 @@ class CategoryDigestTest {
             category = category.wire,
             isUnread = isUnread,
             isNew = isNew,
+            isInInbox = true,
             sender = sender,
         )
-
-        database.seedFeedEntry(inbox, threadId)
     }
 }

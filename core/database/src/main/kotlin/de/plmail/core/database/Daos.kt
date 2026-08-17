@@ -188,21 +188,18 @@ interface ThreadDao {
      * defensibly different. Membership rather than unread: a tab with fifty read promotions in it
      * is a tab, and one with nothing in it is a promise the server cannot keep.
      *
-     * Joined against the inbox feed rather than read off the thread row, because a category is an
-     * *inbox* idea: the server never unclassifies mail, so a conversation dragged to Trash keeps
-     * saying "promotions" and would hold a tab open over an empty list.
+     * Narrowed by `isInInbox` because a category is an *inbox* idea: the server never unclassifies
+     * mail, so a conversation dragged to Trash keeps saying "promotions" and would otherwise hold a
+     * tab open over an empty list. That used to be a join against the unified-inbox feed, which
+     * stopped being true the moment nothing paged that feed — see [ThreadEntity.isInInbox].
      */
     @Query(
         """
-        SELECT DISTINCT threads.category FROM threads
-        INNER JOIN feed_entries
-            ON feed_entries.accountKey = threads.accountKey
-            AND feed_entries.threadId = threads.threadId
-            AND feed_entries.feedId = :inboxFeedId
-        WHERE threads.category IS NOT NULL
+        SELECT DISTINCT category FROM threads
+        WHERE category IS NOT NULL AND isInInbox = 1
         """
     )
-    fun observePopulatedCategories(inboxFeedId: String): Flow<List<String>>
+    fun observePopulatedCategories(): Flow<List<String>>
 
     /**
      * The inbox conversations the server still calls **new**, newest first.
@@ -222,17 +219,12 @@ interface ThreadDao {
      */
     @Query(
         """
-        SELECT threads.* FROM threads
-        INNER JOIN feed_entries
-            ON feed_entries.accountKey = threads.accountKey
-            AND feed_entries.threadId = threads.threadId
-            AND feed_entries.feedId = :inboxFeedId
-        WHERE threads.category IS NOT NULL
-          AND threads.isNew = 1
-        ORDER BY threads.latestReceivedAt DESC
+        SELECT * FROM threads
+        WHERE category IS NOT NULL AND isNew = 1 AND isInInbox = 1
+        ORDER BY latestReceivedAt DESC
         """
     )
-    fun observeNew(inboxFeedId: String): Flow<List<ThreadEntity>>
+    fun observeNew(): Flow<List<ThreadEntity>>
 
     /**
      * The conversations whose displays have not been reported to the server yet.

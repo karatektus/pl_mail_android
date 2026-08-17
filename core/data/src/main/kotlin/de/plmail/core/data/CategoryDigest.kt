@@ -69,7 +69,7 @@ class CategoryDigest @Inject constructor(private val database: PlMailDatabase) {
     val populated: Flow<Set<MailCategory>> =
         database
             .threads()
-            .observePopulatedCategories(Feed.UNIFIED_INBOX.id)
+            .observePopulatedCategories()
             .map { tokens ->
                 tokens.mapNotNullTo(mutableSetOf(), MailCategory::fromWire) + MailCategory.PRIMARY
             }
@@ -83,7 +83,7 @@ class CategoryDigest @Inject constructor(private val database: PlMailDatabase) {
      * Its own rows carry the marker instead — see `ShownThreads`, which is what retires them.
      */
     val arrivals: Flow<List<CategoryArrivals>> =
-        database.threads().observeNew(Feed.UNIFIED_INBOX.id).map(::digest).distinctUntilChanged()
+        database.threads().observeNew().map(::digest).distinctUntilChanged()
 
     /** Which categories carry a dot, which is [arrivals] asked as a yes or no. */
     val hasNew: Flow<Set<MailCategory>> =

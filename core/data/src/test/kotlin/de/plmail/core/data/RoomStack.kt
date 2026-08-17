@@ -123,6 +123,8 @@ internal suspend fun PlMailDatabase.seedThread(
     isUnread: Boolean = false,
     /** The server's New marker. Off by default, so a test about it has to say so. */
     isNew: Boolean = false,
+    /** Whether the conversation is in the inbox, as `storeEmails` records it. */
+    isInInbox: Boolean = false,
     sender: String = "",
 ) {
     threads()
@@ -137,19 +139,14 @@ internal suspend fun PlMailDatabase.seedThread(
                     category = category,
                     isUnread = isUnread,
                     isNew = isNew,
+                    isInInbox = isInInbox,
                     participantsSummary = sender,
                 )
             )
         )
 }
 
-/**
- * Puts a conversation in a list, without going through the projection.
- *
- * What the digest joins against: it asks which conversations are *in the inbox feed* rather than
- * reading the thread's own labels, because a category is an inbox idea and the server never
- * unclassifies mail.
- */
+/** Puts a conversation in a list, without going through the projection. */
 internal suspend fun PlMailDatabase.seedFeedEntry(
     feedId: String,
     threadId: String,
