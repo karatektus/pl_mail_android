@@ -59,6 +59,8 @@ fun MailShell(
 ) {
     val labels by viewModel.labels.collectAsStateWithLifecycle()
     val hasCategories by viewModel.hasCategories.collectAsStateWithLifecycle()
+    val populatedCategories by viewModel.populatedCategories.collectAsStateWithLifecycle()
+    val newCategories by viewModel.newCategories.collectAsStateWithLifecycle()
 
     // The key rather than the MailView, because a Labelled view carries a Label,
     // and a Label carries its bindings and its counts -- both of which change
@@ -83,6 +85,8 @@ fun MailShell(
             LabelSidebar(
                 labels = labels,
                 showCategories = hasCategories,
+                populatedCategories = populatedCategories,
+                newCategories = newCategories,
                 selected = selected,
                 onSelect = { view ->
                     selectedKey = view.toKey()
@@ -189,9 +193,9 @@ fun MailShell(
             labels = labels,
             onDismiss = { editing = null },
             onDeleted = { deleted ->
-                // Back to the inbox rather than to a label that no longer
-                // exists -- otherwise the list keeps paging a mailbox the server
-                // has forgotten and reports it as an unreachable account.
+                // Back to where the app opens rather than to a label that no
+                // longer exists -- otherwise the list keeps paging a mailbox the
+                // server has forgotten and reports it as an unreachable account.
                 if (selected == MailView.Labelled(deleted)) selectedKey = null
                 editing = null
             },

@@ -168,24 +168,6 @@ constructor(
         )
 
     /**
-     * Every account's inbox, merged.
-     *
-     * Resolved by *role* rather than by a label the caller chose, because the inbox is the one list
-     * that must work before anything has been synced — including the mailbox table it would
-     * otherwise be looked up in.
-     */
-    fun unifiedInbox(pageSize: Int = PAGE_SIZE): Flow<PagingData<ThreadEntity>> =
-        feed(Feed.UNIFIED_INBOX.id, pageSize) { accountKey, _ ->
-            // Null pages everything rather than nothing: an account whose
-            // mailboxes have not been synced yet would otherwise contribute no
-            // rows at all, and the unified inbox would silently be missing a
-            // whole mailbox on first run.
-            database.mailboxes().byRole(accountKey, INBOX_ROLE)?.let {
-                EmailFilter.InMailbox(MailboxId(it.mailboxId))
-            }
-        }
-
-    /**
      * One inbox category, merged across accounts — a Gmail tab.
      *
      * **The category is a condition on the query, not a sieve over its results**, and that is the
@@ -198,20 +180,40 @@ constructor(
      * The Inbox binding is part of the filter because categories are an *inbox* idea: the server
      * classifies mail as it arrives and never stops, so a conversation moved to Trash keeps its
      * category, and a tab without the mailbox condition would show the bin's promotions alongside
-     * the inbox's. When the binding is not known yet the category stands alone — the same fallback
-     * [unifiedInbox] takes, and just as narrow a window: `feed` syncs mailboxes before it builds a
-     * single pager, so this is the first-run corner rather than the ordinary path.
+     * the inbox's. When the binding is not known yet the category stands alone, and the window for
+     * that is narrow: `feed` syncs mailboxes before it builds a single pager, so it is the
+     * first-run corner rather than the ordinary path.
+     *
+     * **Primary on a server with no classifier is the whole inbox**, and the category condition is
+     * dropped rather than answered. That is what lets [MailView.START] be a constant instead of
+     * something the app has to wait on a query to decide — see [MailView]. Asking a plMail that
+     * predates the extension for `threadCategory = primary` returns nothing, so the one destination
+     * the app opens on would be empty on exactly the servers least able to explain why. The
+     * condition is dropped only for Primary: the other four have no honest reading there and are
+     * not offered, because [LabelRepository.observeHasCategories] is false and the sidebar draws
+     * none of them.
      */
     fun category(
         category: MailCategory,
         pageSize: Int = PAGE_SIZE,
     ): Flow<PagingData<ThreadEntity>> =
         feed(category.feedId, pageSize) { accountKey, _ ->
+            val inbox =
+                database.mailboxes().byRole(accountKey, INBOX_ROLE)?.let {
+                    EmailFilter.InMailbox(MailboxId(it.mailboxId))
+                }
+
+            // Read per pager rather than held: it flips at most once in an
+            // install's life, on the sync that first brings back a classified
+            // conversation, and a pager built before that is rebuilt when the
+            // user next switches view.
+            if (category == MailCategory.PRIMARY && !database.threads().hasCategories()) {
+                return@feed inbox
+            }
+
             val inCategory = EmailFilter.ThreadCategory(category.wire)
 
-            database.mailboxes().byRole(accountKey, INBOX_ROLE)?.let {
-                EmailFilter.And(listOf(EmailFilter.InMailbox(MailboxId(it.mailboxId)), inCategory))
-            } ?: inCategory
+            inbox?.let { EmailFilter.And(listOf(it, inCategory)) } ?: inCategory
         }
 
     /**
@@ -233,7 +235,6 @@ constructor(
     /** Whichever list the sidebar has selected. One entry point, so the caller has no `when`. */
     fun forView(view: MailView, pageSize: Int = PAGE_SIZE): Flow<PagingData<ThreadEntity>> =
         when (view) {
-            MailView.Inbox -> unifiedInbox(pageSize)
             is MailView.Category -> category(view.category, pageSize)
             is MailView.Labelled -> labelled(view.label, pageSize)
         }

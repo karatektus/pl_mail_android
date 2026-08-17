@@ -66,12 +66,23 @@ internal fun MailCategory.displayName(): String =
         MailCategory.FORUMS -> stringResource(R.string.category_forums)
     }
 
-/** The title over whichever list is showing. */
+/**
+ * The title over whichever list is showing.
+ *
+ * Primary is titled **Inbox** where the server classifies nothing, because that is what it holds
+ * there and what the sidebar row that reaches it is called — see
+ * [de.plmail.core.data.FeedRepository.category]. Naming it "Primary" would put a word over the list
+ * that names a distinction the server is not making, and send the reader looking for the other
+ * four.
+ */
 @Composable
-internal fun MailView.displayTitle(): String =
+internal fun MailView.displayTitle(hasCategories: Boolean): String =
     when (this) {
-        MailView.Inbox -> stringResource(R.string.inbox_title)
-        is MailView.Category -> category.displayName()
+        is MailView.Category ->
+            if (category == MailCategory.PRIMARY && !hasCategories)
+                stringResource(R.string.inbox_title)
+            else category.displayName()
+
         is MailView.Labelled -> label.displayTitle()
     }
 

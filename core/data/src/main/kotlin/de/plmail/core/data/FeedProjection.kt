@@ -59,6 +59,12 @@ constructor(
         // "is this in the inbox" can be asked of a row at all.
         val inboxKey = database.mailboxes().byRole(accountKey, INBOX_ROLE)?.labelKey()
 
+        // Whether this server classifies mail at all, which decides what an
+        // unclassified conversation means -- see targetFeeds. Read once for the
+        // batch and outside the transaction: it is a fact about the server, and
+        // the rows this reads are the ones storeEmails has already committed.
+        val classifies = database.threads().hasCategories()
+
         database.withTransaction {
             val live =
                 database
@@ -72,7 +78,7 @@ constructor(
             if (live.isEmpty()) return@withTransaction
 
             threadIds.forEach { threadId ->
-                project(accountKey, threadId, live, inboxKey, pending)
+                project(accountKey, threadId, live, inboxKey, pending, classifies)
             }
         }
     }
@@ -83,6 +89,7 @@ constructor(
         live: List<Pair<String, FeedCursorEntity?>>,
         inboxKey: String?,
         pending: Set<String>,
+        classifies: Boolean,
     ) {
         val uid = StoreKey.objectKey(accountKey, threadId)
 
@@ -104,7 +111,7 @@ constructor(
             return
         }
 
-        val targets = targetFeeds(thread, inboxKey)
+        val targets = targetFeeds(thread, inboxKey, classifies)
 
         live.forEach { (feedId, cursor) ->
             if (feedId !in targets) {
@@ -147,19 +154,35 @@ constructor(
      * Trash keeps its category, and a tab that ignored the binding would show the bin's promotions.
      * The same reasoning `FeedRepository.category` builds its filter from.
      *
-     * **A null category belongs to no category list.** The server's own inbox query does exactly
-     * this, and folding null into Primary would put mail on this phone's Primary tab that the
-     * browser's does not have — every conversation on a plMail that predates the classifier, in
-     * fact. So would a wire value this build has never heard of, which `fromWire` answers null for
-     * on purpose.
+     * **A null category belongs to no category list**, on a server that classifies. The server's
+     * own inbox query does exactly this, and folding null into Primary would put mail on this
+     * phone's Primary tab that the browser's does not have. So would a wire value this build has
+     * never heard of, which `fromWire` answers null for on purpose.
+     *
+     * **Where nothing is classified at all, Primary holds the inbox**, which is the same rule
+     * [FeedRepository.category] queries the server by and has to be, or the rows the pager fetches
+     * and the rows the sync projects would be two different lists. That is what makes Primary a
+     * start destination the app can open on without first asking whether this plMail classifies —
+     * see [MailView]. [classifies] is passed in rather than read here because this runs inside the
+     * projection's transaction, once per conversation.
      */
-    private fun targetFeeds(thread: ThreadEntity, inboxKey: String?): Set<String> {
+    private fun targetFeeds(
+        thread: ThreadEntity,
+        inboxKey: String?,
+        classifies: Boolean,
+    ): Set<String> {
         val carried = thread.labelKeys.split(",").filter { it.isNotBlank() }
         val feeds = carried.mapTo(mutableSetOf(), ::labelFeedId)
 
         if (inboxKey != null && inboxKey in carried) {
             feeds += Feed.UNIFIED_INBOX.id
-            MailCategory.fromWire(thread.category)?.let { feeds += it.feedId }
+
+            val category = MailCategory.fromWire(thread.category)
+
+            when {
+                category != null -> feeds += category.feedId
+                !classifies -> feeds += MailCategory.PRIMARY.feedId
+            }
         }
 
         return feeds
