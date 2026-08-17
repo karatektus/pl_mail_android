@@ -37,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -55,7 +56,6 @@ import de.plmail.core.designsystem.PlMailEmptyState
 import de.plmail.core.designsystem.PlMailTheme
 import java.time.LocalDate
 import java.time.LocalDateTime
-import java.util.Locale
 import kotlin.math.abs
 import kotlinx.coroutines.launch
 
@@ -491,7 +491,7 @@ private fun DayHeader(day: AgendaDay, today: LocalDate, formats: CalendarFormats
         verticalAlignment = Alignment.Bottom,
     ) {
         Text(
-            text = word.uppercase(Locale.getDefault()),
+            text = word.uppercase(LocalLocale.current.platformLocale),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = HEADER_TRACKING,

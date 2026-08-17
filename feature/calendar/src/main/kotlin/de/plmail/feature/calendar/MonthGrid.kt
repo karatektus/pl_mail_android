@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLocale
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -43,7 +44,6 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
-import java.util.Locale
 
 /**
  * The month: six weeks of day cells, each carrying what is on the day.
@@ -121,7 +121,11 @@ internal fun MonthGrid(
                     // against the *device's* locale rather than the root one --
                     // a Turkish phone lower-cases its own dotted i differently,
                     // and `uppercase()` with no argument is the bug that ships.
-                    text = day.date.format(weekday).uppercase(Locale.getDefault()),
+                    // Through LocalLocale rather than Locale.getDefault(), so
+                    // the strip recomposes when the locale changes under it
+                    // instead of keeping whichever one was current at first
+                    // composition.
+                    text = day.date.format(weekday).uppercase(LocalLocale.current.platformLocale),
                     style = MaterialTheme.typography.labelSmall,
                     // Sunday in the accent, which is the one column a month is
                     // scanned against. It is also the convention this app's
