@@ -48,6 +48,7 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
                 ?.set(javaToolchainVersion())
 
             configureKotlin()
+            disableRacyUnitTestLint()
             configureUnitTestPlatform()
         }
     }
