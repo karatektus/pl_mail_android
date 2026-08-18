@@ -73,27 +73,61 @@ internal fun CategoryBundleRow(arrivals: CategoryArrivals, onClick: () -> Unit) 
                 .clearAndSetSemantics {
                     contentDescription = listOfNotNull(name, count, senders).joinToString(", ")
                 }
+                // The mail row's gutter, not a margin of its own. Both numbers
+                // below are `ThreadRow`'s: this row's whole claim is that it is
+                // one of the list's rows rather than a banner over them, and a
+                // claim like that is made in the metrics or not at all.
                 .padding(
-                    horizontal = theme.spacing.large,
+                    horizontal = theme.spacing.gutter,
                     vertical = theme.spacing.medium,
                 ),
+        horizontalArrangement = Arrangement.spacedBy(theme.spacing.medium),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The category's own glyph, in the column the sender avatars occupy, so
-        // the row lines up with the mail below it rather than starting its own
-        // margin.
-        Icon(
-            imageVector = arrivals.category.icon(),
-            contentDescription = null,
-            tint = theme.colors.accent,
-            modifier = Modifier.size(GLYPH),
-        )
+        // The category's glyph in exactly the box a sender's avatar occupies, so
+        // the two kinds of row share one text column.
+        //
+        // Boxed rather than simply drawn at the avatar's size: an icon stretched
+        // to 40dp is a different weight of mark from a letter in a filled
+        // circle, and it is the *column* that has to match, not the glyph. This
+        // used to be a bare 24dp icon behind a 16dp margin, which put the
+        // bundle's text 20dp to the left of every subject under it -- close
+        // enough to look like a rendering fault rather than a decision, and
+        // invisible until the row was screenshotted with mail beneath it.
+        if (theme.list.avatars) {
+            Box(
+                modifier = Modifier.size(theme.spacing.touchTarget - theme.spacing.small),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = arrivals.category.icon(),
+                    contentDescription = null,
+                    tint = theme.colors.accent,
+                    modifier = Modifier.size(GLYPH),
+                )
+            }
+        }
 
         Column(
-            modifier = Modifier.weight(1f).padding(start = theme.spacing.medium),
+            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(theme.spacing.hair),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(theme.spacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // With avatars off there is no leading column to sit in -- the
+                // mail rows lose theirs too -- so the glyph joins the name
+                // instead of holding open a 40dp indent nothing else has.
+                if (!theme.list.avatars) {
+                    Icon(
+                        imageVector = arrivals.category.icon(),
+                        contentDescription = null,
+                        tint = theme.colors.accent,
+                        modifier = Modifier.size(theme.spacing.large),
+                    )
+                }
+
                 Text(
                     text = name,
                     style = MaterialTheme.typography.bodyLarge,
@@ -108,7 +142,6 @@ internal fun CategoryBundleRow(arrivals: CategoryArrivals, onClick: () -> Unit) 
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.SemiBold,
                     color = theme.colors.accent,
-                    modifier = Modifier.padding(start = theme.spacing.small),
                 )
             }
 

@@ -451,7 +451,11 @@ internal fun RowScope.MailListActions(
 }
 
 @Composable
-private fun ThreadList(
+// Internal rather than private so the screenshot suite can render the list as it
+// actually is: bundles, rule, mail, in one scroller. The bundles were captured on
+// their own once and the picture was fairly accused of looking free-floating --
+// which is the exact question a screenshot of a component alone cannot answer.
+internal fun ThreadList(
     threads: LazyPagingItems<ThreadEntity>,
     /**
      * How many rows the feed table holds, or null before it has been read. See [hasNothingToShow].

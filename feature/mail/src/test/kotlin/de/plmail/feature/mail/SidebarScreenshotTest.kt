@@ -13,6 +13,11 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.paging.LoadState
+import androidx.paging.LoadStates
+import androidx.paging.PagingData
+import androidx.paging.compose.LazyPagingItems
+import androidx.paging.compose.collectAsLazyPagingItems
 import com.github.takahirom.roborazzi.captureRoboImage
 import de.plmail.core.data.CategoryArrivals
 import de.plmail.core.data.Label
@@ -20,9 +25,13 @@ import de.plmail.core.data.LabelBinding
 import de.plmail.core.data.MailCategory
 import de.plmail.core.data.MailView
 import de.plmail.core.data.SidebarSections
+import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PlMailDensity
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.designsystem.PlMailThemeChoice
+import java.util.TimeZone
+import kotlinx.coroutines.flow.flowOf
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -54,6 +63,14 @@ import org.robolectric.annotation.GraphicsMode
 class SidebarScreenshotTest {
 
     @get:Rule val compose = createComposeRule()
+
+    @Before
+    fun pinTheZone() {
+        // The row's date column renders in the default zone, so without this the
+        // same instant is 09:05 in London and 11:05 in Berlin and the baseline
+        // only matches wherever it was recorded.
+        TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+    }
 
     /**
      * The drawer as somebody with a classifying server and a few labels sees it.
@@ -103,11 +120,64 @@ class SidebarScreenshotTest {
     }
 
     /**
-     * The bundles above Primary: "Promotions — 3 new", with who wrote.
+     * The bundles **where they actually are**: the first rows of Primary, in its own scroller.
      *
-     * Shaped like a row of mail rather than a banner, because it is a place to go rather than a
-     * notice to dismiss — see [CategoryBundleRow].
+     * Captured through the real [ThreadList] rather than by drawing the rows into a column, and
+     * that is the whole point of this case. A [CategoryBundleRow] rendered on its own looks
+     * free-floating and answers none of the questions worth asking about it — whether it reads as a
+     * row of mail or as a banner bolted over the list, whether the rule under it separates two
+     * things or cuts one in half, and whether the mail underneath still looks like the thing the
+     * screen is for.
      */
+    @Test
+    fun primaryWithBundles() {
+        capture("primary-with-bundles", width = 411.dp, height = 760.dp) {
+            ThreadList(
+                threads = pagedThreads(),
+                rowsInFeed = mail.size,
+                labels = sections.other,
+                viewing = null,
+                isSyncing = false,
+                selection = emptySet(),
+                arrivals = arrivals,
+                isMerged = false,
+                onOpenCategory = {},
+                onShown = {},
+                onThreadSelected = {},
+                onToggleSelected = {},
+                onAction = { _, _ -> },
+            )
+        }
+    }
+
+    /**
+     * The same list with no mail under the bundles, which is not a rare state.
+     *
+     * A well-triaged inbox is empty most of the time, and that is exactly when somebody most needs
+     * telling where their mail went. The empty state must not draw over this — see [ThreadList].
+     */
+    @Test
+    fun emptyPrimaryWithBundles() {
+        capture("primary-empty-with-bundles", width = 411.dp, height = 400.dp) {
+            ThreadList(
+                threads = pagedThreads(emptyList()),
+                rowsInFeed = 0,
+                labels = emptyList(),
+                viewing = null,
+                isSyncing = false,
+                selection = emptySet(),
+                arrivals = arrivals,
+                isMerged = false,
+                onOpenCategory = {},
+                onShown = {},
+                onThreadSelected = {},
+                onToggleSelected = {},
+                onAction = { _, _ -> },
+            )
+        }
+    }
+
+    /** The bundle row on its own, for the detail the list-level capture is too busy to show. */
     @Test
     fun categoryBundles() {
         // At the width of a phone's list pane rather than the drawer's: these
@@ -185,7 +255,92 @@ class SidebarScreenshotTest {
         )
     }
 
+    /**
+     * A page of mail that is already loaded, with no spinner behind it.
+     *
+     * `PagingData.from` with explicit `NotLoading` states: the default leaves the list believing a
+     * refresh is in flight, and the screenshot is then of a progress indicator.
+     */
+    @Composable
+    private fun pagedThreads(rows: List<ThreadEntity> = mail): LazyPagingItems<ThreadEntity> =
+        flowOf(
+                PagingData.from(
+                    rows,
+                    sourceLoadStates =
+                        LoadStates(
+                            refresh = LoadState.NotLoading(endOfPaginationReached = true),
+                            prepend = LoadState.NotLoading(endOfPaginationReached = true),
+                            append = LoadState.NotLoading(endOfPaginationReached = true),
+                        ),
+                )
+            )
+            .collectAsLazyPagingItems()
+
     // -- fixtures ------------------------------------------------------------
+
+    private val mail =
+        listOf(
+            thread(
+                "1",
+                sender = "Katrin Vogel",
+                subject = "Re: die Nebenkostenabrechnung",
+                snippet = "Ich habe die Belege angehängt, der Rest kommt Montag.",
+                isUnread = true,
+                minutesAgo = 40,
+            ),
+            thread(
+                "2",
+                sender = "Finanzamt Mitte",
+                subject = "Ihr Steuerbescheid 2025",
+                snippet = "Sehr geehrte Damen und Herren, anbei erhalten Sie …",
+                isUnread = true,
+                minutesAgo = 190,
+                hasAttachment = true,
+            ),
+            thread(
+                "3",
+                sender = "Ada Lovelace, Charles Babbage",
+                subject = "the analytical engine, again",
+                snippet = "It can do anything we know how to order it to perform.",
+                messageCount = 4,
+                minutesAgo = 400,
+            ),
+            thread(
+                "4",
+                sender = "Hausverwaltung",
+                subject = "Wartung der Heizung am Dienstag",
+                snippet = "Zwischen 8 und 12 Uhr, bitte jemanden zu Hause lassen.",
+                isFlagged = true,
+                minutesAgo = 1_500,
+            ),
+        )
+
+    private fun thread(
+        id: String,
+        sender: String,
+        subject: String,
+        snippet: String,
+        isUnread: Boolean = false,
+        isFlagged: Boolean = false,
+        hasAttachment: Boolean = false,
+        messageCount: Int = 1,
+        minutesAgo: Long = 60,
+    ) =
+        ThreadEntity(
+            uid = "https://nas.local/1#$id",
+            accountKey = "https://nas.local/1",
+            threadId = id,
+            // Fixed rather than "now", or the date column re-renders every day
+            // and the checked-in baseline only matches the day it was recorded.
+            latestReceivedAt = CAPTURED_AT - minutesAgo * 60_000,
+            subject = subject,
+            participantsSummary = sender,
+            snippet = snippet,
+            messageCount = messageCount,
+            isUnread = isUnread,
+            isFlagged = isFlagged,
+            hasAttachment = hasAttachment,
+        )
 
     private val sections =
         SidebarSections(
@@ -244,4 +399,9 @@ class SidebarScreenshotTest {
             mayDelete = role == null,
             bindings = listOf(LabelBinding("https://nas.local/1", key)),
         )
+
+    private companion object {
+        /** 2026-08-18T09:00Z, so every row's relative date is stable. */
+        const val CAPTURED_AT = 1_787_043_600_000L
+    }
 }
