@@ -100,6 +100,36 @@ jobs:
         needs: build
         timeout-minutes: 30
 
+        # An ATD image at API 34, and both halves of that are deliberate.
+        #
+        # This job was first written as api-level 36 with `google_apis`, and it
+        # never once went green: the emulator started, printed its boot
+        # properties, and answered `adb: device offline` until the action gave
+        # up ten minutes later. A gate that has never passed is not protecting
+        # anything -- worse, it made `main` red, which is how a *real* failure
+        # goes unnoticed.
+        #
+        # `aosp_atd` is Google's own image for this: headless by construction,
+        # no launcher, no Play Services, a fraction of the size, and built to
+        # boot on a CI runner rather than to be used. `google_apis` was never
+        # needed anyway -- the flavour under test is the one with no Play
+        # Services in it.
+        #
+        # API 34 rather than the 36 the app targets, and that is a real
+        # trade-off rather than a shrug. What this job catches is a *minified*
+        # build failing to reach its first frame: R8 merging two classes the
+        # Compose runtime tells apart, a missing keep rule, a stripped
+        # reflective entry point. None of that is API-conditional -- it is
+        # decided at assembly time and would fail identically on any level
+        # above `minSdk`, which is 31. What an older image cannot catch is a
+        # platform behaviour change in 35 or 36, and nothing here was ever
+        # looking for one. Instrumented coverage of the newest platform is a
+        # different job from this one, and pretending this is it is what left
+        # the repository with neither.
+        env:
+            SMOKE_API: 34
+            SMOKE_TARGET: aosp_atd
+
         steps:
             - name: Checkout
               uses: actions/checkout@v5
@@ -144,12 +174,37 @@ jobs:
                   sudo udevadm control --reload-rules
                   sudo udevadm trigger --name-match=kvm
 
+            # A cached AVD, so the boot this job depends on is a restore
+            # rather than a first creation every time.
+            - name: Cache the AVD
+              uses: actions/cache@v4
+              id: avd-cache
+              with:
+                  path: |
+                      ~/.android/avd/*
+                      ~/.android/adb*
+                  key: avd-${{ env.SMOKE_API }}-${{ env.SMOKE_TARGET }}
+
+            - name: Create the AVD and snapshot it
+              if: steps.avd-cache.outputs.cache-hit != 'true'
+              uses: reactivecircus/android-emulator-runner@v2
+              with:
+                  api-level: ${{ env.SMOKE_API }}
+                  target: ${{ env.SMOKE_TARGET }}
+                  arch: x86_64
+                  force-avd-creation: false
+                  emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+                  disable-animations: false
+                  script: echo "created"
+
             - name: Install and start it
               uses: reactivecircus/android-emulator-runner@v2
               with:
-                  api-level: 36
-                  target: google_apis
+                  api-level: ${{ env.SMOKE_API }}
+                  target: ${{ env.SMOKE_TARGET }}
                   arch: x86_64
+                  force-avd-creation: false
+                  emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
                   disable-animations: true
                   script: |
                       set -euo pipefail
