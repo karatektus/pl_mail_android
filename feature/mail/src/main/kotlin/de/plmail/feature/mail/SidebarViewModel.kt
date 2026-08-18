@@ -8,6 +8,8 @@ import de.plmail.core.data.Label
 import de.plmail.core.data.LabelRepository
 import de.plmail.core.data.MailCategory
 import de.plmail.core.data.MailRepository
+import de.plmail.core.data.SidebarSections
+import de.plmail.core.data.SidebarSettings
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,8 +23,12 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class SidebarViewModel
 @Inject
-constructor(labels: LabelRepository, accounts: MailRepository, digest: CategoryDigest) :
-    ViewModel() {
+constructor(
+    labels: LabelRepository,
+    accounts: MailRepository,
+    digest: CategoryDigest,
+    private val sidebar: SidebarSettings,
+) : ViewModel() {
 
     /**
      * Recomputed when either the mailboxes or the accounts change.
@@ -38,6 +44,28 @@ constructor(labels: LabelRepository, accounts: MailRepository, digest: CategoryD
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
                 initialValue = emptyList(),
             )
+
+    /**
+     * The same labels, split into the groups the drawer draws.
+     *
+     * Derived here rather than in the composable because the split depends on a preference, and a
+     * `LazyColumn` that partitioned its own items would re-partition on every recomposition of a
+     * list whose whole job is to be cheap to scroll.
+     */
+    val sections: StateFlow<SidebarSections> =
+        sidebar
+            .sections(this.labels)
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue =
+                    SidebarSections(inbox = null, important = emptyList(), other = emptyList()),
+            )
+
+    /** Moves a label between the two groups. */
+    fun setImportant(label: Label, important: Boolean) {
+        viewModelScope.launch { sidebar.setImportant(label, important) }
+    }
 
     /**
      * Whether this server classifies mail, so the drawer knows whether to offer the category rows.

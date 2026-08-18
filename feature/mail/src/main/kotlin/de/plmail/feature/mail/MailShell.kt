@@ -12,8 +12,10 @@ import androidx.compose.material3.PermanentNavigationDrawer
 import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -58,6 +60,7 @@ fun MailShell(
     viewModel: SidebarViewModel = hiltViewModel(),
 ) {
     val labels by viewModel.labels.collectAsStateWithLifecycle()
+    val sections by viewModel.sections.collectAsStateWithLifecycle()
     val hasCategories by viewModel.hasCategories.collectAsStateWithLifecycle()
     val populatedCategories by viewModel.populatedCategories.collectAsStateWithLifecycle()
     val newCategories by viewModel.newCategories.collectAsStateWithLifecycle()
@@ -69,6 +72,12 @@ fun MailShell(
     // rather than at a stale copy of it.
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
     var editing by rememberSaveable(stateSaver = LabelEditorSaver) { mutableStateOf(null) }
+
+    // Not saved across a process death, and deliberately: rearranging the drawer
+    // is something somebody does once and finishes, so coming back to a phone
+    // that has been in a pocket and finding every row wearing a star -- and no
+    // row navigating -- would be the app remembering the wrong thing.
+    var rearranging by remember { mutableStateOf(false) }
 
     val selected = MailView.restore(selectedKey, labels)
 
@@ -83,7 +92,7 @@ fun MailShell(
     val sidebar =
         @Composable {
             LabelSidebar(
-                labels = labels,
+                sections = sections,
                 showCategories = hasCategories,
                 populatedCategories = populatedCategories,
                 newCategories = newCategories,
@@ -92,6 +101,9 @@ fun MailShell(
                     selectedKey = view.toKey()
                     scope.launch { drawer.close() }
                 },
+                isEditing = rearranging,
+                onEditingChange = { rearranging = it },
+                onImportantChange = viewModel::setImportant,
                 onCreate = {
                     editing = LabelEditorRequest.New
                     scope.launch { drawer.close() }
@@ -171,6 +183,14 @@ fun MailShell(
         // on an open drawer leaves the screen entirely and the drawer is still
         // open when the user comes back.
         BackHandler(enabled = drawer.isOpen) { scope.launch { drawer.close() } }
+
+        // Shutting the drawer ends the rearranging, so it cannot be reopened
+        // later in a mode nothing on screen explains. Only here: the permanent
+        // drawer on a tablet is never closed, so the same effect there would
+        // cancel the mode on the frame it was entered.
+        LaunchedEffect(drawer.currentValue) {
+            if (drawer.currentValue == DrawerValue.Closed) rearranging = false
+        }
 
         ModalNavigationDrawer(
             drawerState = drawer,

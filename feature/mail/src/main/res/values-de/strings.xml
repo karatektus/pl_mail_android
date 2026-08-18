@@ -55,6 +55,14 @@
     <string name="open_labels">Labels</string>
     <string name="labels_loading">Labels werden geladen…</string>
     <string name="label_new">Neues Label</string>
+    <string name="sidebar_important">Wichtig</string>
+    <string name="sidebar_labels">Labels</string>
+    <string name="sidebar_customize">Bearbeiten</string>
+    <string name="sidebar_customize_done">Fertig</string>
+    <string name="sidebar_customize_a11y">Wichtige Labels auswählen</string>
+    <string name="sidebar_pin_a11y">Zu „Wichtig“ verschieben</string>
+    <string name="sidebar_unpin_a11y">Zu „Labels“ verschieben</string>
+    <string name="sidebar_important_empty">Tippe auf einen Stern, um ein Label hier oben zu behalten.</string>
     <string name="calendar">Kalender</string>
     <string name="push">Push</string>
     <string name="notifications">Benachrichtigungen</string>

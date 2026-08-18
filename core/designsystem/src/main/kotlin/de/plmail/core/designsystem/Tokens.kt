@@ -209,10 +209,36 @@ private val EmphasisEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
  * vanish the first time `Appearance` synced. Comfortable is the loosest here for the same reason it
  * is there.
  */
-enum class PlMailDensity(val wire: String, internal val scale: Float, internal val rowHeight: Dp) {
-    COMFORTABLE("comfortable", 1f, 76.dp),
-    COSY("cosy", 0.85f, 68.dp),
-    COMPACT("compact", 0.72f, 60.dp);
+enum class PlMailDensity(
+    val wire: String,
+    internal val scale: Float,
+    internal val rowHeight: Dp,
+    /**
+     * The floor under one navigation row, which is a different number from [rowHeight].
+     *
+     * A mail row holds two lines and a timestamp; a sidebar row holds a glyph and a word, and
+     * pretending they pack the same way is what left the drawer showing about half of what Gmail's
+     * does at the same setting. Material's own `NavigationDrawerItem` is a fixed 56dp whatever any
+     * of this says, which is why the sidebar draws its own row.
+     *
+     * A **minimum** rather than a height: the app has its own font scale on top of the system's,
+     * and a fixed box clips the label of anyone who has turned either up. 48dp is Material's touch
+     * target and the comfortable value for that reason; below it the rows are still reachable
+     * because the whole row is the target and the list is scrolled rather than aimed at.
+     */
+    val sidebarRowHeight: Dp,
+    /**
+     * The glyph beside a navigation row's name.
+     *
+     * Shrinks with the row, because a 24dp icon in a 36dp row is most of the row: the thing that
+     * makes a compact list readable is the text staying legible while everything around it gives
+     * way, and an icon that did not give way would be what set the height instead.
+     */
+    val sidebarIconSize: Dp,
+) {
+    COMFORTABLE("comfortable", 1f, 76.dp, 48.dp, 24.dp),
+    COSY("cosy", 0.85f, 68.dp, 42.dp, 22.dp),
+    COMPACT("compact", 0.72f, 60.dp, 36.dp, 20.dp);
 
     companion object {
         fun fromWire(value: String?): PlMailDensity =

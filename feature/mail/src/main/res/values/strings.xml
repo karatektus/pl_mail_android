@@ -70,6 +70,21 @@
     <string name="labels_loading">Loading your labels…</string>
     <string name="label_new">New label</string>
     <!--
+      The drawer's three groups. "Important" is a shortlist the user owns rather
+      than a judgement the app makes: it starts as Starred, Trash, Spam, Sent and
+      Archive and everything in it can be moved out, which is why the word is not
+      "System" — nothing about the group is fixed.
+    -->
+    <string name="sidebar_important">Important</string>
+    <string name="sidebar_labels">Labels</string>
+    <string name="sidebar_customize">Edit</string>
+    <string name="sidebar_customize_done">Done</string>
+    <string name="sidebar_customize_a11y">Choose which labels are important</string>
+    <string name="sidebar_pin_a11y">Move to Important</string>
+    <string name="sidebar_unpin_a11y">Move to Labels</string>
+    <!-- Shown under the heading while editing, when nothing has been pinned. -->
+    <string name="sidebar_important_empty">Tap a star to keep a label up here.</string>
+    <!--
       The calendar sits below the labels, beside the other places that are not
       one. Only drawn where the server publishes a calendar at all.
     -->
