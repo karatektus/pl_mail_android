@@ -160,6 +160,13 @@ data class Appearance(
 /**
  * `Appearance/set` — a patch of the singleton, and only ever a patch.
  *
+ * **Nothing in this app calls it.** The method is modelled because the server has it and this
+ * module's job is to describe the protocol, not to decide policy — but the one client that used to
+ * send it does not any more. Theming a phone is not a statement about the browser on somebody's
+ * desk, and while this was wired up, choosing a darker theme on a train restyled a desktop session.
+ * See `AppearanceRepository`, which reads the appearance and layers local choices on top without
+ * ever writing one. Before reaching for this, be sure you have a reason the phone gets to decide.
+ *
  * `create` and `destroy` are answered with the spec's `singleton` `SetError`, so neither is offered
  * here. What is offered is one `update` of named properties, which matters for a reason that is not
  * obvious: **a property this client never sends is a property it can never overwrite**. The server

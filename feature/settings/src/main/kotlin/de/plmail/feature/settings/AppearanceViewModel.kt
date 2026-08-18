@@ -90,9 +90,10 @@ class AppearanceViewModel @Inject constructor(private val appearances: Appearanc
      *
      * A slider emits continuously, and DataStore serialises the whole preferences file on each
      * write — one drag across the track is several hundred rewrites of the file that also holds the
-     * credential and the push subscription id, and now several hundred `Appearance/set` calls at a
-     * server that advertises four concurrent requests. This app has had one write storm already, in
-     * push registration; the shape of the mistake is worth recognising the second time.
+     * credential and the push subscription id. This app has had one write storm already, in push
+     * registration; the shape of the mistake is worth recognising the second time. (It used to be
+     * several hundred `Appearance/set` calls as well. The app no longer writes an appearance to the
+     * server at all, which retires that half of the hazard rather than managing it.)
      */
     fun setPaneAlpha(alpha: Float) {
         viewModelScope.launch { appearances.setPaneAlpha(alpha) }
@@ -144,12 +145,13 @@ class AppearanceViewModel @Inject constructor(private val appearances: Appearanc
     }
 
     /**
-     * Whether this phone follows the account's appearance at all.
+     * Whether this phone keeps inheriting the account's appearance.
      *
      * The one control on this screen whose effect is not visible in the preview it sits inside:
      * turning it off changes nothing on screen, because the appearance the phone is already wearing
      * is exactly the one it keeps. What changes is everything after — see
-     * [AppearanceRepository.setSyncWithServer].
+     * [AppearanceRepository.setSyncWithServer]. Note it governs one direction only: nothing on this
+     * screen is ever sent to the server in either position.
      */
     fun setSyncWithServer(enabled: Boolean) {
         viewModelScope.launch { appearances.setSyncWithServer(enabled) }

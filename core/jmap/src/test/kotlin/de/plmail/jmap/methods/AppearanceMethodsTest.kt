@@ -18,6 +18,11 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * `Appearance/get` and `Appearance/set`, round trip.
  *
+ * The set half is covered even though **this app never calls it**: the method is part of the
+ * protocol this module describes, and a modelled method that nothing exercises is a modelled method
+ * that quietly rots. What changed is the policy above it — see `AppearanceRepository` — not the
+ * wire format, so these stay.
+ *
  * Three behaviours are pinned here because getting any of them wrong looks like success. A patch
  * carrying a property nobody touched flattens whatever the web set. A clamp taken from the request
  * rather than the response leaves the app showing a number the server did not store. And a stale

@@ -112,16 +112,21 @@
       The sync switch, first on the screen because it decides what every control
       below it means.
 
-      Two sentences, and both of them state something the user cannot find out
-      by trying it. That turning it off leaves the web alone is a promise the
-      app keeps by never calling Appearance/set while the switch is off, not a
-      description of what tends to happen. That turning it back on discards the
-      phone's own choices is the half nobody expects — a merge is the intuitive
-      guess and there is no correct merge, because both sides' divergence was
-      deliberate — so it is said in advance rather than discovered afterwards.
+      What it does NOT say any more: that turning it off is what keeps the
+      browser safe. Nothing this screen does reaches the browser in either
+      position of the switch — the app has no way to write an appearance at all
+      — so a sentence about what is "sent" would be describing a risk that no
+      longer exists and implying the switch manages it.
+
+      What is left is one direction and one surprise. The direction: anything
+      not chosen here follows the browser. The surprise: turning it back on
+      discards the phone's own choices, which nobody expects — a merge is the
+      intuitive guess and there is no correct merge, because both sides'
+      divergence was deliberate — so it is said in advance rather than
+      discovered afterwards.
     -->
     <string name="appearance_sync">Match the web</string>
-    <string name="appearance_sync_body">Keeps this phone looking like plMail in your browser. Turn it off to give the phone its own appearance — your browser keeps exactly what it has now, and nothing you change here is sent. Turning it back on takes the browser\'s settings again and discards the phone\'s.</string>
+    <string name="appearance_sync_body">Anything you have not set here follows plMail in your browser. Turn it off to freeze this phone\'s look where it is. Nothing you change on this screen ever reaches your browser either way. Turning it back on takes the browser\'s settings again and discards the phone\'s.</string>
 
     <string name="appearance_theme">Theme</string>
     <string name="theme_system">Follow the system</string>

@@ -25,29 +25,22 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 /**
- * The flush loop: what this device owes the server, and what happens when the answer is not "yes".
+ * Appearance, which is the one repository where the server is the source and the device layers on
+ * top of it — and the one that must never write.
  *
- * Appearance is the one repository where the *server* is the source and the device holds overrides,
- * and everything hard about it is in three answers that are not a plain success:
+ * Two halves. The first is [resolve], one line of policy the whole feature rests on: a local choice
+ * outranks the account's value *per property*, so one tap cannot flatten the three settings beside
+ * it back to whatever this device last read, and a `DensityOverride` holding a null is a deliberate
+ * "follow the overall density" rather than an absence.
  *
- * - **`stateMismatch`.** Somebody moved a slider in a browser tab between the read and the write.
- *   The retry has to be a re-read rather than a blind resend, and the user's own pending change has
- *   to survive it — their tap is the newer intent, and everything they did not touch takes the
- *   browser's new value. Get this wrong in the obvious direction and a theme changed on a laptop is
- *   silently reverted by a phone that was mid-write.
- * - **A refusal.** A value this build believes in and this server does not. The override has to be
- *   *dropped*, because keeping it re-sends the same refused patch on every sync for ever.
- * - **No server at all.** The override stays pending on disk, exactly as an offline change does,
- *   and nothing throws — a theme is not worth failing a sync over.
+ * The second is the direction of travel, and it is the half that had a bug in it. The app used to
+ * push `Appearance/set`: a theme chosen on a phone rewrote the browser's, complete with a
+ * `stateMismatch` retry to make sure it landed. That path is gone rather than gated — see
+ * `AppearanceRepository` — so what is asserted here is an absence, against the recorded requests,
+ * because the store cannot tell the difference between a value that was sent and one that was not.
  *
- * None of that was covered. It runs under Robolectric because `AppearanceStore` is DataStore and
- * `AccountClients` is the real one over a scripted transport; nothing here needs a device.
- *
- * There is now a fourth answer that is not a plain success, and it is the one the user asked for:
- * **the sync is off.** Both directions have to stop, and the direction that matters is the write —
- * a phone given its own appearance must leave the browser's alone, which means literally no
- * `Appearance/set`, not one carrying the values it happens to hold. That is asserted against the
- * recorded requests rather than against the store, because the store cannot tell the difference.
+ * Robolectric because `AppearanceStore` is DataStore and `AccountClients` is the real one over a
+ * scripted transport; nothing here needs a device.
  */
 @RunWith(RobolectricTestRunner::class)
 // sdk = 36 for the reason the other Robolectric suites here give: a library
@@ -119,47 +112,97 @@ class AppearanceRepositoryTest {
         assertEquals("cosy", cleared.sidebarDensity)
     }
 
-    // ------------------------------------------------------------ the flush
+    // ------------------------------------------------------- the one direction
+
+    /**
+     * The single most important assertion in this file.
+     *
+     * It is also the only promise the appearance screen makes that cannot be checked by looking at
+     * the phone. The app used to push `Appearance/set`, so choosing a darker theme on a train
+     * restyled the browser open on somebody's desk — and no amount of care in the patch builder
+     * makes that the right behaviour, because theming a phone is not a statement about a desktop.
+     *
+     * Asserted with the sync **on**, which is the mode where the write existed. The off case is
+     * below and is now the weaker of the two: with no write path at all, an off switch can only
+     * stop a read.
+     */
+    @Test
+    fun `choosing an appearance sends nothing, with the sync on`() = runTest {
+        val store = AppearanceStore(InMemoryPreferences())
+
+        // Deliberately empty. Anything the repository sends past discovery fails
+        // the script rather than being quietly answered, so this asserts the
+        // absence twice over.
+        val transport = scripted {}
+        val repository = repository(store, transport)
+
+        store.setRemote(RemoteAppearance(theme = "light", state = "s1"))
+
+        repository.setTheme("nord")
+        repository.setLayout("boxed")
+        repository.setPaneAlpha(0.2f)
+        repository.setFontScale(1.25f)
+        repository.setSidebarDensity(DensityOverride("compact"))
+
+        assertEquals(emptyList(), transport.methodNames())
+        assertTrue(repository.settings.first().syncWithServer, "with the sync still on")
+
+        // On screen immediately, because the store is the preview and a choice
+        // with nowhere to go is still the answer.
+        val settings = repository.settings.first()
+        assertEquals("nord", settings.theme)
+        assertEquals("compact", settings.sidebarDensity)
+    }
 
     @Test
-    fun `nothing reaches Appearance-set while the sync is off`() = runTest {
-        // The promise the switch's own supporting text makes, and the only one
-        // on this screen that cannot be checked by looking at the phone: the
-        // browser is left exactly as its owner had it. A single `Appearance/set`
-        // leaving the device here would silently push this phone's private
-        // appearance into every other device on the account.
+    fun `nor with the sync off, which also stops the reading`() = runTest {
         val store = AppearanceStore(InMemoryPreferences())
-        val transport = scripted {
-            // Deliberately empty. Anything the repository sends past discovery
-            // fails the script rather than being quietly answered, so this
-            // asserts the absence twice over.
-        }
-
+        val transport = scripted {}
         val repository = repository(store, transport)
 
         store.setRemote(RemoteAppearance(theme = "light", state = "s1"))
         repository.setSyncWithServer(false)
 
         repository.setTheme("nord")
-        repository.setFontScale(1.25f)
         repository.setListAvatars(false)
+        // The half the switch is actually for now: a phone running its own
+        // appearance must not have the browser's values land on top of it every
+        // time a sync fires.
         repository.refresh()
 
         assertEquals(emptyList(), transport.methodNames())
-
-        // On screen immediately regardless, because the store is the preview and
-        // an override with nowhere to go is still an override.
         assertEquals("nord", repository.settings.first().theme)
-        assertEquals(1.25f, repository.settings.first().fontScale)
+    }
+
+    /**
+     * A local choice outlives every read, and that is what the switch is for.
+     *
+     * While the app pushed its changes an override was *pending* and was dropped the moment the
+     * server confirmed it. Nothing is sent now, so an override is not pending — it is the answer,
+     * and a refresh may not quietly take it back. What the account's value still gets to decide is
+     * everything the user has not touched here, which is the whole of "match the web".
+     */
+    @Test
+    fun `a refresh takes the account's values only where this phone has none`() = runTest {
+        val store = AppearanceStore(InMemoryPreferences())
+        val transport = scripted { getting(theme = "solar", layout = "boxed") }
+        val repository = repository(store, transport)
+
+        repository.setTheme("nord")
+        repository.refresh()
+
+        val settings = repository.settings.first()
+
+        assertEquals("nord", settings.theme, "the phone's own choice survives the read")
+        assertEquals("boxed", settings.layout, "and the untouched half follows the account")
+        assertEquals(listOf("get"), transport.methodNames())
     }
 
     @Test
     fun `turning the sync back on discards this device's own appearance`() = runTest {
-        // Server-wins, and by construction rather than by a merge rule: the
-        // overrides are dropped *before* the read, so there is no window in which
-        // a month of local divergence could be flushed into the browser. The
-        // intuitive alternative -- keep the phone's changes and send them -- is
-        // the one thing the switch promises not to do.
+        // The reset button, and the only way back to "whatever the browser
+        // says": every override is dropped *before* the read, so there is no
+        // merge rule to get subtly wrong.
         val store = AppearanceStore(InMemoryPreferences())
         val transport = scripted { getting(theme = "solar", layout = "boxed") }
         val repository = repository(store, transport)
@@ -205,102 +248,12 @@ class AppearanceRepositoryTest {
     }
 
     @Test
-    fun `a stateMismatch is retried once, re-read, and the user's own change survives it`() =
-        runTest {
-            // The case the retry exists for. This device wants Nord; a browser
-            // tab has meanwhile set Solar *and* the boxed layout and moved the
-            // state on. The re-read has to take the browser's layout and the
-            // user's theme -- their tap is the newer intent, and the layout is
-            // not something they touched.
-            val store = AppearanceStore(InMemoryPreferences())
-            val transport = scripted {
-                mismatchThenAccept(
-                    rereadTheme = "solar",
-                    rereadLayout = "boxed",
-                    acceptedState = "s9",
-                )
-            }
-
-            val repository = repository(store, transport)
-
-            store.setRemote(RemoteAppearance(theme = "light", state = "s1"))
-            repository.setTheme("nord")
-
-            val settings = repository.settings.first()
-
-            assertEquals("nord", settings.theme)
-            assertEquals("boxed", settings.layout)
-
-            // Two `AppearanceSet`s and one `AppearanceGet` between them: the
-            // retry is a re-read rather than the same patch sent twice.
-            assertEquals(listOf("set", "get", "set"), transport.methodNames())
-
-            // Confirmed, so the override is gone and the app now reads the
-            // server's copy -- which is what makes a later browser change
-            // visible at all.
-            assertNull(store.appearance.first().theme)
-            assertEquals("nord", store.remote.first().theme)
-        }
-
-    @Test
-    fun `a second stateMismatch gives up and leaves the change pending`() = runTest {
-        // One retry, not a loop. A server whose state is moving faster than this
-        // client can read it is a server the next sync should try, not one to
-        // hold a coroutine against.
-        val store = AppearanceStore(InMemoryPreferences())
-        val transport = scripted { alwaysMismatching() }
-        val repository = repository(store, transport)
-
-        store.setRemote(RemoteAppearance(theme = "light", state = "s1"))
-        repository.setTheme("nord")
-
-        // Still pending on disk, which is the same place an offline change
-        // waits, and still on screen, because the store is the screen's preview.
-        assertEquals("nord", store.appearance.first().theme)
-        assertEquals("nord", repository.settings.first().theme)
-        assertEquals(listOf("set", "get", "set"), transport.methodNames())
-    }
-
-    @Test
-    fun `a refused value drops the override rather than resending it for ever`() = runTest {
-        // A theme this build knows and this server does not. Keeping the
-        // override would re-send the same refused patch on every sync until
-        // somebody cleared the app's data; dropping it lets the next refresh put
-        // the server's own value back on screen, which is the honest answer to
-        // "that theme does not exist here".
-        val store = AppearanceStore(InMemoryPreferences())
-        val transport = scripted { refusing() }
-        val repository = repository(store, transport)
-
-        store.setRemote(RemoteAppearance(theme = "light", state = "s1"))
-        repository.setTheme("paper")
-
-        assertNull(store.appearance.first().theme)
-        assertEquals("light", repository.settings.first().theme)
-    }
-
-    @Test
-    fun `what the server decided differently is what gets stored`() = runTest {
-        // Clamps are applied from the *answer*, never from the request: a slider
-        // pulled into range, or the knob preset a change of layout seeds. A
-        // client that stored what it sent would draw a value the server is not
-        // holding.
-        val store = AppearanceStore(InMemoryPreferences())
-        val transport = scripted { clamping(reportedAlpha = 0.6f) }
-        val repository = repository(store, transport)
-
-        store.setRemote(RemoteAppearance(theme = "light", state = "s1"))
-        repository.setPaneAlpha(0.2f)
-
-        assertEquals("0.6", store.remote.first().paneAlpha)
-        assertEquals("0.6", repository.settings.first().paneAlpha)
-    }
-
-    @Test
-    fun `an unreachable server leaves the choice pending and does not throw`() = runTest {
-        // The offline path, and it is the same path as a NAS that is asleep. The
-        // screen is its own preview, so the store changed before the finger
-        // lifted; all that is left is for nothing to blow up.
+    fun `choosing an appearance touches the network at all, which it must not`() = runTest {
+        // A setter is a DataStore write and nothing else, so a NAS that is
+        // asleep is not even a case. Kept as a test because it was one -- the
+        // old path swallowed a throw here, and a setter that started making a
+        // request again would be caught by the transport blowing up rather than
+        // by anybody noticing a slower tap.
         val store = AppearanceStore(InMemoryPreferences())
         val transport = RecordingTransport { error("the server is asleep") }
         val repository = repository(store, transport)
@@ -315,7 +268,7 @@ class AppearanceRepositoryTest {
     fun `refresh on a server without the capability writes nothing`() = runTest {
         // Absence is the signal, as everywhere else: an instance without the
         // extension is a supported instance. A refresh that stored an empty
-        // remote record would erase the user's own local choices' backing.
+        // remote record would erase what the phone falls back to.
         val store = AppearanceStore(InMemoryPreferences())
         val transport = RecordingTransport.alwaysReturning(SESSION_WITHOUT_APPEARANCE)
         val repository = repository(store, transport)
@@ -382,8 +335,9 @@ class AppearanceRepositoryTest {
     /**
      * A transport that serves discovery and then reads a script for the API calls.
      *
-     * Written as a queue of bodies rather than a router because the *order* is what several of
-     * these tests are about — set, then get, then set is the retry, and set, set is the bug.
+     * Written as a queue of bodies rather than a router because *what was sent at all* is what
+     * these tests are about, and an empty script is the strongest assertion here: any request past
+     * discovery fails rather than being quietly answered.
      */
     private fun scripted(script: MutableList<String>.() -> Unit): RecordingTransport {
         val bodies = mutableListOf<String>().apply(script)
@@ -416,43 +370,6 @@ class AppearanceRepositoryTest {
                 }
             }
 
-    private fun MutableList<String>.mismatchThenAccept(
-        rereadTheme: String,
-        rereadLayout: String,
-        acceptedState: String,
-    ) {
-        add(MISMATCH)
-        add(getResult(theme = rereadTheme, layout = rereadLayout, state = "s7"))
-        add(setResult(state = acceptedState))
-    }
-
-    private fun MutableList<String>.alwaysMismatching() {
-        add(MISMATCH)
-        add(getResult(theme = "light", layout = "flat", state = "s7"))
-        add(MISMATCH)
-    }
-
-    private fun MutableList<String>.refusing() {
-        add(
-            """
-            {"methodResponses":[["Appearance/set",{"accountId":null,"oldState":"s1",
-             "newState":"s1","updated":{},
-             "notUpdated":{"singleton":{"type":"invalidProperties",
-                                        "description":"theme must be one of …"}}},"c0"]]}
-            """
-        )
-    }
-
-    private fun MutableList<String>.clamping(reportedAlpha: Float) {
-        add(
-            """
-            {"methodResponses":[["Appearance/set",{"accountId":null,"oldState":"s1",
-             "newState":"s9","updated":{"singleton":{"paneAlpha":$reportedAlpha}},
-             "notUpdated":{}},"c0"]]}
-            """
-        )
-    }
-
     private fun MutableList<String>.getting(theme: String, layout: String) {
         add(getResult(theme = theme, layout = layout, state = "s7"))
     }
@@ -464,16 +381,7 @@ class AppearanceRepositoryTest {
                   "density":"comfortable","paneAlpha":1.0}],"notFound":[]},"c0"]]}
         """
 
-    private fun setResult(state: String) =
-        """
-        {"methodResponses":[["Appearance/set",{"accountId":null,"oldState":"s1",
-         "newState":"$state","updated":{"singleton":null},"notUpdated":{}},"c0"]]}
-        """
-
     private companion object {
-        /** The method-level error `ifInState` loses to, which is not a per-object refusal. */
-        const val MISMATCH = """{"methodResponses":[["error",{"type":"stateMismatch"},"c0"]]}"""
-
         val SESSION =
             """
             {

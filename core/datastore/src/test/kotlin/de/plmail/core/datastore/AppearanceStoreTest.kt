@@ -83,15 +83,14 @@ class AppearanceStoreTest {
         // "Follow the overall density", which is a value and not a clear. It has
         // to survive the round trip through a file that cannot hold a null, and
         // it has to read back as an override whose payload is null rather than as
-        // no override -- because it is an instruction the server still has to be
-        // told about.
+        // no override -- the two mean different things to the resolver.
         store.setListDensity(DensityOverride.Follow)
 
         val stored = store.appearance.first()
 
         assertEquals(DensityOverride.Follow, stored.listDensity)
         assertNull(stored.listDensity?.wire)
-        assertTrue(stored.hasPendingWrites)
+        assertTrue(stored.hasOwnChoices)
     }
 
     @Test
@@ -112,7 +111,7 @@ class AppearanceStoreTest {
 
         val stored = store.appearance.first()
 
-        assertFalse(stored.hasPendingWrites)
+        assertFalse(stored.hasOwnChoices)
         assertNull(stored.theme)
         assertNull(stored.fontScale)
         assertNull(stored.listDensity)

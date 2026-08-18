@@ -85,7 +85,7 @@
     <string name="appearance_title">Darstellung</string>
 
     <string name="appearance_sync">Wie im Web</string>
-    <string name="appearance_sync_body">Hält dieses Telefon so, wie plMail in Ihrem Browser aussieht. Ausgeschaltet bekommt das Telefon seine eigene Darstellung — Ihr Browser behält genau das, was er jetzt hat, und nichts, was Sie hier ändern, wird gesendet. Beim Wiedereinschalten gelten wieder die Einstellungen des Browsers; die des Telefons werden verworfen.</string>
+    <string name="appearance_sync_body">Was Sie hier nicht selbst einstellen, folgt plMail in Ihrem Browser. Ausgeschaltet bleibt dieses Telefon bei dem, was es gerade zeigt. Was Sie auf diesem Bildschirm ändern, erreicht Ihren Browser so oder so nie. Beim Wiedereinschalten gelten wieder die Einstellungen des Browsers; die des Telefons werden verworfen.</string>
 
     <string name="appearance_theme">Farbschema</string>
     <string name="theme_system">Wie das System</string>

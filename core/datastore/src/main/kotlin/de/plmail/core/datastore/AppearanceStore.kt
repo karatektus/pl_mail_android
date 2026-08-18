@@ -146,30 +146,13 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
     }
 
     /**
-     * Drops the local overrides the server has now accepted.
-     *
-     * Named by wire property so a write of the theme cannot clear a density the same user changed
-     * while it was in flight. Anything not named stays pending and is retried on the next sync,
-     * which is what makes a change made offline survive.
-     */
-    suspend fun clearOverrides(properties: Set<String>) {
-        if (properties.isEmpty()) return
-
-        preferences.edit { stored ->
-            properties.forEach { property ->
-                OVERRIDES[property]?.let { key -> stored.remove(key) }
-            }
-        }
-    }
-
-    /**
      * Drops every override at once, whether or not the server has ever seen it.
      *
-     * What "match the web again" means, and the reason re-enabling the sync is server-wins by
-     * construction rather than by a merge rule somebody has to get right. A device that had been
-     * running its own appearance holds overrides that were deliberately never sent; keeping them
-     * across the re-enable would push a month of divergence into the browser on the next flush,
-     * which is the opposite of what the switch says it does.
+     * What "match the web again" means, and the only way back to it. Every choice made on this
+     * phone is an override that outranks the account's value for as long as it exists, so a device
+     * that has been styled by hand goes on looking that way however often it re-reads. Dropping the
+     * lot is the reset, and it is server-wins by construction rather than by a merge rule somebody
+     * has to get right.
      *
      * The three local-only flags are not overrides and are not touched: they answer questions the
      * server does not ask, so there is nothing for it to win.
@@ -396,8 +379,14 @@ data class StoredAppearance(
     val listDensity: DensityOverride? = null,
     val readingDensity: DensityOverride? = null,
 ) {
-    /** Whether anything here still has to reach the server. */
-    val hasPendingWrites: Boolean
+    /**
+     * Whether this phone has an appearance of its own rather than the account's.
+     *
+     * Not "still has to reach the server", which is what this meant while the app pushed
+     * `Appearance/set`. Nothing is ever sent now, so an override is not pending — it is simply the
+     * answer, until [AppearanceStore.clearAllOverrides] takes it away.
+     */
+    val hasOwnChoices: Boolean
         get() =
             theme != null ||
                 layout != null ||
