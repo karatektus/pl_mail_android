@@ -207,7 +207,16 @@ jobs:
                   emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
                   disable-animations: true
                   script: |
-                      set -euo pipefail
+                      # `set -eu`, not `set -euo pipefail`. The action runs this
+                      # with `sh -c`, which on a runner is dash, and dash has no
+                      # `pipefail` -- it exits 2 on the first line and the job
+                      # fails having tested nothing. That is exactly what
+                      # happened here, underneath a second fault in the emulator
+                      # image, so fixing the image alone still produced a red
+                      # build with a different cause. Nothing below pipes into
+                      # anything whose failure has to be caught, so `-eu` is the
+                      # whole of what this needs.
+                      set -eu
 
                       adb install -r smoke.apk
 
