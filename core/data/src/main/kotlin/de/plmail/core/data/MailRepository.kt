@@ -173,18 +173,18 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
                                 inboxKey,
                             )
 
-                        // Every field on that row is derived from the messages
-                        // — except the snooze time, which is a property of the
-                        // conversation and exists nowhere in `Email/get`. So a
-                        // caller that did not fetch the Thread has not learned
-                        // that it is null; it has learned nothing, and writing
-                        // null anyway is how the only local record of when mail
-                        // is due back gets destroyed by an unrelated page load.
-                        // Callers that *do* fetch it — the pagers and the delta
-                        // sync — carry the server's answer, including a null
+                        // Almost every field on that row is derived from the
+                        // messages — but the snooze time, the category and the
+                        // New marker are properties of the *conversation* and
+                        // exist nowhere in `Email/get`. So a caller that did not
+                        // fetch the Thread has not learned they are absent; it
+                        // has learned nothing about them, and writing the
+                        // defaults anyway destroys the only local copy. Callers
+                        // that *do* fetch it — the pagers and the delta sync —
+                        // carry the server's answer, including a null snooze
                         // that genuinely means the mail is awake again.
                         if (threadId in fetched) row
-                        else row.copy(snoozedUntil = database.threads().byUid(uid)?.snoozedUntil)
+                        else row.carryConversationFacts(database.threads().byUid(uid))
                     }
                 )
         }

@@ -127,12 +127,50 @@ class BodyPrefetcherTest {
         assertNotNull(database.emails().body(StoreKey.objectKey(testAccountKey, "kept")))
     }
 
+    /**
+     * The prefetch downloads bodies. It must not quietly re-decide what the conversation *is*.
+     *
+     * Everything it fetches goes through `storeEmails`, which re-summarises the thread row out of
+     * the messages — and the category and the New marker are on neither. This ran over the newest
+     * conversations moments after a list was drawn, so it reset both on precisely the mail the
+     * sidebar's dots and the new-mail bundles exist to point at. Nothing downstream was wrong and
+     * neither surface ever appeared.
+     *
+     * Asserted through the real prefetcher rather than against the mapper, because the mapper was
+     * never the thing that was wrong: it is asked for a summary and it gives one. What was missing
+     * was the caller putting back what a summary cannot know.
+     */
+    @Test
+    fun `prefetching a body leaves the conversation's category and New marker alone`() = runTest {
+        database.seedAccount()
+        database.seedInbox()
+        database.seedMessage("m1", mailboxIds = INBOX_MAILBOX_ID)
+        database.seedThread(
+            threadId = "t-m1",
+            category = "promotions",
+            isNew = true,
+            isInInbox = true,
+        )
+
+        bodyPrefetcher(database, serving(bodyOf("m1", "Seeded body.", INBOX_MAILBOX_ID)))
+            .prefetch(testAccountKey)
+
+        val thread = database.threads().byUid(StoreKey.objectKey(testAccountKey, "t-m1"))
+        assertNotNull(thread)
+        assertEquals("promotions", thread.category, "the category survives a body download")
+        assertTrue(thread.isNew, "the New marker survives a body download")
+        // The half that genuinely is derived from the messages, so the carry
+        // forward is not smuggling in a stale row wholesale.
+        assertTrue(thread.isInInbox, "inbox membership is still recomputed from the messages")
+    }
+
     // -- fixtures ------------------------------------------------------------
 
     private suspend fun PlMailDatabase.seedMessage(
         emailId: String,
         isFlagged: Boolean = false,
         receivedAt: Long = 5_000,
+        mailboxIds: String = "",
     ) {
         emails()
             .upsert(
@@ -144,24 +182,33 @@ class BodyPrefetcherTest {
                         threadId = "t-$emailId",
                         receivedAt = receivedAt,
                         isFlagged = isFlagged,
+                        mailboxIds = mailboxIds,
                     )
                 )
             )
     }
 
-    /** An `Email/get` answer, with or without anything in it to store. */
-    private fun bodyOf(emailId: String, text: String?): String {
+    /**
+     * An `Email/get` answer, with or without anything in it to store.
+     *
+     * [mailboxIds] is part of `READER_PROPERTIES`, so the real answer always carries it and the
+     * thread's inbox membership is recomputed from what comes back. A fixture that left it out
+     * would have the row lose its membership for a reason no server would ever produce.
+     */
+    private fun bodyOf(emailId: String, text: String?, mailboxIds: String? = null): String {
         val parts =
             if (text == null) """"textBody":[],"htmlBody":[],"bodyValues":{}"""
             else
                 """"textBody":[{"partId":"1","type":"text/plain"}],"htmlBody":[],
                    "bodyValues":{"1":{"value":${'"'}$text${'"'}}}"""
 
+        val boxes = mailboxIds?.let { """"mailboxIds":{"$it":true},""" }.orEmpty()
+
         return """
             {"sessionState":"s","methodResponses":[
               ["Email/get",{"accountId":"$TEST_ACCOUNT_ID","state":"s1","list":[
                 {"id":"$emailId","threadId":"t-$emailId","receivedAt":"2026-01-01T00:00:00Z",
-                 $parts}],"notFound":[]},"c0"]]}
+                 $boxes$parts}],"notFound":[]},"c0"]]}
             """
     }
 

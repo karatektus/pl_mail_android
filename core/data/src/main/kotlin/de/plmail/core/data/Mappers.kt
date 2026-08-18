@@ -360,3 +360,27 @@ fun String?.toEmailAddresses(): List<EmailAddress> {
 
 /** After every system role, so custom labels sort below them but keep their own order by name. */
 private const val UNROLED_SORT_ORDER = 1_000
+
+/**
+ * Puts back the facts that live on the conversation rather than on its messages.
+ *
+ * [MailThread.toEntity] summarises a thread out of the messages it is given, which is what lets a
+ * page of mail with no `Thread/get` beside it still leave a usable row behind. Three of that row's
+ * columns cannot be summarised from anything, because `Email/get` does not carry them:
+ * [ThreadEntity.snoozedUntil], [ThreadEntity.category] and [ThreadEntity.isNew]. A caller that did
+ * not fetch the Thread has not learned that they are absent — it has learned nothing about them —
+ * and writing the defaults anyway destroys the only local copy.
+ *
+ * That was not a hypothetical. Snooze was carried forward from the day the column existed; category
+ * and isNew were added later and were not, so [BodyPrefetcher] — which runs over the *newest*
+ * conversations moments after a list is drawn — reset both on exactly the mail the tabs and the
+ * new-mail bundles are about. The dots never appeared, the bundles never appeared, and a category
+ * emptied out of the sidebar shortly after arriving in it. Everything downstream was correct and
+ * reading a table that had been quietly rewritten.
+ *
+ * Null [stored] means the conversation is new to this device, and then the summary is all there is.
+ */
+internal fun ThreadEntity.carryConversationFacts(stored: ThreadEntity?): ThreadEntity =
+    stored?.let {
+        copy(snoozedUntil = it.snoozedUntil, category = it.category, isNew = it.isNew)
+    } ?: this
