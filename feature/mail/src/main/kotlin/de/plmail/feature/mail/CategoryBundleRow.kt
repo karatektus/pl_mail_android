@@ -10,12 +10,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -32,10 +36,19 @@ import de.plmail.core.designsystem.PlMailTheme
  * This is what makes Primary a defensible place to open the app: the four other tabs are out of the
  * way, and the one thing they could not afford to lose — that something arrived — is still here.
  *
- * **Shaped like a row of mail, not like a banner.** It sits in the same list, at the same height,
- * with its glyph in the avatar's column, because it is a place to go rather than a notice to
- * dismiss. A card or a coloured strip would read as an interruption, and the whole point is that
- * this is the *quiet* channel — the one that does not buzz.
+ * **A tile, not a row of mail — and that is a correction.** This used to be shaped exactly like a
+ * message: same inset, glyph in the avatar's column, hairline under it. The reasoning was that a
+ * card would read as an interruption and the bundle is the quiet channel. It was half right. The
+ * quiet part is achieved by *where* it sits and by scrolling away; making it look like mail as well
+ * bought nothing and cost the one thing the row has to say instantly, which is **this is not a
+ * message**. Two of them in a run made it worse: with a row of mail's spacing between them, four
+ * lines of text read as one item until you looked twice.
+ *
+ * So each bundle is now inset on [PlMailColors.sunken] with a control radius, separated from its
+ * neighbour by real space, and the mark at its end is a chevron rather than the new-mail dot — a
+ * chevron says *a place you go*, and "4 new" beside the name already said the rest. Sunken rather
+ * than raised is the deliberate half of it: this is a well in the page, not a card lifted over it,
+ * because a lifted card is precisely the interruption the original note was right to avoid.
  *
  * The count and the names are both drawn, and neither is redundant. "3 new" is the size of the
  * decision; the names are what the decision is about, and somebody who recognises none of them
@@ -65,47 +78,42 @@ internal fun CategoryBundleRow(arrivals: CategoryArrivals, onClick: () -> Unit) 
     Row(
         modifier =
             Modifier.fillMaxWidth()
+                // Outside the tile: the gutter keeps it in line with the mail
+                // below, and the vertical gap is what stops two bundles reading
+                // as one four-line item.
+                .padding(horizontal = theme.spacing.gutter, vertical = theme.spacing.tiny)
+                .clip(RoundedCornerShape(theme.radii.control))
+                .background(theme.colors.sunken)
                 .clickable(onClick = onClick)
-                // One description for the whole row rather than three nodes
-                // TalkBack reads in sequence. "Promotions, 3 new, from Rail
-                // Europe and 2 others" is the sentence; the glyph, the dot and
-                // the two text runs are how it is drawn, not what it says.
+                // One description for the whole row rather than four nodes
+                // TalkBack reads in sequence. "Promotions, 4 new, from Rail
+                // Europe and 1 other" is the sentence; the glyph, the chevron
+                // and the two text runs are how it is drawn, not what it says.
                 .clearAndSetSemantics {
                     contentDescription = listOfNotNull(name, count, senders).joinToString(", ")
                 }
-                // The mail row's gutter, not a margin of its own. Both numbers
-                // below are `ThreadRow`'s: this row's whole claim is that it is
-                // one of the list's rows rather than a banner over them, and a
-                // claim like that is made in the metrics or not at all.
-                .padding(
-                    horizontal = theme.spacing.gutter,
-                    vertical = theme.spacing.medium,
-                ),
+                // Inside the tile. Less than a mail row's, because the fill is
+                // already doing the separating that a row of mail needs
+                // whitespace for.
+                .padding(horizontal = theme.spacing.medium, vertical = theme.spacing.small),
         horizontalArrangement = Arrangement.spacedBy(theme.spacing.medium),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The category's glyph in exactly the box a sender's avatar occupies, so
-        // the two kinds of row share one text column.
-        //
-        // Boxed rather than simply drawn at the avatar's size: an icon stretched
-        // to 40dp is a different weight of mark from a letter in a filled
-        // circle, and it is the *column* that has to match, not the glyph. This
-        // used to be a bare 24dp icon behind a 16dp margin, which put the
-        // bundle's text 20dp to the left of every subject under it -- close
-        // enough to look like a rendering fault rather than a decision, and
-        // invisible until the row was screenshotted with mail beneath it.
-        if (theme.list.avatars) {
-            Box(
-                modifier = Modifier.size(theme.spacing.touchTarget - theme.spacing.small),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = arrivals.category.icon(),
-                    contentDescription = null,
-                    tint = theme.colors.accent,
-                    modifier = Modifier.size(GLYPH),
-                )
-            }
+        // A glyph on a tinted disc, which is what a sender's avatar is too --
+        // and that is the point of the accent: the shape says "an item in a
+        // list", the colour says "not a person".
+        Box(
+            modifier =
+                Modifier.size(GLYPH_WELL)
+                    .background(color = theme.colors.accentSoft, shape = CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = arrivals.category.icon(),
+                contentDescription = null,
+                tint = theme.colors.accent,
+                modifier = Modifier.size(GLYPH),
+            )
         }
 
         Column(
@@ -116,18 +124,6 @@ internal fun CategoryBundleRow(arrivals: CategoryArrivals, onClick: () -> Unit) 
                 horizontalArrangement = Arrangement.spacedBy(theme.spacing.small),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // With avatars off there is no leading column to sit in -- the
-                // mail rows lose theirs too -- so the glyph joins the name
-                // instead of holding open a 40dp indent nothing else has.
-                if (!theme.list.avatars) {
-                    Icon(
-                        imageVector = arrivals.category.icon(),
-                        contentDescription = null,
-                        tint = theme.colors.accent,
-                        modifier = Modifier.size(theme.spacing.large),
-                    )
-                }
-
                 Text(
                     text = name,
                     style = MaterialTheme.typography.bodyLarge,
@@ -156,17 +152,21 @@ internal fun CategoryBundleRow(arrivals: CategoryArrivals, onClick: () -> Unit) 
             }
         }
 
-        // The same dot the sidebar row carries, so the two say the same thing in
-        // the same mark. Trailing, where a row's date sits, because that is the
-        // column the eye already checks for "how recent".
-        Box(
-            modifier =
-                Modifier.size(DOT).background(color = theme.colors.accent, shape = CircleShape)
+        // Where a mail row puts its date, and saying the opposite thing: a date
+        // is a fact about a message, a chevron is an invitation to leave this
+        // list for another one. It replaced the new-mail dot the sidebar
+        // carries -- correct there, redundant here beside the words "4 new",
+        // and one more round mark on a row that already had two.
+        Icon(
+            imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+            contentDescription = null,
+            tint = theme.colors.inkMuted,
+            modifier = Modifier.size(theme.spacing.xLarge),
         )
     }
 }
 
-/** The avatar column's width, so a bundle's glyph sits where a sender's disc does. */
-private val GLYPH = 24.dp
+/** The tinted disc a bundle's glyph sits on, matching the width of a sender's avatar. */
+private val GLYPH_WELL = 40.dp
 
-private val DOT = 8.dp
+private val GLYPH = 22.dp
