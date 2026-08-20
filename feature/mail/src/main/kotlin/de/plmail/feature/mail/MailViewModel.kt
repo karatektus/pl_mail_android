@@ -346,6 +346,21 @@ constructor(
     val badgedNew: StateFlow<Set<String>> = _badgedNew.asStateFlow()
 
     /**
+     * Spends a badge, because the user has now read the thing it was pointing at.
+     *
+     * The badge is held for as long as the list is on screen — see [badgedNew] — so that it does
+     * not vanish under somebody while they are looking at it. Opening the conversation is the one
+     * event that has to break that hold: coming back from a message you have just read to a row
+     * still shouting "New" is the app failing to notice what you did, and it is the state a user
+     * reported.
+     *
+     * Only the row that was opened. The rest of the badges are still true.
+     */
+    fun threadOpened(thread: ThreadEntity) {
+        _badgedNew.update { badged -> badged - thread.uid }
+    }
+
+    /**
      * The categories with mail the user has not looked at, for the rows above Primary.
      *
      * Drawn only on Primary, and filtered here rather than in the screen so the flow is not

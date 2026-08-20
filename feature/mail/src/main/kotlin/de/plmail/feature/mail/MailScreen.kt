@@ -412,7 +412,16 @@ fun MailScreen(
                     badgedNew = badgedNew,
                     onOpenCategory = { onNavigate(MailView.Category(it)) },
                     onShown = viewModel::threadsShown,
-                    onThreadSelected = onThreadSelected,
+                    onThreadSelected = { thread ->
+                        // The badge is spent by *opening* the conversation, not
+                        // by the row having been drawn -- see
+                        // `MailViewModel.threadOpened`. Wrapped here rather than
+                        // pushed into the pane, because the pane's job is to
+                        // show a conversation and this is the list's own memory
+                        // of what has been looked at.
+                        viewModel.threadOpened(thread)
+                        onThreadSelected(thread)
+                    },
                     onToggleSelected = viewModel::toggleSelected,
                     onAction = { thread, action ->
                         viewModel.apply(action, listOf(thread.target()))
