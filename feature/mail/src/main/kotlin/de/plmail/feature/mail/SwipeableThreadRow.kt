@@ -53,6 +53,14 @@ fun SwipeableThreadRow(
      * nothing on a list where every row is.
      */
     showsAccount: Boolean = false,
+    /**
+     * Whether the row carries a **New** badge.
+     *
+     * Passed down for the same reason [showsAccount] is, and for one more: the answer cannot be
+     * read off the conversation at all, because drawing the row is what retires the server's
+     * marker. See [de.plmail.feature.mail.MailViewModel.badgedNew].
+     */
+    isNew: Boolean = false,
 ) {
     // Scoped to the conversation, not to the position in the list.
     //
@@ -94,6 +102,7 @@ fun SwipeableThreadRow(
                             RowChip(name = it.name, color = PlMailLabelColor.fromWire(it.color))
                         },
                     hiddenLabels = labels.hidden,
+                    isNew = isNew,
                 )
             },
         )

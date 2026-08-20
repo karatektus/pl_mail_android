@@ -89,6 +89,16 @@ fun MailShell(
     val drawer = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
 
+    // Back from any other list returns to Primary, which is Gmail's behaviour and
+    // the answer to a specific complaint: tapping a new-mail bundle took you to
+    // Promotions and back then closed the app, because nothing had been pushed
+    // anywhere. Registered here, at the outermost level of the screen, so the
+    // handlers nested below it -- the open drawer, an open conversation, a live
+    // selection -- all take the gesture first. Only from somewhere else: back on
+    // Primary itself still leaves, because Primary is where the app opens and a
+    // start destination that swallowed back would be a screen with no exit.
+    BackHandler(enabled = selected != MailView.START) { selectedKey = null }
+
     val sidebar =
         @Composable {
             LabelSidebar(
@@ -149,6 +159,10 @@ fun MailShell(
                 onOpenSidebar = if (isWide) null else ({ scope.launch { drawer.open() } }),
                 onEditLabel = { editing = LabelEditorRequest.Edit(it.key) },
                 onCreateLabel = { editing = LabelEditorRequest.New },
+                // The same state a sidebar tap writes, which is the whole point:
+                // a new-mail bundle is a way of *going somewhere*, so it has to
+                // move the one thing that knows where the app is.
+                onNavigate = { selectedKey = it.toKey() },
                 onSearch = onSearch,
                 // The callback as it arrived, without the drawer-closing wrapper
                 // the sidebar's copy carries: there is no drawer open when the

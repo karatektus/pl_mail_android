@@ -56,6 +56,8 @@ fun MailPane(
     onOpenSidebar: (() -> Unit)?,
     onEditLabel: (Label) -> Unit,
     onCreateLabel: () -> Unit,
+    /** Passed through to the list, which is where a new-mail bundle is tapped. See [MailScreen]. */
+    onNavigate: (MailView) -> Unit,
     onSearch: () -> Unit,
     /** Null where this install has no calendar. Passed straight to the list's top bar. */
     onCalendar: (() -> Unit)?,
@@ -132,6 +134,7 @@ fun MailPane(
                         onSearch = onSearch,
                         onCalendar = onCalendar,
                         onCompose = onCompose,
+                        onNavigate = onNavigate,
                         viewModel = viewModel,
                         onThreadSelected = { thread ->
                             selectedUid = thread.uid

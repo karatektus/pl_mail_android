@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -44,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -104,6 +106,17 @@ fun MailScreen(
     onOpenSidebar: (() -> Unit)? = null,
     onEditLabel: (Label) -> Unit = {},
     onCreateLabel: () -> Unit = {},
+    /**
+     * Go to another list, as a navigation rather than as a change of contents.
+     *
+     * Required, and deliberately not defaulted to `{}`. Tapping a new-mail bundle used to call
+     * `viewModel.show(...)`, which swapped the rows under the user while every other part of the
+     * app still believed they were on Primary: the drawer highlighted the wrong row, back left the
+     * app instead of returning, and the only way to get Primary's own mail back was to navigate
+     * away and return. Which list is showing is the *shell's* state — see `MailShell` — so it is
+     * the shell that has to be told.
+     */
+    onNavigate: (MailView) -> Unit,
     viewModel: MailViewModel = hiltViewModel(),
 ) {
     // The label this list is browsing, if it is browsing one. A category list is
@@ -139,6 +152,10 @@ fun MailScreen(
     // Whether a row should carry its account's mark: only where the list is
     // actually a merge, or every row would wear the same one.
     val isMerged by viewModel.isMerged.collectAsStateWithLifecycle()
+    // Which rows keep their New badge. Held by the ViewModel rather than read
+    // off each row, because drawing the row is what retires the marker -- see
+    // `MailViewModel.badgedNew`.
+    val badgedNew by viewModel.badgedNew.collectAsStateWithLifecycle()
 
     // The in-process half of making `NeedsRepage` mean anything. A sync that
     // finds the server can no longer answer from this account's stored position
@@ -150,6 +167,23 @@ fun MailScreen(
     // Back clears a selection before it leaves the screen: a selection is a
     // mode, and leaving a mode is what back is for.
     BackHandler(enabled = selection.isNotEmpty()) { viewModel.clearSelection() }
+
+    // Hoisted, and keyed on the destination. Two things follow from the key that
+    // did not hold when `LazyColumn` made its own: switching list starts at that
+    // list's top rather than at whatever offset the previous one had scrolled
+    // to, and each destination keeps its own place while the screen is alive.
+    // Still `rememberSaveable`, so rotating the phone does not throw the
+    // position away.
+    val listState = rememberSaveable(view.feedId, saver = LazyListState.Saver) { LazyListState() }
+
+    // ...and the top is where the app opens. See `claimStartAtTop`: the saved
+    // instance state restores an offset after Android has killed and restarted
+    // the process, which put people part-way down their own inbox with the
+    // new-mail bundles scrolled off the top of it. Asked once per destination
+    // per process, so this cannot fire while somebody is reading.
+    LaunchedEffect(view.feedId) {
+        if (viewModel.claimStartAtTop(view.feedId)) listState.scrollToItem(0)
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -367,6 +401,7 @@ fun MailScreen(
             ) {
                 ThreadList(
                     threads = threads,
+                    listState = listState,
                     rowsInFeed = rowsInFeed,
                     labels = labels,
                     viewing = label,
@@ -374,7 +409,8 @@ fun MailScreen(
                     selection = selection,
                     arrivals = arrivals,
                     isMerged = isMerged,
-                    onOpenCategory = { viewModel.show(MailView.Category(it)) },
+                    badgedNew = badgedNew,
+                    onOpenCategory = { onNavigate(MailView.Category(it)) },
                     onShown = viewModel::threadsShown,
                     onThreadSelected = onThreadSelected,
                     onToggleSelected = viewModel::toggleSelected,
@@ -458,6 +494,14 @@ internal fun RowScope.MailListActions(
 internal fun ThreadList(
     threads: LazyPagingItems<ThreadEntity>,
     /**
+     * Hoisted so the screen can decide where this list starts.
+     *
+     * `LazyColumn`'s own `rememberLazyListState()` is saveable, which is right for a rotation and
+     * wrong for a cold start: it restores a scroll offset into a list whose rows have not been
+     * paged back in yet. See [MailScreen].
+     */
+    listState: LazyListState,
+    /**
      * How many rows the feed table holds, or null before it has been read. See [hasNothingToShow].
      */
     rowsInFeed: Int?,
@@ -477,6 +521,14 @@ internal fun ThreadList(
     arrivals: List<CategoryArrivals>,
     /** Whether this list merges more than one account, so a row's account mark means something. */
     isMerged: Boolean,
+    /**
+     * The rows that carry a **New** badge, by uid.
+     *
+     * A set rather than a flag on the row, because the answer outlives the column it came from:
+     * reporting a display retires `isNew` within a second of the row appearing. See
+     * [MailViewModel.badgedNew].
+     */
+    badgedNew: Set<String>,
     onOpenCategory: (MailCategory) -> Unit,
     /**
      * Told which conversations have actually been drawn, so the New marker can be retired.
@@ -523,6 +575,7 @@ internal fun ThreadList(
         val labelSlots = rowLabelSlots(maxWidth)
 
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             // Room under the last row for the compose button to sit in.
             //
@@ -582,6 +635,7 @@ internal fun ThreadList(
                         thread = thread,
                         isSelected = thread.uid in selection,
                         showsAccount = isMerged,
+                        isNew = thread.uid in badgedNew || thread.isNew,
                         // Resolved per row rather than precomputed for the page:
                         // it is a set intersection over a list the sidebar already
                         // holds in memory, and doing it here means a label renamed

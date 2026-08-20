@@ -4,6 +4,8 @@
     <string name="no_sender">(unbekannter Absender)</string>
 
     <string name="a11y_unread">Ungelesen</string>
+    <string name="thread_new_badge">Neu</string>
+    <string name="a11y_new">Gerade eingetroffen</string>
     <string name="a11y_has_attachment">mit Anhang</string>
     <string name="a11y_starred">markiert</string>
     <plurals name="a11y_message_count">

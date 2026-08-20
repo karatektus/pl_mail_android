@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AttachFile
@@ -132,6 +133,21 @@ fun ThreadRow(
     /** How many more the row could not fit, drawn as a counter rather than silently dropped. */
     hiddenLabels: Int = 0,
     /**
+     * Whether to mark this conversation as one that has just arrived.
+     *
+     * The caller's answer rather than `thread.isNew`, and the difference is the whole of why this
+     * parameter exists. The server's marker means *never put in front of this user*, so drawing the
+     * row is what spends it — the phone reports the display through `Thread/set` and the marker is
+     * retired within a second or so. Reading the column directly would give a badge that appeared
+     * and vanished while somebody was looking at it. The list holds the answer steady for as long
+     * as it is on screen; see `MailViewModel.badgedNew`.
+     *
+     * **Not the same axis as unread**, and they are allowed to disagree: mail read on a laptop is
+     * still new to a phone that has never drawn its row, and a conversation can sit unread for a
+     * week without being new any more.
+     */
+    isNew: Boolean = false,
+    /**
      * What "today" means for the date column.
      *
      * Hoisted for the same reason [asListDate] hoists it one level down: the column's answer is
@@ -165,6 +181,7 @@ fun ThreadRow(
             isSelected = isSelected,
             labels = labels,
             hiddenLabels = hiddenLabels,
+            isNew = isNew,
             today = today,
             showsAccount = showsAccount,
         )
@@ -189,6 +206,7 @@ private fun ThreadRowContent(
     isSelected: Boolean,
     labels: List<RowChip>,
     hiddenLabels: Int,
+    isNew: Boolean,
     today: LocalDate,
     showsAccount: Boolean,
 ) {
@@ -196,7 +214,7 @@ private fun ThreadRowContent(
     val colors = theme.colors
     val spacing = theme.spacing
     val list = theme.list
-    val spoken = thread.spoken(labels, hiddenLabels)
+    val spoken = thread.spoken(labels, hiddenLabels, isNew)
 
     // Subtle takes the ink promotion off an unread row and leaves the weight
     // alone; Standard and Strong keep both. See PlMailUnreadEmphasis for why the
@@ -278,7 +296,20 @@ private fun ThreadRowContent(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(spacing.tiny / 2),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(spacing.small)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                // Before the sender, which is where the web puts it. A filled
+                // accent pill with a word in it rather than another dot: this
+                // row already carries a starred mark and an attachment clip on
+                // the right, and a third small round thing would have the reader
+                // working out which is which. A pill with text is a different
+                // vocabulary, and the accent is the token that follows whichever
+                // theme is on, so it reads in light and dark without a second
+                // colour being chosen for it.
+                if (isNew) NewBadge()
+
                 Text(
                     text =
                         thread.participantsSummary.ifBlank { stringResource(R.string.no_sender) },
@@ -716,10 +747,19 @@ private val DOT = 8.dp
  * this carry" is exactly the question the chips were added to answer.
  */
 @Composable
-private fun ThreadEntity.spoken(labels: List<RowChip>, hiddenLabels: Int): String {
+private fun ThreadEntity.spoken(
+    labels: List<RowChip>,
+    hiddenLabels: Int,
+    isNew: Boolean,
+): String {
     val separator = stringResource(R.string.a11y_separator)
 
     return buildList {
+            // Before unread, because it is the newer fact and the two are
+            // different claims -- see the badge's own note. Spoken in full
+            // rather than as the pill's single word: "New", announced in a list
+            // of fifty rows, does not say new what.
+            if (isNew) add(stringResource(R.string.a11y_new))
             if (isUnread) add(stringResource(R.string.a11y_unread))
             add(participantsSummary.ifBlank { stringResource(R.string.no_sender) })
             add(subject?.takeIf { it.isNotBlank() } ?: stringResource(R.string.no_subject))
@@ -742,4 +782,36 @@ private fun ThreadEntity.spoken(labels: List<RowChip>, hiddenLabels: Int): Strin
                 add(pluralStringResource(R.plurals.a11y_more_labels, hiddenLabels, hiddenLabels))
         }
         .joinToString(separator)
+}
+
+/**
+ * The "New" pill, matching the web's own.
+ *
+ * Deliberately the same shape and the same words on both surfaces: this marker is one fact held by
+ * the server and read by two clients, so a phone that drew it differently would leave somebody
+ * checking whether the two were even talking about the same thing.
+ *
+ * Uppercase and tiny, filled rather than outlined. Its whole job is to be found while the eye is
+ * running down a column of senders, and an outline at this size is a smudge.
+ */
+@Composable
+private fun NewBadge() {
+    val theme = LocalPlMailTheme.current
+
+    Text(
+        text = stringResource(R.string.thread_new_badge),
+        style = MaterialTheme.typography.labelSmall,
+        fontWeight = FontWeight.Bold,
+        color = theme.colors.onAccent,
+        maxLines = 1,
+        modifier =
+            Modifier.clip(RoundedCornerShape(percent = 50))
+                .background(theme.colors.accent)
+                .padding(horizontal = theme.spacing.tiny, vertical = theme.spacing.tiny / 2)
+                // The pill says it twice otherwise: the row's own spoken
+                // description already carries "new", read out in a sentence that
+                // makes sense, and this node would add a bare "New" in front of
+                // it.
+                .clearAndSetSemantics {},
+    )
 }

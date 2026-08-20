@@ -262,8 +262,42 @@ constructor(
 
     /** Which list the screen is showing. */
     fun show(view: MailView) {
+        // A badge says "this arrived since you last looked at *this list*", so
+        // it does not follow the user to another one. Leaving the set alone
+        // would badge a conversation in Promotions because it was new in the
+        // digest that sent you there.
+        if (shown.value.feedId != view.feedId) _badgedNew.value = emptySet()
+
         shown.value = view
     }
+
+    /**
+     * Whether this list should be forced to its first row, asked once per destination per process.
+     *
+     * The app was opening part-way down its own inbox, with the new-mail bundles scrolled off the
+     * top — which is the one thing they exist to be seen. `LazyColumn`'s default state is
+     * `rememberSaveable`, so a scroll offset is written into the saved instance state and handed
+     * back when Android restarts a process it had killed. The list then restores to row forty of a
+     * list whose rows have not been paged in yet.
+     *
+     * A `LaunchedEffect` in the screen cannot tell those cases apart on its own: a configuration
+     * change also recreates the composition, and rotating a phone must *keep* your place. This
+     * ViewModel is exactly the thing that survives the one and not the other, so the question is
+     * answered here. Returning true consumes it — a screen that asks twice for the same list is a
+     * screen that scrolled the user back to the top while they were reading.
+     *
+     * Opening a conversation and coming back is not affected: the ViewModel outlives the reader, so
+     * the answer is already spent by then.
+     */
+    fun claimStartAtTop(feedId: String): Boolean = startedAtTop.add(feedId)
+
+    /**
+     * The destinations already positioned in this process.
+     *
+     * A plain set rather than state: nothing recomposes on it, and it is only ever touched from
+     * [claimStartAtTop] on the main thread.
+     */
+    private val startedAtTop = mutableSetOf<String>()
 
     /**
      * Records that these conversations have been drawn.
@@ -277,12 +311,38 @@ constructor(
      * so a list redrawing the same page reports nothing.
      */
     fun threadsShown(rows: List<ThreadEntity>) {
+        // Remembered before it is reported, and that ordering is the point. See
+        // `badgedNew`.
+        _badgedNew.update { badged -> badged + rows.mapTo(mutableSetOf()) { it.uid } }
+
         rows
             .groupBy { it.accountKey }
             .forEach { (accountKey, forAccount) ->
                 shownThreads.report(accountKey, forAccount.map { it.threadId })
             }
     }
+
+    private val _badgedNew = MutableStateFlow(emptySet<String>())
+
+    /**
+     * Which rows keep their **New** badge while this list is on screen.
+     *
+     * The badge cannot be drawn from `ThreadEntity.isNew` directly, and the reason is the marker's
+     * own definition: it means *never put in front of this user*, so drawing the row is precisely
+     * what spends it. The phone reports the display through `Thread/set`, the row is cleared
+     * locally the moment that is accepted, and a badge reading the column would appear and vanish
+     * inside a second while somebody was looking straight at it.
+     *
+     * So the answer is held here instead: a row that was new when it was first drawn stays badged
+     * for as long as the list is showing. That is the same bargain the web makes — its badge is
+     * visible on the render that consumed the marker and gone on the next one — and it is what
+     * makes "new since I last looked" a thing a person can actually act on.
+     *
+     * Cleared when the destination changes, in [show]. Not persisted: after a process restart the
+     * server has already been told, so there is nothing left that is new, and restoring the set
+     * would be the phone badging mail on the strength of its own memory rather than the marker.
+     */
+    val badgedNew: StateFlow<Set<String>> = _badgedNew.asStateFlow()
 
     /**
      * The categories with mail the user has not looked at, for the rows above Primary.

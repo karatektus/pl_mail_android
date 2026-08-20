@@ -20,6 +20,19 @@
       device read a German inbox out in English.
     -->
     <string name="a11y_unread">Unread</string>
+    <!--
+      The New pill and how it is announced.
+
+      The visible word is the web's own ("New" / "Neu"), because the two clients
+      are drawing one fact — the server's Thread.isNew — and a phone that called
+      it something else would leave somebody wondering whether the two are even
+      talking about the same mail.
+
+      The spoken form is longer on purpose: "New", announced in a list of fifty
+      rows, does not say new what.
+    -->
+    <string name="thread_new_badge">New</string>
+    <string name="a11y_new">Just arrived</string>
     <string name="a11y_has_attachment">has attachment</string>
     <string name="a11y_starred">starred</string>
     <plurals name="a11y_message_count">

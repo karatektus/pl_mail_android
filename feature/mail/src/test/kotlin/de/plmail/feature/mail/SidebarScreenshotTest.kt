@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +30,8 @@ import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PlMailDensity
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.designsystem.PlMailThemeChoice
+import java.time.LocalDate
+import java.time.ZoneOffset
 import java.util.TimeZone
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Before
@@ -141,6 +144,8 @@ class SidebarScreenshotTest {
                 selection = emptySet(),
                 arrivals = arrivals,
                 isMerged = false,
+                badgedNew = badgedNew,
+                listState = rememberLazyListState(),
                 onOpenCategory = {},
                 onShown = {},
                 onThreadSelected = {},
@@ -168,6 +173,8 @@ class SidebarScreenshotTest {
                 selection = emptySet(),
                 arrivals = arrivals,
                 isMerged = false,
+                badgedNew = badgedNew,
+                listState = rememberLazyListState(),
                 onOpenCategory = {},
                 onShown = {},
                 onThreadSelected = {},
@@ -311,7 +318,7 @@ class SidebarScreenshotTest {
                 subject = "Wartung der Heizung am Dienstag",
                 snippet = "Zwischen 8 und 12 Uhr, bitte jemanden zu Hause lassen.",
                 isFlagged = true,
-                minutesAgo = 1_500,
+                minutesAgo = 500,
             ),
         )
 
@@ -330,9 +337,7 @@ class SidebarScreenshotTest {
             uid = "https://nas.local/1#$id",
             accountKey = "https://nas.local/1",
             threadId = id,
-            // Fixed rather than "now", or the date column re-renders every day
-            // and the checked-in baseline only matches the day it was recorded.
-            latestReceivedAt = CAPTURED_AT - minutesAgo * 60_000,
+            latestReceivedAt = capturedAt - minutesAgo * 60_000,
             subject = subject,
             participantsSummary = sender,
             snippet = snippet,
@@ -362,6 +367,9 @@ class SidebarScreenshotTest {
                     label("11", "Nebenkosten", path = "Wohnung/Nebenkosten", color = "blue"),
                 ),
         )
+
+    /** The two rows the badge is drawn on, so the capture shows it beside a row without one. */
+    private val badgedNew = setOf("https://nas.local/1#1", "https://nas.local/1#2")
 
     private val arrivals =
         listOf(
@@ -401,7 +409,22 @@ class SidebarScreenshotTest {
         )
 
     private companion object {
-        /** 2026-08-18T09:00Z, so every row's relative date is stable. */
-        const val CAPTURED_AT = 1_787_043_600_000L
+        /**
+         * Nine this morning, whenever this morning is — and every fixture row is *within* today.
+         *
+         * The obvious thing is a fixed epoch, and it is wrong here. `ThreadRow`'s date column is
+         * relative: a time for today, a weekday name for this week, a date beyond that. So a
+         * baseline recorded against a frozen instant renders "08:20" on the day it was recorded and
+         * "Tue" a day later — a screenshot test that fails on a calendar boundary rather than on a
+         * change to the app. This suite caught itself doing exactly that.
+         *
+         * Anchoring to the current date fixes the drift, but only if no row crosses midnight: a row
+         * twenty-five hours old renders as a weekday name, and *which* name depends on the day the
+         * test runs. Hence 09:00 and every `minutesAgo` under nine hours, so every row is a time.
+         *
+         * The zone is pinned to UTC in [pinTheZone] for the same family of reasons — otherwise the
+         * same instant is 09:05 in London and 11:05 in Berlin.
+         */
+        val capturedAt: Long = LocalDate.now().atTime(9, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
     }
 }
