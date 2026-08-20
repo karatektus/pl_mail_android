@@ -25,11 +25,19 @@ import javax.inject.Inject
  * [attachBaseContext] is the same shape and the same argument: the decision it applies is somebody
  * else's, this class holds the one line that applies it, and it cannot live anywhere else because
  * the base context is created exactly once and this is the only hook in front of it.
+ *
+ * [icons] is the fourth, and it is a registration for the same reason [presence] is: the launcher
+ * icon follows the account's logo colourway, which is a fact about the *install* rather than about
+ * anything on screen, so no activity may own the subscription. It reaches the package manager only
+ * when the colourway has actually changed — see [LauncherIconSync] and [AppLauncherIcon] — so what
+ * runs on a cold start is one flow subscription and, almost always, nothing else at all.
  */
 @HiltAndroidApp
 class PlMailApplication : Application() {
 
     @Inject lateinit var presence: ForegroundPresence
+
+    @Inject lateinit var icons: LauncherIconSync
 
     /**
      * The third exception, and the one that has to run before everything else.
@@ -52,5 +60,7 @@ class PlMailApplication : Application() {
         super.onCreate()
 
         ProcessLifecycleOwner.get().lifecycle.addObserver(presence)
+
+        icons.start()
     }
 }

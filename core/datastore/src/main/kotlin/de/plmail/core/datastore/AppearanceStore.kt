@@ -114,6 +114,7 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
                     sidebarDensity = stored[REMOTE_SIDEBAR_DENSITY],
                     listDensity = stored[REMOTE_LIST_DENSITY],
                     readingDensity = stored[REMOTE_READING_DENSITY],
+                    logoStyle = stored[REMOTE_LOGO_STYLE],
                     state = stored[REMOTE_STATE],
                 )
             }
@@ -141,6 +142,7 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
             stored.put(REMOTE_SIDEBAR_DENSITY, remote.sidebarDensity)
             stored.put(REMOTE_LIST_DENSITY, remote.listDensity)
             stored.put(REMOTE_READING_DENSITY, remote.readingDensity)
+            stored.put(REMOTE_LOGO_STYLE, remote.logoStyle)
             stored.put(REMOTE_STATE, remote.state)
         }
     }
@@ -298,6 +300,19 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
         val REMOTE_SIDEBAR_DENSITY = stringPreferencesKey("appearance_remote_sidebar_density")
         val REMOTE_LIST_DENSITY = stringPreferencesKey("appearance_remote_list_density")
         val REMOTE_READING_DENSITY = stringPreferencesKey("appearance_remote_reading_density")
+
+        /**
+         * The logo colourway, and there is no local counterpart to it anywhere in this file.
+         *
+         * Every other value here is one half of a pair — the server's copy and this device's
+         * override — because every other value is something the Appearance screen can change.
+         * `logoStyle` is read-only on the server and has no control on the phone at all: it is
+         * picked in the browser, arrives here, and is spent switching a launcher alias. A local key
+         * beside this one would be a key nothing could ever write, and its presence would invite
+         * somebody to add the setter that makes the launcher icon disagree with the web.
+         */
+        val REMOTE_LOGO_STYLE = stringPreferencesKey("appearance_remote_logo_style")
+
         val REMOTE_STATE = stringPreferencesKey("appearance_remote_state")
 
         /**
@@ -458,6 +473,15 @@ data class RemoteAppearance(
     val sidebarDensity: String? = null,
     val listDensity: String? = null,
     val readingDensity: String? = null,
+    /**
+     * The logo colourway, raw off the wire and possibly one this build has never heard of.
+     *
+     * Null covers both absences and they are not distinguished here: a server too old to publish
+     * the property, and a server that has simply not been read yet. Resolving either to the product
+     * default is `:app`'s job — see `LogoStyle.fromWire` — for the same reason [theme] keeps
+     * `paper` verbatim rather than storing an approximation of it.
+     */
+    val logoStyle: String? = null,
     /** `Appearance/get`'s state, for the next write's `ifInState`. Null before the first read. */
     val state: String? = null,
 )

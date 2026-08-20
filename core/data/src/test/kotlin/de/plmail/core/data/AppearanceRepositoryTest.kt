@@ -112,6 +112,50 @@ class AppearanceRepositoryTest {
         assertEquals("cosy", cleared.sidebarDensity)
     }
 
+    @Test
+    fun `the logo colourway reads straight through from the server`() {
+        // The one property with no local half at all. It is read-only on the
+        // server -- the colourway is picked in the browser -- so there is
+        // nothing on this phone that could have an opinion to lay over it, and
+        // `resolve` is where that policy is visible rather than merely true.
+        val settings =
+            resolve(
+                local = StoredAppearance(theme = "nord"),
+                remote = RemoteAppearance(theme = "solar", logoStyle = "petrol-copper"),
+            )
+
+        assertEquals("petrol-copper", settings.logoStyle)
+
+        // And the theme beside it still takes the local override, which is what
+        // says the two are governed differently on purpose rather than by one of
+        // them having been forgotten.
+        assertEquals("nord", settings.theme)
+    }
+
+    @Test
+    fun `an absent colourway stays absent rather than becoming a guess`() {
+        // What a server too old to publish the property looks like from here.
+        // Null travels the whole way up as null: turning it into "berry" is
+        // :app's job, and doing it here would mean this layer had an opinion
+        // about which colourways exist -- which is exactly the opinion that goes
+        // stale when the server grows one.
+        val settings = resolve(local = StoredAppearance(), remote = RemoteAppearance())
+
+        assertNull(settings.logoStyle)
+    }
+
+    @Test
+    fun `a colourway this build has never heard of survives the trip intact`() {
+        // Not clamped, not dropped, not replaced with a default. A server newer
+        // than this build names colourways it does not have, and the value has
+        // to arrive at the resolver verbatim for the resolver to be the only
+        // place that decides what to do about it.
+        val settings =
+            resolve(local = StoredAppearance(), remote = RemoteAppearance(logoStyle = "seafoam"))
+
+        assertEquals("seafoam", settings.logoStyle)
+    }
+
     // ------------------------------------------------------- the one direction
 
     /**
