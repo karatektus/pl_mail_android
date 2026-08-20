@@ -5,11 +5,18 @@
       an app icon is a fixed asset, not themed surface. Nothing in the app's own
       chrome may reference this.
 
-      Off-white rather than plMail's accent blue, because the mark drawn on top
-      is the server's own four-colour logo and one of those four is a blue three
-      shades off the accent — on the old #2563EB background that stroke very
-      nearly disappeared. This is the light theme's surface value, so the icon
-      and the app it opens are the same paper.
+      Off-white rather than a coloured tile. The mark drawn on top is the
+      server's own logo in LogoStyle::Berry, seven strokes across violet to
+      rose, and it needs a neutral behind it: on the accent blue this icon
+      started life on, the deepest violet very nearly disappeared. This is the
+      light theme's surface value, so the icon and the app it opens are the
+      same paper.
+
+      The web's own PNG icons are the same mark on transparency, so there is no
+      tile to copy from — `LogoStyle::tile()` exists for the theme-color meta
+      rather than for the icons. Off-white is this app's answer to a question
+      the web does not have to ask, an adaptive icon always having a background
+      layer.
     -->
     <color name="ic_launcher_background">#FAF9F7</color>
 </resources>

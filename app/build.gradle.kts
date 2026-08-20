@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.plmail.android.application)
     alias(libs.plugins.plmail.android.compose)
     alias(libs.plugins.plmail.android.hilt)
+    alias(libs.plugins.roborazzi)
 }
 
 /**
@@ -220,6 +221,15 @@ dependencies {
     // Without the vintage engine its classes are not discovered at all and the
     // task reports success having run none of them.
     testRuntimeOnly(libs.junit.vintage.engine)
+
+    // The launcher icon is the one asset in this app nobody looks at on the
+    // way past -- it is drawn by the launcher, not by any screen -- which is
+    // exactly how it went on wearing Google's brand colours, and a superseded
+    // version of the letters, for a whole release line. A baseline is the only
+    // thing that would have said so.
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.androidx.compose.ui.test.junit4)
 }
 
 /**

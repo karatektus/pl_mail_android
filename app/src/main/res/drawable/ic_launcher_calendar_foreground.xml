@@ -6,9 +6,9 @@
   the same home screen, it has to be told apart at a glance; up close it has to
   read as the same family rather than as a second app that happens to be
   installed. So nothing here is borrowed from a generic calendar glyph. The
-  stroke width, the round caps and joins, the four brand colours and the paper
-  behind it are all exactly ic_launcher_foreground's, and only the geometry is
-  new: a page with two binder rings, a header rule and a row of date dots.
+  stroke width, the round caps and joins, the palette and the paper behind it
+  are all exactly ic_launcher_foreground's, and only the geometry is new: a page
+  with two binder rings, a header rule and a row of date dots.
 
   THE COORDINATE SYSTEM is ic_launcher_foreground's, deliberately, so the two
   icons sit at the same visual weight and the same size under the launcher's
@@ -26,11 +26,20 @@
   the two rings at (21, 4.5) and (38, 4.5), 23.8 out. There is about a unit in
   hand and no more.
 
-  THE COLOURS are the four the mail mark uses, assigned so that no single one
-  carries the whole shape: the page is blue, the header rule and the date dots
-  are red, and the two rings are the yellow and the green. Yellow was kept off
-  the dots on purpose, because #FBBC04 on the off-white background is the one
-  pairing in this palette that a 4dp mark disappears into.
+  THE COLOURS are drawn from the mail mark's ramp — LogoStyle::Berry, the
+  web's default — rather than from Google's brand hexes, which is what both
+  icons used to wear and what the web deliberately dropped. Four of the seven,
+  assigned so that no single one carries the whole shape: the page takes the
+  deepest violet (#6d28d9), the header rule and the date dots the middle
+  magenta (#c026d3), and the two rings the warm end (#db2777, #f43f5e).
+
+  The old palette had one member that could not be used on a mark this thin —
+  its yellow measured 1.62:1 against the off-white behind it, which is a 4dp
+  stroke that is simply not there. This ramp has no such member: against
+  #FAF9F7 the four measure 6.75, 4.48, 4.37 and 3.49 to 1, so even the lightest
+  clears the 3:1 that a graphical object needs. The weakest is deliberately on
+  a ring rather than on the page outline, which is the shape you recognise
+  first.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -48,7 +57,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M17,10 L42,10 Q47.5,10 47.5,15.5 L47.5,33.5 Q47.5,39 42,39 L17,39 Q11.5,39 11.5,33.5 L11.5,15.5 Q11.5,10 17,10 Z"
-            android:strokeColor="#4285F4"
+            android:strokeColor="#6d28d9"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -60,7 +69,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M14.25,18.5 L44.75,18.5"
-            android:strokeColor="#EA4335"
+            android:strokeColor="#c026d3"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -74,7 +83,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M21,4.5 L21,10"
-            android:strokeColor="#FBBC04"
+            android:strokeColor="#db2777"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -82,7 +91,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M38,4.5 L38,10"
-            android:strokeColor="#34A853"
+            android:strokeColor="#f43f5e"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -96,7 +105,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M21,29 L21.01,29"
-            android:strokeColor="#EA4335"
+            android:strokeColor="#c026d3"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -104,7 +113,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M29.5,29 L29.51,29"
-            android:strokeColor="#EA4335"
+            android:strokeColor="#c026d3"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />
@@ -112,7 +121,7 @@
         <path
             android:fillColor="#00000000"
             android:pathData="M38,29 L38.01,29"
-            android:strokeColor="#EA4335"
+            android:strokeColor="#c026d3"
             android:strokeLineCap="round"
             android:strokeLineJoin="round"
             android:strokeWidth="5.5" />

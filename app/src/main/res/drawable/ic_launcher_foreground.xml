@@ -1,26 +1,42 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  plMail's own mark, taken from the server's topbar
-  (templates/_partials/_topbar.html.twig) so the phone and the web wear the same
-  logo. Seven stroked segments in four colours, copied verbatim rather than
-  redrawn — a hand-traced logo drifts from the original the first time either
-  side changes.
+  plMail's "pl" mark, transcribed from the server's own macro
+  (templates/_partials/_logo_mark.html.twig) so the phone and the web wear the
+  same logo. Seven strokes in a fixed draw order — p-stem, p-top-curve,
+  p-right-stem, p-bowl-bottom, l-upper, l-lower, l-tail — copied verbatim
+  rather than redrawn, because a hand-traced logo drifts from the original the
+  first time either side changes. It had already drifted: the geometry here was
+  a superseded version of the letters.
+
+  The colours are LogoStyle::Berry, the product default and the one the web's
+  own PNG icons and fallback favicon are drawn in. What they are NOT is the
+  previous set — #4285F4, #34A853, #EA4335, #FBBC04, which are Google's literal
+  brand hexes. The web dropped those deliberately (see the docblock on
+  LogoStyle, which exists because of it); this icon was still wearing them.
+
+  **The mark cannot follow the user's chosen colourway, and does not pretend
+  to.** LogoStyle is a per-user setting on the server and is not published over
+  JMAP, so the phone cannot know it — and a launcher icon could not follow it
+  at runtime regardless without swapping activity-aliases underneath the user.
+  Berry is the default there and the honest default here.
+
+  ## The arithmetic, for whoever rescales this
 
   An adaptive-icon foreground is a 108dp canvas whose outer ring is cropped by
-  whatever mask the launcher applies, and only a circle of radius 33 about the
-  centre is guaranteed to survive. The source art is a 48-unit square, so the
-  group below scales it by 1.2 and centres it: the painted bounds including
-  stroke width are x 12.25..46.75 and y 3.25..44.75, whose centre (29.5, 24)
-  lands on (54, 54) after the translate. The furthest painted point then sits
-  about 32.4 from the centre — inside the safe circle, with very little to
-  spare. Rescaling this art means redoing that arithmetic rather than nudging
-  the numbers until it looks right.
+  whatever mask the launcher applies; only a circle of radius 33 about the
+  centre is guaranteed to survive. The source is a 48-unit square whose inner
+  group translates by (-4.5, -0.5) — that is the macro's own transform, kept so
+  the paths below are diffable against the twig character for character.
 
-  The source clips everything to a rounded rect. That is deliberately dropped:
-  the launcher's mask is the shape, and a rounded square inside a rounded square
-  reads as a sticker stuck on an icon. Nothing is lost either way — the clip is
-  a safety net in the original, and the outermost stroke (the tail ending at
-  44,42) already falls just inside the corner radius.
+  After that translate the ink spans x 5.75..42.25 and y 3.75..44.25, centred
+  exactly on (24, 24). Half-extents are 18.25 and 20.25, so at scale 1.2 the
+  furthest corner of the ink's bounding box sits sqrt(21.9² + 24.3²) ≈ 32.7
+  from the centre — inside the safe circle, with little to spare. The outer
+  group's translate is 54 - 24 × 1.2 = 25.2 on both axes, which is what puts
+  the drawing's centre on the canvas's.
+
+  Rescaling means redoing that arithmetic, not nudging the numbers until it
+  looks right.
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -31,65 +47,69 @@
     <group
         android:scaleX="1.2"
         android:scaleY="1.2"
-        android:translateX="18.6"
+        android:translateX="25.2"
         android:translateY="25.2">
 
-        <path
-            android:fillColor="#00000000"
-            android:pathData="M15,10 L15,38"
-            android:strokeColor="#4285F4"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:strokeWidth="5.5" />
+        <group
+            android:translateX="-4.5"
+            android:translateY="-0.5">
 
-        <path
-            android:fillColor="#00000000"
-            android:pathData="M15,10 Q15,6 19,6 L25,6 Q31,6 31,12"
-            android:strokeColor="#EA4335"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:strokeWidth="5.5" />
+            <path
+                android:fillColor="#00000000"
+                android:pathData="M13,11 L13,42"
+                android:strokeColor="#6d28d9"
+                android:strokeWidth="5.5"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round" />
 
-        <path
-            android:fillColor="#00000000"
-            android:pathData="M31,12 L31,26"
-            android:strokeColor="#FBBC04"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:strokeWidth="5.5" />
+            <path
+                android:fillColor="#00000000"
+                android:pathData="M13,11 Q13,7 17,7 L23,7 Q29,7 29,13"
+                android:strokeColor="#7c3aed"
+                android:strokeWidth="5.5"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round" />
 
-        <path
-            android:fillColor="#00000000"
-            android:pathData="M31,26 Q31,30 25,30 L19,30 Q15,30 15,26"
-            android:strokeColor="#34A853"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:strokeWidth="5.5" />
+            <path
+                android:fillColor="#00000000"
+                android:pathData="M29,13 L29,22"
+                android:strokeColor="#a21caf"
+                android:strokeWidth="5.5"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round" />
 
-        <path
-            android:fillColor="#00000000"
-            android:pathData="M37,7 L37,26"
-            android:strokeColor="#EA4335"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:strokeWidth="5.5" />
+            <path
+                android:fillColor="#00000000"
+                android:pathData="M29,22 Q29,26 23,26 L17,26 Q13,26 13,22"
+                android:strokeColor="#c026d3"
+                android:strokeWidth="5.5"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round" />
 
-        <path
-            android:fillColor="#00000000"
-            android:pathData="M37,26 L37,35"
-            android:strokeColor="#4285F4"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:strokeWidth="5.5" />
+            <path
+                android:fillColor="#00000000"
+                android:pathData="M37,7 L37,26"
+                android:strokeColor="#db2777"
+                android:strokeWidth="5.5"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round" />
 
-        <path
-            android:fillColor="#00000000"
-            android:pathData="M37,35 Q37,42 44,42"
-            android:strokeColor="#FBBC04"
-            android:strokeLineCap="round"
-            android:strokeLineJoin="round"
-            android:strokeWidth="5.5" />
+            <path
+                android:fillColor="#00000000"
+                android:pathData="M37,26 L37,37"
+                android:strokeColor="#e11d48"
+                android:strokeWidth="5.5"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round" />
 
+            <path
+                android:fillColor="#00000000"
+                android:pathData="M37,37 Q37,42 42,42 L44,42"
+                android:strokeColor="#f43f5e"
+                android:strokeWidth="5.5"
+                android:strokeLineCap="round"
+                android:strokeLineJoin="round" />
+
+        </group>
     </group>
-
 </vector>
