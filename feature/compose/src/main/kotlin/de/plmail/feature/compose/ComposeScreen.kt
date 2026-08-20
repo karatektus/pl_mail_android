@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -206,7 +208,22 @@ fun ComposeScreen(
         }
 
         Column(
-            modifier = Modifier.fillMaxSize().padding(insets).verticalScroll(rememberScrollState())
+            modifier =
+                Modifier.fillMaxSize()
+                    .padding(insets)
+                    // Consumed before the keyboard is paid for, because the
+                    // Scaffold hands its insets out as padding without marking
+                    // them spent. Without this, `imePadding` would add the whole
+                    // IME height on top of a navigation-bar inset the padding
+                    // above has already applied, and the message would sit a
+                    // navigation bar clear of the keys.
+                    .consumeWindowInsets(insets)
+                    // Here and not on the Scaffold, which is the whole of the
+                    // top-bar fix: the app bar is outside this Column, so it
+                    // does not move when the keyboard opens. Only the scroller
+                    // gets shorter, and what was under the fold scrolls.
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
         ) {
             state.scheduled?.let { scheduled ->
                 ScheduledBanner(
