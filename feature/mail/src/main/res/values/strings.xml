@@ -59,6 +59,11 @@
     <string name="reader_reply">Reply</string>
     <string name="reader_reply_all">Reply all</string>
     <string name="reader_forward">Forward</string>
+    <!-- Names the overflow beside the reply buttons. Distinct from "More"
+         in the toolbar, which acts on the whole conversation: two controls
+         a screen apart both announced as "More" are indistinguishable to
+         anyone navigating by label. -->
+    <string name="reader_reply_more">More reply options</string>
     <string name="inbox_empty_body">New mail will appear here as it arrives.</string>
     <!--
       A claim about the list, not about the server. "You're up to date" would be

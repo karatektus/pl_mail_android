@@ -49,6 +49,7 @@
     <string name="reader_reply">Antworten</string>
     <string name="reader_reply_all">Allen antworten</string>
     <string name="reader_forward">Weiterleiten</string>
+    <string name="reader_reply_more">Weitere Antwortoptionen</string>
     <string name="inbox_empty_body">Neue Nachrichten erscheinen hier, sobald sie eintreffen.</string>
     <string name="inbox_end">Mehr liegt auf diesem Gerät nicht</string>
     <string name="drawer_title">plMail</string>

@@ -216,7 +216,9 @@ fun ReaderScreen(
                 // answers a particular one.
                 state.messages.lastOrNull()?.let { newest ->
                     ReaderActionBar(
+                        canReplyAll = newest.hasOtherRecipients,
                         onReply = { onReply(newest.email.emailId, false) },
+                        onReplyAll = { onReply(newest.email.emailId, true) },
                         onForward = { onForward(newest.email.emailId) },
                     )
                 }
@@ -239,8 +241,6 @@ fun ReaderScreen(
                             savePicker.launch(attachment.name ?: DEFAULT_SAVE_NAME)
                         },
                         onShowSource = { viewModel.showSource(message) },
-                        onReply = { all -> onReply(message.email.emailId, all) },
-                        onForward = { onForward(message.email.emailId) },
                     )
                 }
             }
@@ -249,7 +249,7 @@ fun ReaderScreen(
 }
 
 /**
- * Reply and forward, always on screen.
+ * Reply, reply-all and forward, always on screen.
  *
  * **Structural, not decorative.** The reply actions used to live only under the message they
  * answer, which meant reaching them depended on the reader being able to scroll past a body whose
@@ -258,15 +258,33 @@ fun ReaderScreen(
  * could not be reached and the app was unusable on that message. Pinning them removes the
  * dependency: whatever the body does, these are reachable in one tap.
  *
- * Two buttons, not three. Reply-all stays in the per-message row, where the "would this reach
- * anyone a plain reply would not" test is computed and where there is room for it — three pills of
- * German ("Antworten", "Allen antworten", "Weiterleiten") do not fit a 320dp phone without
- * ellipsis, and a button reading "Allen antwo…" is worse than one more scroll.
+ * Two pills and an overflow, not three pills. Three of them in German ("Antworten", "Allen
+ * antworten", "Weiterleiten") do not fit a 320dp phone without ellipsis, and a button reading
+ * "Allen antwo…" is worse than a menu. Reply-all used to be a text link under the body instead,
+ * which duplicated the two pills beside it for the sake of the one verb they did not have; the
+ * links are gone and the verb moved in here rather than being dropped with them.
+ *
+ * @param canReplyAll whether a reply-all would reach anyone the plain reply does not. False hides
+ *   the overflow entirely rather than greying it: a button that sends to exactly the same person
+ *   under a different name teaches people not to trust the difference, which is how a private reply
+ *   eventually goes to a mailing list.
  */
+// Internal rather than private so `ReaderActionBarScreenshotTest` can draw it.
+// The alternative is screenshotting the whole reader, which needs a ViewModel,
+// a database and a thread to open -- none of which this bar's appearance
+// depends on, and all of which would have to keep working for a change in a
+// button to be visible.
 @Composable
-private fun ReaderActionBar(onReply: () -> Unit, onForward: () -> Unit) {
+internal fun ReaderActionBar(
+    canReplyAll: Boolean,
+    onReply: () -> Unit,
+    onReplyAll: () -> Unit,
+    onForward: () -> Unit,
+) {
     val spacing = PlMailTheme.spacing
     val colors = PlMailTheme.colors
+
+    var isMenuOpen by remember { mutableStateOf(false) }
 
     Column(modifier = Modifier.background(colors.surface).navigationBarsPadding()) {
         // The bar is part of the page, separated by a line rather than lifted by
@@ -318,6 +336,39 @@ private fun ReaderActionBar(onReply: () -> Unit, onForward: () -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
+
+            if (canReplyAll) {
+                // Aligned with the pills rather than centred in the row: the
+                // pills are as tall as the touch target and an icon button
+                // centred against them sits a hair high next to their labels.
+                Box(modifier = Modifier.align(Alignment.CenterVertically)) {
+                    IconButton(onClick = { isMenuOpen = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.reader_reply_more),
+                            // The toolbar's own overflow tint. Left to Material
+                            // this is `onSurface` -- pure black in a light theme
+                            // and pure white in a dark one, neither of which is
+                            // a colour this app's palettes contain, and next to
+                            // two soft pills it reads as a different app's icon.
+                            tint = colors.inkSoft,
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = isMenuOpen,
+                        onDismissRequest = { isMenuOpen = false },
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.reader_reply_all)) },
+                            onClick = {
+                                isMenuOpen = false
+                                onReplyAll()
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -327,9 +378,8 @@ private fun ReaderActionBar(onReply: () -> Unit, onForward: () -> Unit) {
  *
  * The two destructive moves are buttons and everything else is in the overflow, matching the
  * selection bar above the list — the same conversation must not offer a different set of verbs
- * depending on whether it is open. Reply is deliberately *not* here: it lives under the message it
- * answers, because a thread has several and "reply" from an app bar quotes whichever one the code
- * picked.
+ * depending on whether it is open. Reply is deliberately *not* here: it is in [ReaderActionBar] at
+ * the foot of the screen, next to the thumb that would use it, and the two must not both offer it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -459,39 +509,6 @@ private fun ReaderBar(
     )
 }
 
-/**
- * Reply, reply-all and forward for one message.
- *
- * Reply-all appears only when it would reach someone the plain reply does not. A button that sends
- * to exactly the same person under a different name teaches people not to trust the difference,
- * which is how a private reply eventually goes to a mailing list.
- */
-@Composable
-private fun ReplyActions(
-    canReplyAll: Boolean,
-    onReply: () -> Unit,
-    onReplyAll: () -> Unit,
-    onForward: () -> Unit,
-) {
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .padding(
-                    horizontal = PlMailTheme.spacing.medium,
-                    vertical = PlMailTheme.spacing.tiny,
-                ),
-        horizontalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.small),
-    ) {
-        TextButton(onClick = onReply) { Text(stringResource(R.string.reader_reply)) }
-
-        if (canReplyAll) {
-            TextButton(onClick = onReplyAll) { Text(stringResource(R.string.reader_reply_all)) }
-        }
-
-        TextButton(onClick = onForward) { Text(stringResource(R.string.reader_forward)) }
-    }
-}
-
 @Composable
 private fun Message(
     message: ReaderMessage,
@@ -505,8 +522,6 @@ private fun Message(
     onOpenAttachment: (AttachmentEntity) -> Unit,
     onSaveAttachment: (AttachmentEntity) -> Unit,
     onShowSource: () -> Unit,
-    onReply: (all: Boolean) -> Unit,
-    onForward: () -> Unit,
 ) {
     val body = message.body
 
@@ -646,27 +661,18 @@ private fun Message(
             modifier = Modifier.fillMaxWidth(),
         )
 
-        // Under the body and above the reply buttons, which is where the eye
-        // arrives after reading: an attachment list above the message competes
-        // with the message for the first look, and the message is what was
-        // opened.
+        // Under the body, which is where the eye arrives after reading: an
+        // attachment list above the message competes with the message for the
+        // first look, and the message is what was opened. It is the last thing
+        // in the card now that the reply links are gone -- they said exactly
+        // what the pinned bar under them already says, and two rows of the same
+        // two verbs a thumb apart is a choice the reader was being asked to
+        // make between identical options.
         Attachments(
             attachments = message.attachments,
             busy = busyAttachments,
             onOpen = onOpenAttachment,
             onSave = onSaveAttachment,
-        )
-
-        // Inside the card, under the message they answer. A thread is several
-        // messages and "reply" has to mean "to this one" -- replying to the
-        // newest when the user was reading the third quotes the wrong text and
-        // threads against the wrong id. The pinned bar answers the conversation;
-        // this answers a message.
-        ReplyActions(
-            canReplyAll = message.hasOtherRecipients,
-            onReply = { onReply(false) },
-            onReplyAll = { onReply(true) },
-            onForward = onForward,
         )
     }
 }

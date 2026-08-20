@@ -94,20 +94,34 @@ object MessageDocument {
      * the mail as source code — which is precisely why the WebView it goes into must have
      * JavaScript disabled and no file access. The sanitising is the server's job and the sandbox is
      * ours.
+     *
+     * @param remoteImages whether the user has allowed this message its pictures. Blocked is the
+     *   only state that changes the markup: the pictures are rewritten into placeholders before
+     *   they are wrapped, so that a message drawn without them is the same shape as the one drawn
+     *   with them. See [BlockedImages].
      */
-    fun wrap(body: String, style: MessageRenderStyle, palette: MessagePalette): String =
-        """
+    fun wrap(
+        body: String,
+        style: MessageRenderStyle,
+        palette: MessagePalette,
+        remoteImages: RemoteImages,
+    ): String {
+        val isBlocking = remoteImages == RemoteImages.BLOCKED
+        val content = if (isBlocking) BlockedImages.mark(body) else body
+
+        return """
         <!doctype html>
         <html${schemeAttribute(style)}>
         <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>${css(style, palette)}</style>
+        <style>${css(style, palette, isBlocking)}</style>
         </head>
-        <body><div id="$ROOT">$body</div></body>
+        <body><div id="$ROOT">$content</div></body>
         </html>
         """
             .trimIndent()
+    }
 
     /**
      * `color-scheme` tells a message that declared `prefers-color-scheme` which one applies.
@@ -118,14 +132,23 @@ object MessageDocument {
     private fun schemeAttribute(style: MessageRenderStyle): String =
         if (style == MessageRenderStyle.DARK_NATIVE) " style=\"color-scheme: dark\"" else ""
 
-    private fun css(style: MessageRenderStyle, palette: MessagePalette): String =
-        base() +
-            when (style) {
-                MessageRenderStyle.ORIGINAL -> untouched(palette)
-                MessageRenderStyle.DARK_NATIVE -> ""
-                MessageRenderStyle.DARK_RESTYLED -> restyled(palette)
-                MessageRenderStyle.DARK_INVERTED -> INVERTED
-            }
+    private fun css(
+        style: MessageRenderStyle,
+        palette: MessagePalette,
+        isBlocking: Boolean,
+    ): String =
+        listOf(
+                base(),
+                if (isBlocking) BLOCKED_IMAGES else "",
+                when (style) {
+                    MessageRenderStyle.ORIGINAL -> untouched(palette)
+                    MessageRenderStyle.DARK_NATIVE -> ""
+                    MessageRenderStyle.DARK_RESTYLED -> restyled(palette)
+                    MessageRenderStyle.DARK_INVERTED -> INVERTED
+                },
+            )
+            .filter { it.isNotEmpty() }
+            .joinToString(separator = "\n")
 
     /**
      * The message exactly as sent — and, in a dark theme, on the paper it was written for.
@@ -219,6 +242,36 @@ object MessageDocument {
             max-width: 100% !important;
         }
         pre { white-space: pre-wrap; word-break: break-word; }
+        """
+            .trimIndent()
+
+    /**
+     * What a picture the user has not allowed looks like.
+     *
+     * **Lifted from the web client, and that is the point of it.** The same rule lives in
+     * `templates/mail/_message_body.html.twig` as `img[data-plmail-blocked]` — the hatch, the
+     * dashed outline, the inset offset and the three greys are its values, not new ones — so the
+     * same message read on a phone and in a browser shows the same thing in the same places. The
+     * marker attribute is put on by [BlockedImages], which is the Android half of the web's
+     * `RemoteContentBlocker`.
+     *
+     * The web's `min-width` and `min-height` are the one thing left out. They are a floor under a
+     * placeholder whose only size is the substituted pixel's; here the size comes from what the
+     * message declared, and a floor would inflate a `1×1` tracking pixel into a visible box — see
+     * [BlockedImages] for why that is the wrong way to be wrong.
+     *
+     * Deliberately unthemed, again matching the web. Under [MessageRenderStyle.DARK_INVERTED] the
+     * hatch is inverted with the document and then inverted back by the imagery rule below, so it
+     * lands on these greys either way — a placeholder that changed colour with the render strategy
+     * would read as part of the sender's design rather than as the app saying "not loaded".
+     */
+    private val BLOCKED_IMAGES =
+        """
+        img[${BlockedImages.MARKER}] {
+            background: repeating-linear-gradient(135deg, #f4f4f5 0 6px, #e4e4e7 6px 12px);
+            outline: 1px dashed #a1a1aa;
+            outline-offset: -1px;
+        }
         """
             .trimIndent()
 

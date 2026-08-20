@@ -61,7 +61,14 @@ fun MessageWebView(
     /** Resolves an inline `cid:` reference to bytes already in the blob cache. */
     inlineImage: (String) -> InlineImage? = { null },
 ) {
-    val document = remember(body, style, palette) { MessageDocument.wrap(body, style, palette) }
+    // Keyed on `remoteImages` as well, because the document itself now differs
+    // between the two states -- blocked pictures are rewritten into placeholders
+    // inside it. Without the key, allowing pictures would swap the client out
+    // and leave the placeholders on screen.
+    val document =
+        remember(body, style, palette, remoteImages) {
+            MessageDocument.wrap(body, style, palette, remoteImages)
+        }
 
     /**
      * The document's height, in pixels, as the WebView last reported it.
