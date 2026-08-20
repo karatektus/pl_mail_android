@@ -265,14 +265,20 @@ private fun ComposeDraft.asEditRequest(): ComposeRequest.Edit? = emailId?.let {
 }
 
 /**
- * Keeps an open composer open across a rotation.
+ * Keeps an open composer open across a rotation, and a share across a process death.
  *
  * Primitives only, and a discriminator rather than a class name, so a rename cannot change what a
  * saved bundle means. Compose has no `Parcelable` for a sealed interface and `Serializable` would
  * make the class's binary shape part of the saved state.
+ *
+ * `Any` rather than `String` as the element type, because [ComposeRequest.Share] carries lists —
+ * recipients, and the staged files that are the whole reason a share survives being killed. An
+ * `ArrayList<String>` is `Serializable`, which is what Compose's bundle check actually asks for, so
+ * it is as saveable as the strings beside it. Restoring casts to `List<*>` and filters rather than
+ * casting to `List<String>`, so nothing here needs an unchecked-cast suppression to compile.
  */
 val ComposeRequestSaver: Saver<ComposeRequest?, Any> =
-    listSaver<ComposeRequest?, String>(
+    listSaver<ComposeRequest?, Any>(
         save = { request ->
             when (request) {
                 null -> emptyList()
@@ -281,6 +287,18 @@ val ComposeRequestSaver: Saver<ComposeRequest?, Any> =
                     listOf("reply", request.accountKey, request.emailId, request.all.toString())
                 is ComposeRequest.Forward -> listOf("forward", request.accountKey, request.emailId)
                 is ComposeRequest.Edit -> listOf("edit", request.accountKey, request.emailId)
+                is ComposeRequest.Share ->
+                    listOf(
+                        "share",
+                        ArrayList(request.to),
+                        ArrayList(request.cc),
+                        ArrayList(request.bcc),
+                        request.subject,
+                        request.text,
+                        ArrayList(request.attachments),
+                        ArrayList(request.tooLarge),
+                        ArrayList(request.unreadable),
+                    )
             }
         },
         restore = { saved ->
@@ -288,13 +306,29 @@ val ComposeRequestSaver: Saver<ComposeRequest?, Any> =
                 "new" -> ComposeRequest.New
                 "reply" ->
                     ComposeRequest.Reply(
-                        accountKey = saved[1],
-                        emailId = saved[2],
-                        all = saved[3].toBoolean(),
+                        accountKey = saved.text(1),
+                        emailId = saved.text(2),
+                        all = saved.text(3).toBoolean(),
                     )
-                "forward" -> ComposeRequest.Forward(saved[1], saved[2])
-                "edit" -> ComposeRequest.Edit(saved[1], saved[2])
+                "forward" -> ComposeRequest.Forward(saved.text(1), saved.text(2))
+                "edit" -> ComposeRequest.Edit(saved.text(1), saved.text(2))
+                "share" ->
+                    ComposeRequest.Share(
+                        to = saved.texts(1),
+                        cc = saved.texts(2),
+                        bcc = saved.texts(3),
+                        subject = saved.text(4),
+                        text = saved.text(5),
+                        attachments = saved.texts(6),
+                        tooLarge = saved.texts(7),
+                        unreadable = saved.texts(8),
+                    )
                 else -> null
             }
         },
     )
+
+private fun List<Any>.text(index: Int): String = getOrNull(index) as? String ?: ""
+
+private fun List<Any>.texts(index: Int): List<String> =
+    (getOrNull(index) as? List<*>)?.filterIsInstance<String>().orEmpty()

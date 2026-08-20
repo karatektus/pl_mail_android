@@ -115,6 +115,19 @@ sealed interface ComposeError {
 
     /** The cancel arrived after the release. The mail has gone; nothing was undone. */
     data object AlreadySent : ComposeError
+
+    /**
+     * Shared files over the size a message can carry, named rather than trimmed.
+     *
+     * Two cases rather than one for the two ways a share can lose a file, because the two lead
+     * somewhere different: a file that is too big can be sent another way, and a file that could
+     * not be read is usually worth sharing again. A single "some files were not attached" tells the
+     * user neither.
+     */
+    data class AttachmentsTooLarge(val names: List<String>, val limitMb: Int) : ComposeError
+
+    /** Shared files the app was not allowed to read, or that were gone by the time it looked. */
+    data class AttachmentsUnreadable(val names: List<String>) : ComposeError
 }
 
 /**

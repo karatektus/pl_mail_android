@@ -141,6 +141,111 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="plmail" android:host="pair" />
             </intent-filter>
+
+            <!--
+              mailto:, which a mail app not answering is a strange thing.
+
+              Until this filter existed, tapping an email address anywhere on
+              this device — a link on a web page, an address in somebody's
+              signature, the mail button on a contact card — offered every mail
+              client installed except this one. Nothing about it was reported as
+              broken because there is nothing to see: the chooser simply does not
+              list plMail, and a user concludes the address is not clickable.
+
+              TWO FILTERS FOR TWO DIFFERENT CALLERS, and they are not a
+              duplicate of each other.
+
+              VIEW is a link being followed. It carries BROWSABLE, which is what
+              a browser requires before it will hand a URI to an app at all: a
+              VIEW filter without it is invisible to Chrome, and that is the case
+              this exists for.
+
+              SENDTO is an app deliberately asking for a composer on a known
+              address — a contacts entry, a "contact us" button, anything built
+              on ShareCompat.IntentBuilder. It gets no BROWSABLE, because
+              BROWSABLE means "safe to start from untrusted web content" and
+              SENDTO is never started that way. Declaring it would be a claim
+              about this component that is not true of this action.
+
+              No android:host and no path. A mailto: is an opaque URI: everything
+              after the colon is the scheme-specific part, so there is no
+              authority for a host to match and a host attribute here would match
+              nothing at all. See Mailto for what is done with the rest of it.
+
+              Both land on MainActivity, which is singleTask, so a mailto:
+              tapped while plMail is open reaches the running instance through
+              onNewIntent rather than stacking a second copy over the mailbox.
+              MainActivity already had to sort a pairing link out of its intent;
+              it now sorts three kinds, and by scheme, because both this and the
+              pairing filter are VIEW and the scheme is the only thing that tells
+              them apart once the intent is in hand.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="mailto" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.SENDTO" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="mailto" />
+            </intent-filter>
+
+            <!--
+              The share sheet.
+
+              **`*/*`, and it is a product decision rather than a shortcut.**
+
+              The alternative is an enumeration — text/plain, image/*, video/*,
+              audio/*, application/pdf — and the enumeration is wrong the first
+              time somebody shares a .zip, a .docx, an .apk, a .gpx or a
+              calendar invitation. A mail message can carry any of those; there
+              is no type a mail client is genuinely unable to attach, so any
+              list here is a list of the files a user is told, with no
+              explanation, that they may not email. "Why can't I send this from
+              plMail" is a worse bug than the one `*/*` buys, and it is a bug
+              with no error message attached to it.
+
+              What `*/*` costs, stated plainly because it is real: plMail now
+              appears in the share sheet of everything on the device, including
+              sheets where mailing the thing makes no sense. That is the same
+              bargain every mail client on the platform makes — Gmail and K-9
+              both claim `*/*` — and the sheet sorts by use, so an entry nobody
+              picks sinks. It is a row of noise against a category of files that
+              silently cannot be sent.
+
+              A note on what `*/*` does NOT match: an intent with no type at all.
+              That is a malformed share and there is nothing useful to do with
+              one, so it is left to fall through to whoever else wants it.
+
+              SEND and SEND_MULTIPLE in one filter, because the difference is
+              only whether EXTRA_STREAM holds a Uri or a list of them and
+              ShareIntake reads both. Splitting them would mean two filters that
+              must not drift.
+
+              text/plain needs no separate mention: `*/*` matches it, and it is
+              the one branch that produces a *body* rather than an attachment.
+              Where that happens is ShareIntake, not here.
+
+              THE COST OF singleTask, which belongs on the record. A share into
+              an already-running plMail brings the mail task forward rather than
+              starting a task on top of the sharing app, so backing out of the
+              composer reveals the inbox and not the gallery the photo came
+              from. The alternative is a second activity with its own
+              taskAffinity, the way CalendarActivity has one — but the composer
+              is hoisted in MainActivity together with the undo-send host that
+              outlives it, and a second copy over there would be a second undo
+              window that the first one does not know about. One task and one
+              composer was the cheaper of the two wrong things.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
         <!--
           The calendar as its own app, off unless the user asks for it.

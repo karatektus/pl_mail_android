@@ -61,6 +61,10 @@
     <string name="compose_error_cancel_failed">Der geplante Versand konnte nicht zurückgenommen werden: %1$s</string>
     <string name="compose_error_already_sent">Diese Nachricht wurde bereits gesendet.</string>
 
+    <!-- Sagt, was NICHT angehängt wurde: was angehängt wurde, steht bereits im Composer. -->
+    <string name="compose_error_attachments_too_large">Nicht angehängt, über %2$d MB: %1$s</string>
+    <string name="compose_error_attachments_unreadable">Nicht angehängt, nicht lesbar: %1$s</string>
+
     <!--
       "Am <Datum> schrieb <Name>:" — the German order puts the verb before the
       subject, so the placeholders are not simply swapped versions of the English.

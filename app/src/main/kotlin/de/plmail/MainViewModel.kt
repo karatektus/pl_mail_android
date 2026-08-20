@@ -9,6 +9,9 @@ import de.plmail.core.data.CalendarRepository
 import de.plmail.core.data.PushTransportManager
 import de.plmail.core.data.SyncWorker
 import de.plmail.core.datastore.CredentialStore
+import de.plmail.feature.compose.ComposeRequest
+import de.plmail.feature.compose.SharedAttachmentStore
+import de.plmail.feature.compose.SharedMessage
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -38,8 +41,21 @@ constructor(
     credentials: CredentialStore,
     calendar: CalendarRepository,
     private val pushTransports: PushTransportManager,
+    private val shared: SharedAttachmentStore,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
+
+    /**
+     * Takes a copy of what another app shared and returns the request that opens the composer on
+     * it.
+     *
+     * Here rather than in the activity because it is IO and wants a scope, and here rather than in
+     * `ComposeViewModel` because of *when* it has to happen: the read grant on a shared
+     * `content://` belongs to the task that received the intent and is gone once that task is, so
+     * the copy has to be made while this activity is alive and cannot wait for the composer's own
+     * ViewModel to be created. See [SharedAttachmentStore] for what is copied and why.
+     */
+    suspend fun stage(message: SharedMessage): ComposeRequest = shared.stage(message)
 
     /**
      * Whether this install has a calendar, which decides whether the drawer offers one.
