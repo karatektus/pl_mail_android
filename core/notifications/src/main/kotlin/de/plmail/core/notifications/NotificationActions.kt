@@ -22,8 +22,10 @@ import kotlinx.coroutines.launch
  *
  * A broadcast rather than an activity, because the point of these is that the phone stays in the
  * user's pocket: an action that unlocks the device and opens the app to archive one message is one
- * nobody uses twice. Reply is deliberately the other way round — it needs a keyboard and a
- * composer, so it goes through [MailDestinations] and opens the app.
+ * nobody uses twice. Reply used to be the exception, on the grounds that it needs a keyboard;
+ * `RemoteInput` puts the keyboard in the shade, so it is a broadcast too now — see
+ * [InlineReplyReceiver], which is separate from this one because a send is not fire-and-forget and
+ * cannot dismiss the notification before it knows how it went.
  *
  * The receiver is **not exported**. Nothing outside this app has any business archiving somebody's
  * mail, and a `PendingIntent` handed to the system carries the right to fire it without the target
@@ -75,36 +77,41 @@ class NotificationActionReceiver : BroadcastReceiver() {
         }
     }
 
-    /**
-     * Cancels the account's summary once nothing is left under it.
-     *
-     * Android removes an auto-cancelled summary when its last child goes *only* in some versions
-     * and only for some paths, and the failure is the one everybody has seen: an empty "3 new
-     * messages" heading sitting in the shade with nothing beneath it, which cannot be dismissed by
-     * swiping a child because there are none. Counting what is left is cheap and removes the whole
-     * class of it.
-     */
-    private fun tidySummary(
-        context: Context,
-        manager: NotificationManagerCompat,
-        accountKey: String,
-    ) {
-        val group = groupKey(accountKey)
-
-        val remaining = runCatching {
-            manager.activeNotifications.count {
-                NotificationCompat.getGroup(it.notification) == group &&
-                    !NotificationCompat.isGroupSummary(it.notification)
-            }
-        }
-            .getOrDefault(1)
-
-        if (remaining == 0) manager.cancel(summaryId(accountKey))
-    }
-
     private companion object {
         const val TAG = "plMail.Notify"
     }
+}
+
+/**
+ * Cancels the account's summary once nothing is left under it.
+ *
+ * Android removes an auto-cancelled summary when its last child goes *only* in some versions and
+ * only for some paths, and the failure is the one everybody has seen: an empty "3 new messages"
+ * heading sitting in the shade with nothing beneath it, which cannot be dismissed by swiping a
+ * child because there are none. Counting what is left is cheap and removes the whole class of it.
+ *
+ * Shared with the inline reply, which takes a child away for the same reason archive does: the
+ * conversation has been dealt with.
+ */
+internal fun tidySummary(
+    context: Context,
+    manager: NotificationManagerCompat,
+    accountKey: String,
+) {
+    val group = groupKey(accountKey)
+
+    val remaining = runCatching {
+        manager.activeNotifications.count {
+            NotificationCompat.getGroup(it.notification) == group &&
+                !NotificationCompat.isGroupSummary(it.notification)
+        }
+    }
+        // One rather than zero: a platform that will not answer must not be
+        // read as "nothing is left", which would cancel a summary that still
+        // has children under it.
+        .getOrDefault(1)
+
+    if (remaining == 0) manager.cancel(summaryId(accountKey))
 }
 
 /** Builds the intents [NotificationActionReceiver] answers. */

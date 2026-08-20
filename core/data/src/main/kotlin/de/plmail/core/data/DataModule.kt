@@ -35,6 +35,16 @@ abstract class DataModule {
     @Binds @Singleton abstract fun submissionDirectory(real: ComposeRepository): SubmissionDirectory
 
     /**
+     * The shade reply's view of the composer.
+     *
+     * Bound for the reason the two above are, and with one extra: [InlineReplies] runs on a
+     * broadcast receiver, so everything it holds is constructed while the user is looking at a
+     * notification. Two methods is what that path can afford; the attachment uploader and the
+     * content resolver behind [ComposeRepository] are not.
+     */
+    @Binds @Singleton abstract fun replySource(real: ComposeRepository): ReplySource
+
+    /**
      * Declares the listener set so it can be empty.
      *
      * Without this, a graph with no `@IntoSet NewMailListener` fails to compile rather than

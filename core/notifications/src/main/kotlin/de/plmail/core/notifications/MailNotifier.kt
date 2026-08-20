@@ -36,6 +36,10 @@ import javax.inject.Singleton
  *
  * Nothing here decides *what* is new. That is [de.plmail.core.data.DeltaSync]'s judgement, and it
  * is deliberately made where the cache is, not here.
+ *
+ * What one conversation's row looks like is [conversationNotification]'s, and it is a top-level
+ * function rather than a method because the inline reply has to be able to rebuild the identical
+ * row without going through the sync — see [ReplyNotifications].
  */
 @Singleton
 class MailNotifier
@@ -68,77 +72,16 @@ constructor(
         val group = groupKey(first.accountKey)
 
         messages.forEach { message ->
-            manager.notifySafely(notificationId(message), child(message, channelId, group))
+            manager.notifySafely(
+                notificationId(message),
+                conversationNotification(context, message, channelId, group, destinations),
+            )
         }
 
         manager.notifySafely(
             summaryId(first.accountKey),
             summary(first.accountKey, first.accountName, messages, channelId, group),
         )
-    }
-
-    /**
-     * One conversation.
-     *
-     * `MessagingStyle` rather than `BigTextStyle`, and not for decoration: it is the style Android
-     * Auto, Wear and the conversation section of the shade all understand, so it is what makes the
-     * sender's name the heading rather than the app's. A mail client that announces itself instead
-     * of announcing who wrote is the wrong way round.
-     */
-    private fun child(message: NewMessage, channelId: String, group: String): Notification {
-        val sender = androidx.core.app.Person.Builder().setName(message.sender).build()
-
-        val style =
-            NotificationCompat.MessagingStyle(
-                    androidx.core.app.Person.Builder()
-                        .setName(context.getString(R.string.notification_you))
-                        .build()
-                )
-                .setConversationTitle(message.subject ?: context.getString(R.string.no_subject))
-                .addMessage(message.preview, message.receivedAt, sender)
-
-        return NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(R.drawable.ic_notification_mail)
-            .setStyle(style)
-            .setContentTitle(message.sender)
-            .setContentText(message.subject ?: context.getString(R.string.no_subject))
-            .setWhen(message.receivedAt)
-            .setShowWhen(true)
-            .setCategory(NotificationCompat.CATEGORY_EMAIL)
-            .setGroup(group)
-            .setAutoCancel(true)
-            .setContentIntent(destinations.openConversation(message.accountKey, message.threadId))
-            // Dismissing one conversation must not leave the account's summary
-            // behind with nothing under it, which is what happens if nobody
-            // tidies up -- see NotificationActions.
-            .setDeleteIntent(
-                NotificationActions.dismissed(context, message.accountKey, notificationId(message))
-            )
-            .addAction(
-                NotificationCompat.Action.Builder(
-                        R.drawable.ic_notification_archive,
-                        context.getString(R.string.action_archive),
-                        NotificationActions.archive(context, message, notificationId(message)),
-                    )
-                    .build()
-            )
-            .addAction(
-                NotificationCompat.Action.Builder(
-                        R.drawable.ic_notification_read,
-                        context.getString(R.string.action_mark_read),
-                        NotificationActions.markRead(context, message, notificationId(message)),
-                    )
-                    .build()
-            )
-            .addAction(
-                NotificationCompat.Action.Builder(
-                        R.drawable.ic_notification_reply,
-                        context.getString(R.string.action_reply),
-                        destinations.reply(message.accountKey, message.emailId),
-                    )
-                    .build()
-            )
-            .build()
     }
 
     /**
@@ -263,12 +206,12 @@ internal fun groupKey(accountKey: String): String = "account#$accountKey"
 /**
  * `notify` that cannot throw.
  *
- * The permission is checked before any of this runs, but it can be revoked between that check and
- * this call — the user is in Settings while their phone is syncing — and a `SecurityException`
+ * The permission is checked before the sync's own posts, but it can be revoked between that check
+ * and this call — the user is in Settings while their phone is syncing — and a `SecurityException`
  * inside a broadcast receiver takes the process down. There is nothing useful to do about it beyond
  * not showing the notification.
  */
 @SuppressLint("MissingPermission")
-private fun NotificationManagerCompat.notifySafely(id: Int, notification: Notification) {
+internal fun NotificationManagerCompat.notifySafely(id: Int, notification: Notification) {
     runCatching { notify(id, notification) }
 }

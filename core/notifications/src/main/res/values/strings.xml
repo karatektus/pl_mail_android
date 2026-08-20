@@ -26,6 +26,32 @@
     <string name="action_archive">Archive</string>
     <string name="action_mark_read">Mark read</string>
     <string name="action_reply">Reply</string>
+    <string name="action_try_again">Try again</string>
+
+    <!--
+      The RemoteInput's own label, which is the placeholder inside the text
+      field rather than the button beside it — so it says what to put there,
+      not what the button does.
+    -->
+    <string name="reply_hint">Your reply</string>
+    <!--
+      Shown as the notification's subtext while the send is in flight. Present
+      tense and no ellipsis character in the source: it goes through
+      translation, and a real U+2026 here is invisible to whoever edits it next.
+    -->
+    <string name="reply_sending">Sending…</string>
+
+    <string name="reply_not_sent">Reply not sent</string>
+    <!--
+      Three sentences rather than one, because the remedies differ. Only the
+      first is worth a "try again" button; the other two need the app opened,
+      and saying so is more use than a generic apology. Each one ends by saying
+      the reply is still here, because that is the question the user actually
+      has.
+    -->
+    <string name="reply_failed_offline">There was no connection to your server. Your reply is still here.</string>
+    <string name="reply_failed_unanswerable">This message could not be answered from the notification. Open plMail to reply.</string>
+    <string name="reply_failed_refused">Your server would not accept the reply. Open plMail to send it.</string>
 
     <plurals name="new_messages">
         <item quantity="one">1 new message</item>

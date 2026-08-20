@@ -15,6 +15,29 @@
             android:name=".NotificationActionReceiver"
             android:enabled="true"
             android:exported="false" />
+
+        <!--
+          The reply typed in the shade.
+
+          exported="false" is load-bearing here in a way it is not above, and
+          the reason is worth stating plainly. A PendingIntent carrying a
+          RemoteInput has to be MUTABLE — filling in the typed text is exactly
+          the mutation the system performs, and an immutable one arrives empty
+          and sends nothing. So "nobody can alter it" is not the guarantee on
+          this one. What is left is that the intent names its component, so it
+          cannot be re-aimed, and that this receiver is reachable only by
+          firing a PendingIntent the app itself created. Export it and any app
+          on the device gains a one-line API for sending mail as the user, with
+          no prompt and nothing in the shade to show it happened.
+
+          Separate from NotificationActionReceiver because the work is: archive
+          dismisses the notification first and reports nothing, and a send has
+          to hold the row open until it knows whether the mail left.
+        -->
+        <receiver
+            android:name=".InlineReplyReceiver"
+            android:enabled="true"
+            android:exported="false" />
     </application>
 
 </manifest>

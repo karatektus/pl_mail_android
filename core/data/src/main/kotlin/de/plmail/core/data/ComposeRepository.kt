@@ -70,7 +70,7 @@ constructor(
     private val credentials: CredentialStore,
     private val mail: MailRepository,
     private val accounts: AccountsRepository,
-) : DraftSender, SubmissionDirectory {
+) : DraftSender, SubmissionDirectory, ReplySource {
 
     /**
      * Every address the user can send as, across every account.
@@ -105,6 +105,15 @@ constructor(
         }
 
     /**
+     * The same list, resolved once, for a caller with no screen to keep up to date.
+     *
+     * The notification shade's reply needs to know which address answers and then never hear about
+     * it again — see [ReplySource]. Collecting [identities] for that would leave a Room observer
+     * open behind a broadcast receiver that is about to stop existing.
+     */
+    override suspend fun sendingIdentities(): List<SendIdentity> = identities().first()
+
+    /**
      * Re-reads `Identity/get` for every account.
      *
      * Excluded from push and from delta sync on purpose: identities change only when the user edits
@@ -135,7 +144,7 @@ constructor(
     /**
      * The message a reply or forward is built from, with its body, from the cache or the server.
      */
-    suspend fun original(accountKey: String, emailId: String): Email? {
+    override suspend fun original(accountKey: String, emailId: String): Email? {
         val account = database.accounts().byUid(accountKey) ?: return null
         val client = clients.forAccount(accountKey) ?: return null
 
