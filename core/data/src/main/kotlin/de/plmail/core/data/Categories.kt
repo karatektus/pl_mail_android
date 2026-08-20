@@ -152,3 +152,22 @@ sealed interface MailView {
             }
     }
 }
+
+/**
+ * Whether this view is where the app opens, under either of the two names it has.
+ *
+ * [MailView.START] is Primary, and on a plMail that classifies nothing the sidebar draws an Inbox
+ * *label* row that reaches the same list — see [MailView] and `FeedRepository.category`. So "am I
+ * at the start destination" has two spellings, and code that checked only the first got them wrong
+ * in ways that are individually small and all in the same direction: the feed layer would have
+ * restarted a pager for a list it was already showing, and back would have been a dead press on the
+ * one screen where back has to leave.
+ *
+ * One function rather than the same `role == "inbox"` test written out wherever it is needed,
+ * because the two places that need it are a pager and a back handler and nothing would have
+ * connected them.
+ */
+val MailView.isStartDestination: Boolean
+    get() = this == MailView.START || (this is MailView.Labelled && label.role == START_ROLE)
+
+private const val START_ROLE = "inbox"

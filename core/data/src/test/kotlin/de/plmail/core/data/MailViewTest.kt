@@ -2,6 +2,8 @@ package de.plmail.core.data
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * Where the app opens, and what a saved destination resolves to.
@@ -97,4 +99,41 @@ class MailViewTest {
             assertEquals(view, MailView.restore(view.toKey(), listOf(work)), view.toKey())
         }
     }
+
+    /**
+     * The start destination has two spellings, and both have to answer yes.
+     *
+     * On a plMail that classifies nothing there are no category rows, so the sidebar draws an Inbox
+     * *label* and that row reaches the same list Primary does. Code that tested only `==
+     * MailView.START` got this wrong quietly and consistently: back on the Inbox label was a dead
+     * press, and the pager restarted for a list it was already showing.
+     */
+    @Test
+    fun `primary and the inbox label are both the start destination`() {
+        assertTrue(MailView.START.isStartDestination)
+        assertTrue(MailView.Labelled(label("1", "Inbox", role = "inbox")).isStartDestination)
+    }
+
+    @Test
+    fun `nothing else is`() {
+        assertFalse(MailView.Category(MailCategory.PROMOTIONS).isStartDestination)
+        assertFalse(MailView.Labelled(label("2", "Archive", role = "archive")).isStartDestination)
+        // Somebody's own label called Inbox is one of their labels, not the
+        // inbox -- the same rule the sidebar's glyphs follow.
+        assertFalse(MailView.Labelled(label("3", "Inbox")).isStartDestination)
+    }
+
+    private fun label(key: String, name: String, role: String? = null) =
+        Label(
+            key = key,
+            name = name,
+            path = name,
+            role = role,
+            color = null,
+            unreadThreads = 0,
+            totalThreads = 0,
+            mayRename = role == null,
+            mayDelete = role == null,
+            bindings = listOf(LabelBinding("https://nas.local/1", key)),
+        )
 }

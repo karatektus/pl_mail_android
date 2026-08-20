@@ -25,6 +25,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.window.core.layout.WindowSizeClass
 import de.plmail.core.data.MailView
+import de.plmail.core.data.isStartDestination
 import de.plmail.core.designsystem.PlMailTheme
 import kotlinx.coroutines.launch
 
@@ -97,7 +98,7 @@ fun MailShell(
     // selection -- all take the gesture first. Only from somewhere else: back on
     // Primary itself still leaves, because Primary is where the app opens and a
     // start destination that swallowed back would be a screen with no exit.
-    BackHandler(enabled = selected != MailView.START) { selectedKey = null }
+    BackHandler(enabled = !selected.isStartDestination) { selectedKey = null }
 
     val sidebar =
         @Composable {

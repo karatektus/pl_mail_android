@@ -22,6 +22,7 @@ import de.plmail.core.data.MailView
 import de.plmail.core.data.Outbox
 import de.plmail.core.data.ShownThreads
 import de.plmail.core.data.UndoableAction
+import de.plmail.core.data.isStartDestination
 import de.plmail.core.database.ThreadEntity
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -376,10 +377,7 @@ constructor(
      */
     private val shownFeed: Flow<MailView> =
         shown
-            .map { view ->
-                if (view is MailView.Labelled && view.label.role == INBOX_ROLE) MailView.START
-                else view
-            }
+            .map { view -> if (view.isStartDestination) MailView.START else view }
             .distinctUntilChanged { old, new -> old.feedId == new.feedId }
 
     /**
@@ -469,6 +467,5 @@ constructor(
 
     private companion object {
         const val STOP_TIMEOUT_MILLIS = 5_000L
-        const val INBOX_ROLE = "inbox"
     }
 }
