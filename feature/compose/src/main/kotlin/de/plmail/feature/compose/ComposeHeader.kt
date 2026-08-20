@@ -2,13 +2,11 @@ package de.plmail.feature.compose
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreHoriz
@@ -246,7 +244,7 @@ private fun SummaryRow(state: ComposeUiState, onExpand: () -> Unit) {
             summary.subject,
         )
 
-    BoxWithConstraints(
+    Row(
         modifier =
             Modifier.fillMaxWidth()
                 .clickable(
@@ -254,64 +252,71 @@ private fun SummaryRow(state: ComposeUiState, onExpand: () -> Unit) {
                     onClick = onExpand,
                 )
                 .padding(horizontal = theme.spacing.gutter, vertical = theme.spacing.small)
-                .semantics(mergeDescendants = true) { contentDescription = description }
+                .semantics(mergeDescendants = true) { contentDescription = description },
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        // Unweighted and bounded, so the Row measures it first and hands the
-        // remainder to the subject. A weight on both halves would split the row
-        // down the middle whatever they contain, and a short addressing would
-        // then leave a hole in the line with the subject still cut short.
-        val addressingWidth = maxWidth * ADDRESSING_SHARE
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(theme.spacing.small),
-            verticalAlignment = Alignment.CenterVertically,
+        // Two lines rather than one, and the subject gets its own.
+        //
+        // The first version put everything on a single row and had to ration
+        // the width between the addressing and the subject -- a little over half
+        // each -- which meant both were usually elided and neither could be read
+        // at a glance. That is not a shortage of room but a category error: who
+        // it is going to and what it is about are two facts, and the reason to
+        // fold the header at all is that they are the two worth keeping. A line
+        // apiece costs one row of a compact style and gives each of them the
+        // whole width.
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(theme.spacing.hair),
         ) {
-            Text(
-                text = summary.addressing,
-                style = MaterialTheme.typography.bodySmall,
-                color = theme.colors.inkMuted,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.widthIn(max = addressingWidth),
-            )
-
-            // Its own element, and that is the point of it. Inside the
-            // addressing it was the last thing on a string that elides, so the
-            // one part of the line a reader cannot reconstruct -- that this is
-            // going to more people than it names -- was the first part to
-            // disappear. Unbounded and unelidable here, so "+2" survives
-            // whatever the names cost.
-            if (summary.more.isNotEmpty()) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(theme.spacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Text(
-                    text = summary.more,
+                    text = summary.addressing,
                     style = MaterialTheme.typography.bodySmall,
                     color = theme.colors.inkMuted,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
                 )
+
+                // Its own element, and that is the point of it. Inside the
+                // addressing it was the last thing on a string that elides, so
+                // the one part of the line a reader cannot reconstruct -- that
+                // this is going to more people than it names -- was the first
+                // part to disappear. Unbounded and unelidable here, so "+2"
+                // survives whatever the names cost.
+                if (summary.more.isNotEmpty()) {
+                    Text(
+                        text = summary.more,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = theme.colors.inkMuted,
+                        maxLines = 1,
+                    )
+                }
             }
 
-            Text(
-                text = SUBJECT_MARK,
-                style = MaterialTheme.typography.bodySmall,
-                color = theme.colors.inkFaint,
-            )
-
+            // The brighter of the two, because it is what the message *is*. On
+            // the single-line version this had to compete with the addressing
+            // for the same run of pixels and lost about half of itself; here it
+            // has the row.
             Text(
                 text = summary.subject,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium,
                 color = theme.colors.ink,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-
-            Icon(
-                imageVector = Icons.Filled.ExpandMore,
-                contentDescription = null,
-                tint = theme.colors.inkMuted,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
+
+        Icon(
+            imageVector = Icons.Filled.ExpandMore,
+            contentDescription = null,
+            tint = theme.colors.inkMuted,
+        )
     }
 }
 
@@ -428,8 +433,9 @@ internal fun summariseRecipients(
 /**
  * The collapsed header, as the pieces the row draws.
  *
- * Three rather than one string because each elides differently: [addressing] gives way first,
- * [subject] takes what is left, and [more] gives way never. It is empty when everybody fits.
+ * Three rather than one string because they are drawn in three places and elide differently:
+ * [addressing] takes the first line and gives way to [more], which gives way never, and [subject]
+ * has the second line to itself. [more] is empty when everybody fits.
  */
 internal data class ComposeSummary(
     val addressing: String,
@@ -444,10 +450,10 @@ internal data class ComposeSummary(
  * strings and none of them is about Compose: nobody named, one person, more people than fit, a
  * message with no subject yet.
  *
- * **Three pieces rather than one line**, because the row has to be able to elide them independently
- * — see [SummaryRow]. Within [ComposeSummary.addressing] the mark is `›`, which reads as direction:
- * this address is sending to those people. It also keeps the two halves of the addressing from
- * running into one another, where a comma would look like one more recipient.
+ * **Three pieces rather than one string**, because the header draws them on two lines and elides
+ * them independently — see [SummaryRow]. Within [ComposeSummary.addressing] the mark is `›`, which
+ * reads as direction: this address is sending to those people. It also keeps the two halves of the
+ * addressing from running into one another, where a comma would look like one more recipient.
  *
  * [noSubject] is passed in rather than resolved here so this stays free of resources — the
  * placeholder has to be a translated string, and this function has to be testable on the JVM.
@@ -485,15 +491,4 @@ internal fun composeSummary(
  */
 internal const val MAX_SUMMARY_NAMES = 2
 
-/**
- * How much of the row the sender and recipients may take before they elide.
- *
- * A little over half. The subject gets whatever is left and no less, which is what stops a long To
- * line from hiding it — and a fraction rather than a fixed width, because the same header is drawn
- * on a phone and inside a 720dp dialog.
- */
-private const val ADDRESSING_SHARE = 0.55f
-
 private const val RECIPIENT_MARK = "›"
-
-private const val SUBJECT_MARK = "·"
