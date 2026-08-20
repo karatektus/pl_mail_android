@@ -3,15 +3,14 @@ package de.plmail.feature.compose
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
@@ -47,7 +46,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -55,12 +53,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -108,6 +107,11 @@ fun ComposeScreen(
 
     var isChoosingWhen by remember { mutableStateOf(false) }
     var isPickingExactTime by remember { mutableStateOf(false) }
+
+    // Open, until the message itself is being written. Saveable because a
+    // rotation must not throw the user back to four rows of header over three
+    // lines of the paragraph they were in the middle of.
+    var isHeaderExpanded by rememberSaveable { mutableStateOf(true) }
 
     LaunchedEffect(request) { viewModel.open(request, strings) }
 
@@ -194,8 +198,6 @@ fun ComposeScreen(
             return@Scaffold
         }
 
-        val spacing = PlMailTheme.spacing
-
         if (isPickingExactTime) {
             SendLaterPicker(
                 latest = state.latestSendAt(Instant.now()),
@@ -233,51 +235,17 @@ fun ComposeScreen(
                 PlMailDivider()
             }
 
-            FromRow(state = state, onSelected = viewModel::setIdentity)
-            PlMailDivider()
-
-            RecipientField(
-                label = stringResource(R.string.compose_to),
-                addresses = state.draft.to,
-                onChanged = viewModel::setTo,
-                suggestions = state.suggestions,
+            ComposeHeader(
+                state = state,
+                isExpanded = isHeaderExpanded,
+                onExpandedChange = { isHeaderExpanded = it },
+                onIdentity = viewModel::setIdentity,
+                onTo = viewModel::setTo,
+                onCc = viewModel::setCc,
+                onBcc = viewModel::setBcc,
+                onSubject = viewModel::setSubject,
+                onShowCopyFields = viewModel::showCopyFields,
                 onQueryChanged = viewModel::suggest,
-            )
-
-            if (state.isShowingCopyFields) {
-                RecipientField(
-                    label = stringResource(R.string.compose_cc),
-                    addresses = state.draft.cc,
-                    onChanged = viewModel::setCc,
-                    suggestions = state.suggestions,
-                    onQueryChanged = viewModel::suggest,
-                )
-
-                RecipientField(
-                    label = stringResource(R.string.compose_bcc),
-                    addresses = state.draft.bcc,
-                    onChanged = viewModel::setBcc,
-                    suggestions = state.suggestions,
-                    onQueryChanged = viewModel::suggest,
-                )
-            } else {
-                TextButton(
-                    onClick = viewModel::showCopyFields,
-                    modifier = Modifier.padding(horizontal = spacing.medium),
-                ) {
-                    Text(stringResource(R.string.compose_show_copy_fields))
-                }
-            }
-
-            PlMailDivider()
-
-            TextField(
-                value = state.draft.subject,
-                onValueChange = viewModel::setSubject,
-                placeholder = { Text(stringResource(R.string.compose_subject)) },
-                singleLine = true,
-                colors = flatFieldColors(),
-                modifier = Modifier.fillMaxWidth(),
             )
 
             PlMailDivider()
@@ -307,7 +275,18 @@ fun ComposeScreen(
                         placeholderColor = PlMailTheme.colors.fieldPlaceholder,
                         textColor = PlMailTheme.colors.ink,
                     ),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 240.dp),
+                modifier =
+                    Modifier.fillMaxWidth().heightIn(min = 240.dp).onFocusChanged { focus ->
+                        // Folded when the message itself takes the cursor, and
+                        // on nothing else -- not on the keyboard appearing,
+                        // which also happens when the user taps To. And never
+                        // over an empty To line: there is nothing to summarise
+                        // yet, and hiding the field somebody has still to fill
+                        // in would be the worst moment to save four rows.
+                        if (focus.isFocused && state.draft.hasRecipients) {
+                            isHeaderExpanded = false
+                        }
+                    },
             )
 
             if (state.quotedHtml.isNotBlank()) {
@@ -320,86 +299,6 @@ fun ComposeScreen(
             }
 
             SaveState(isSaved = state.isSaved, hasId = state.draft.emailId != null)
-        }
-    }
-}
-
-/**
- * Who the message comes from.
- *
- * Always visible, never hidden behind a menu — plMail accounts can hold several sendable addresses
- * and one credential reaches several accounts, so "which of me is this from" is a real question at
- * the moment of writing rather than a setting.
- *
- * **One entry per alias**, which it could not be until recently: `EmailSubmission/set` ignored
- * `identityId` and sent everything as the account's own address, so the picker collapsed the list
- * to one entry per account rather than promising something the send would not honour. The server
- * now resolves the id through the same list `Identity/get` publishes and refuses an id it did not
- * publish with `forbiddenFrom`, so every entry here is an address the mail will genuinely leave as.
- *
- * One limit worth knowing and not worth pretending about: the server sets the From *address* only.
- * The display name still comes from the account, on the web path too — so an alias with its own
- * name shows that name here and the mail goes out under the account's.
- */
-@Composable
-private fun FromRow(state: ComposeUiState, onSelected: (de.plmail.core.data.SendIdentity) -> Unit) {
-    var isOpen by remember { mutableStateOf(false) }
-    val choices = state.identities
-
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .clickable(enabled = choices.size > 1) { isOpen = true }
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = stringResource(R.string.compose_from),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        Text(
-            text = state.identity?.label ?: stringResource(R.string.compose_from_unknown),
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-
-        if (choices.size > 1) {
-            Icon(
-                imageVector = Icons.Filled.MoreHoriz,
-                contentDescription = stringResource(R.string.compose_choose_sender),
-            )
-        }
-
-        DropdownMenu(expanded = isOpen, onDismissRequest = { isOpen = false }) {
-            choices.forEach { identity ->
-                DropdownMenuItem(
-                    text = { Text(identity.label) },
-                    // Only when there is more than one account in the list.
-                    // Several aliases of one mailbox do not need its name
-                    // repeated under each of them.
-                    trailingIcon =
-                        if (state.showsAccountNames) {
-                            {
-                                Text(
-                                    text = identity.accountName,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                            }
-                        } else {
-                            null
-                        },
-                    onClick = {
-                        onSelected(identity)
-                        isOpen = false
-                    },
-                )
-            }
         }
     }
 }
@@ -656,7 +555,7 @@ private fun ComposeError.text(): String =
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun flatFieldColors() =
+internal fun flatFieldColors() =
     TextFieldDefaults.colors(
         focusedContainerColor = PlMailTheme.colors.surface,
         unfocusedContainerColor = PlMailTheme.colors.surface,

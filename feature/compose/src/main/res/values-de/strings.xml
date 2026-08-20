@@ -17,6 +17,15 @@
     <string name="compose_subject">Betreff</string>
     <string name="compose_body_hint">Nachricht schreiben</string>
 
+    <string name="compose_no_subject">(kein Betreff)</string>
+    <string name="compose_summary_expand">Absender, Empfänger und Betreff anzeigen</string>
+    <!-- "Von … an …", the order German addresses an envelope in. -->
+    <string name="compose_summary_description">Von %1$s an %2$s, Betreff %3$s</string>
+    <plurals name="compose_summary_more">
+        <item quantity="one">und 1 weitere Person</item>
+        <item quantity="other">und %1$d weitere Personen</item>
+    </plurals>
+
     <string name="compose_bold">Fett</string>
     <string name="compose_italic">Kursiv</string>
     <string name="compose_underline">Unterstrichen</string>

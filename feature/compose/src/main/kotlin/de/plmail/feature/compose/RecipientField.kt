@@ -24,6 +24,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
@@ -50,6 +52,21 @@ internal fun RecipientField(
     suggestions: List<EmailAddress>,
     onQueryChanged: (String) -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * A handle on the input, for a caller that has to put the cursor here.
+     *
+     * The collapsed header uses it: tapping the summary opens the fields and moves the cursor into
+     * To in the same gesture, so nobody has to hunt for the field they just asked to see.
+     */
+    focusRequester: FocusRequester = remember { FocusRequester() },
+    /**
+     * What sits at the end of the input line — the Cc/Bcc affordance, on the To line.
+     *
+     * A slot rather than a boolean, because this component has no business knowing what Cc means;
+     * it knows it has a line with an end to it. See `CopyFieldsButton` for why that end is where
+     * the affordance belongs.
+     */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     var typed by remember { mutableStateOf("") }
 
@@ -104,9 +121,14 @@ internal fun RecipientField(
             },
             // A placeholder rather than a floating label: the label animating
             // up and shrinking on focus is a form's idiom, and this is a line
-            // of an address book. The prefix below says what the line is.
-            placeholder = { Text(label) },
+            // of an address book.
+            //
+            // One of the two, never both. The prefix appears once the line has
+            // chips on it, so a line with a recipient and nothing typed drew
+            // the prefix *and* the placeholder and read "To To".
+            placeholder = if (addresses.isEmpty()) ({ Text(label) }) else null,
             prefix = if (addresses.isEmpty()) null else ({ Text("$label ") }),
+            trailingIcon = trailing,
             singleLine = true,
             keyboardOptions =
                 KeyboardOptions(
@@ -125,7 +147,7 @@ internal fun RecipientField(
                     unfocusedPlaceholderColor = theme.colors.fieldPlaceholder,
                 ),
             modifier =
-                Modifier.fillMaxWidth().onFocusChanged { focus ->
+                Modifier.fillMaxWidth().focusRequester(focusRequester).onFocusChanged { focus ->
                     // Tapping Send from inside this field is the case this
                     // exists for: without it the address being typed is
                     // silently dropped and the mail goes to whoever was already
