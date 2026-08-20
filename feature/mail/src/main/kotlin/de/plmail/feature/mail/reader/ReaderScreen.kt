@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -303,10 +304,19 @@ internal fun ReaderActionBar(
                     contentColor = colors.accent,
                 )
 
+            // Material's own content padding is 24dp at each end, which on a
+            // phone is most of what a German verb needs: "Weiterleiten" arrived
+            // as "Weiterleit…" while the padding beside it sat empty. The pill
+            // is already separated by its fill and sized by `weight`, so the
+            // padding is decoration rather than structure -- and the label is
+            // the part that has to survive.
+            val roomForTheLabel = PaddingValues(horizontal = spacing.small)
+
             FilledTonalButton(
                 onClick = onReply,
                 modifier = Modifier.weight(1f).heightIn(min = spacing.touchTarget),
                 colors = tonal,
+                contentPadding = roomForTheLabel,
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.Reply,
@@ -324,6 +334,7 @@ internal fun ReaderActionBar(
                 onClick = onForward,
                 modifier = Modifier.weight(1f).heightIn(min = spacing.touchTarget),
                 colors = tonal,
+                contentPadding = roomForTheLabel,
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Outlined.Forward,

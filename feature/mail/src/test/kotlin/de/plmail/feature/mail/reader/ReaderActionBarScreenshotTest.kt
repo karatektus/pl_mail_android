@@ -51,6 +51,23 @@ class ReaderActionBarScreenshotTest {
     }
 
     /**
+     * The same bar in German, which is where its labels stopped fitting.
+     *
+     * "Weiterleiten" is twelve characters against "Forward"'s seven, and Material's own 24dp of
+     * content padding at each end of a tonal button was enough to push it over: the shipped app
+     * drew "Weiterleit…" with empty padding either side of it. English fits with or without that
+     * padding, so an English-only baseline could not have caught it and did not.
+     *
+     * Robolectric resolves resources against the qualifier, so this is the real `values-de` string
+     * measured by the real button rather than a German-looking placeholder.
+     */
+    @Test
+    @Config(qualifiers = "de-rDE-w411dp-h891dp-normal-long-notround-any-420dpi")
+    fun inGerman() {
+        capture("reader-actions-german", canReplyAll = true)
+    }
+
+    /**
      * A message from one person to one person, where reply-all would reach nobody new.
      *
      * No overflow at all rather than a greyed one. A control that sends to exactly the same people
