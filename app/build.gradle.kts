@@ -131,6 +131,23 @@ android {
      * the test finds it without hard-coding a build directory that changes with the variant.
      */
     testOptions.unitTests.isIncludeAndroidResources = true
+
+    /**
+     * Every language in every install, whatever shape the build is delivered in.
+     *
+     * An App Bundle splits resources by language by default and Play ships only the ones matching
+     * the device's *system* locale — which is exactly wrong for an app that lets the user pick a
+     * language of its own. Somebody on an English phone who chooses Deutsch would find the strings
+     * were never installed, and the app would fall back to English while claiming to be in German.
+     * Play Feature Delivery has an API for fetching a language on demand and it is not worth the
+     * complexity for two languages.
+     *
+     * This build ships APKs today — F-Droid and the release workflow both do — so nothing currently
+     * splits anything. It is declared regardless, because the day somebody builds a bundle is not
+     * the day to discover this, and because it is what `AppLanguages` suppresses lint's
+     * `AppBundleLocaleChanges` against.
+     */
+    bundle.language.enableSplit = false
 }
 
 dependencies {

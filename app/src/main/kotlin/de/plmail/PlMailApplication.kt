@@ -1,8 +1,10 @@
 package de.plmail
 
 import android.app.Application
+import android.content.Context
 import androidx.lifecycle.ProcessLifecycleOwner
 import dagger.hilt.android.HiltAndroidApp
+import de.plmail.core.data.AppLocaleOverride
 import javax.inject.Inject
 
 /**
@@ -19,11 +21,32 @@ import javax.inject.Inject
  * test replaces it by replacing a binding, and this class holds one line that registers it. The
  * registration itself cannot live anywhere else — `ProcessLifecycleOwner` is per process, and an
  * activity registering it would tie "the app is visible" to one screen.
+ *
+ * [attachBaseContext] is the same shape and the same argument: the decision it applies is somebody
+ * else's, this class holds the one line that applies it, and it cannot live anywhere else because
+ * the base context is created exactly once and this is the only hook in front of it.
  */
 @HiltAndroidApp
 class PlMailApplication : Application() {
 
     @Inject lateinit var presence: ForegroundPresence
+
+    /**
+     * The third exception, and the one that has to run before everything else.
+     *
+     * This is the *application* context's language, which is the one `:core:notifications` resolves
+     * notification text and channel names from — a notification is posted from a worker or a push
+     * receiver, with no activity in sight. Above API 33 the platform has already applied the
+     * per-app locale to this configuration and [AppLocaleOverride.wrap] hands the context straight
+     * back; on API 31 and 32 it is applied here, from disk, because there is nothing else that
+     * would.
+     *
+     * `attachBaseContext` rather than `onCreate`, because by `onCreate` the context whose resources
+     * everything will be resolved against already exists.
+     */
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(AppLocaleOverride.wrap(base))
+    }
 
     override fun onCreate() {
         super.onCreate()

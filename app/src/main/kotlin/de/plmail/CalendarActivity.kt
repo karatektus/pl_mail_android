@@ -1,5 +1,6 @@
 package de.plmail
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -11,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
+import de.plmail.core.data.AppLocaleOverride
 import de.plmail.feature.calendar.CalendarScreen
 
 /**
@@ -44,6 +46,19 @@ import de.plmail.feature.calendar.CalendarScreen
  */
 @AndroidEntryPoint
 class CalendarActivity : ComponentActivity() {
+
+    /**
+     * The chosen language, for the reason [MainActivity.attachBaseContext] gives.
+     *
+     * Repeated here rather than shared, because there is nothing to share it through: an activity's
+     * base context is handed to the activity and each of these is a separate entry into the process
+     * with a configuration of its own. Below API 33 this task is *not* re-created when the language
+     * changes — the settings screen is in the mail task and can only re-create what it is drawn in
+     * — so an open calendar app keeps the previous language until it is next started.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocaleOverride.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Before setContent, so the first frame is drawn edge to edge rather

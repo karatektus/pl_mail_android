@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The languages this app is actually translated into, and nothing else.
+
+  From API 33 this file is what Android's own Settings → Apps → plMail →
+  Language offers, and it is taken at its word: a locale listed here with no
+  values- directory behind it gives the user a language they can select and
+  which then renders in English, silently, because resource resolution falls
+  back rather than failing. So the list is exactly values/ and values-de/, and
+  LocalesConfigTest asserts that against the source tree so the two cannot drift
+  apart when a translation is added or dropped.
+
+  "en" rather than a region, because values/ is the unqualified default: English
+  here is the base resources rather than any particular English.
+
+  Written by hand rather than generated. AGP can produce this file from the
+  resource directories it finds (androidResources.generateLocaleConfig), and the
+  two cannot both exist, because declaring android:localeConfig while generation
+  is on is a build error. It is written out because :app takes translations from
+  library modules as well as its own, and a generated list is a list nobody
+  reviews before it reaches a picker the user sees.
+
+  Note the prose here avoids a double hyphen. XML forbids one inside a comment,
+  and AAPT fails the resource compile on it rather than warning.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+    <locale android:name="de" />
+</locale-config>
