@@ -113,6 +113,11 @@ fun ComposeScreen(
     // lines of the paragraph they were in the middle of.
     var isHeaderExpanded by rememberSaveable { mutableStateOf(true) }
 
+    // Whether the user is working on the message rather than on the envelope.
+    // Not saved: focus is not restored across a process death either, so a
+    // remembered `true` would draw a formatting bar for a field nobody is in.
+    var isWritingBody by remember { mutableStateOf(false) }
+
     LaunchedEffect(request) { viewModel.open(request, strings) }
 
     // One direction only. The editor owns the text; the ViewModel is told about
@@ -209,6 +214,9 @@ fun ComposeScreen(
             )
         }
 
+        // The frame: everything between the app bar and the keyboard. It does not
+        // scroll -- the column inside it does -- so that the formatting bar can
+        // be pinned to the bottom of it. See `Formatting`.
         Column(
             modifier =
                 Modifier.fillMaxSize()
@@ -222,83 +230,113 @@ fun ComposeScreen(
                     .consumeWindowInsets(insets)
                     // Here and not on the Scaffold, which is the whole of the
                     // top-bar fix: the app bar is outside this Column, so it
-                    // does not move when the keyboard opens. Only the scroller
-                    // gets shorter, and what was under the fold scrolls.
+                    // does not move when the keyboard opens. Only the space
+                    // below it gets shorter.
                     .imePadding()
-                    .verticalScroll(rememberScrollState())
         ) {
-            state.scheduled?.let { scheduled ->
-                ScheduledBanner(
-                    sendAt = scheduled.sendAt,
-                    onCancel = viewModel::cancelSchedule,
-                )
-                PlMailDivider()
-            }
+            Column(modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+                state.scheduled?.let { scheduled ->
+                    ScheduledBanner(
+                        sendAt = scheduled.sendAt,
+                        onCancel = viewModel::cancelSchedule,
+                    )
+                    PlMailDivider()
+                }
 
-            ComposeHeader(
-                state = state,
-                isExpanded = isHeaderExpanded,
-                onExpandedChange = { isHeaderExpanded = it },
-                onIdentity = viewModel::setIdentity,
-                onTo = viewModel::setTo,
-                onCc = viewModel::setCc,
-                onBcc = viewModel::setBcc,
-                onSubject = viewModel::setSubject,
-                onShowCopyFields = viewModel::showCopyFields,
-                onQueryChanged = viewModel::suggest,
-            )
-
-            PlMailDivider()
-
-            if (state.draft.attachments.isNotEmpty()) {
-                Attachments(
-                    attachments = state.draft.attachments,
-                    onRemove = viewModel::detach,
-                )
-            }
-
-            Formatting(body)
-
-            RichTextEditor(
-                state = body,
-                placeholder = { Text(stringResource(R.string.compose_body_hint)) },
-                // Its own defaults draw the Material filled-field container --
-                // a grey block behind the message, which turns "write" into
-                // "fill in". The editor is the page here, so it takes the page.
-                colors =
-                    RichTextEditorDefaults.richTextEditorColors(
-                        containerColor = PlMailTheme.colors.surface,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                        cursorColor = PlMailTheme.colors.accent,
-                        placeholderColor = PlMailTheme.colors.fieldPlaceholder,
-                        textColor = PlMailTheme.colors.ink,
-                    ),
-                modifier =
-                    Modifier.fillMaxWidth().heightIn(min = 240.dp).onFocusChanged { focus ->
-                        // Folded when the message itself takes the cursor, and
-                        // on nothing else -- not on the keyboard appearing,
-                        // which also happens when the user taps To. And never
-                        // over an empty To line: there is nothing to summarise
-                        // yet, and hiding the field somebody has still to fill
-                        // in would be the worst moment to save four rows.
-                        if (focus.isFocused && state.draft.hasRecipients) {
-                            isHeaderExpanded = false
-                        }
+                ComposeHeader(
+                    state = state,
+                    isExpanded = isHeaderExpanded,
+                    onExpandedChange = {
+                        isHeaderExpanded = it
+                        if (it) isWritingBody = false
                     },
-            )
-
-            if (state.quotedHtml.isNotBlank()) {
-                Quote(
-                    isExpanded = state.isQuoteExpanded,
-                    html = state.quotedHtml,
-                    onToggle = viewModel::toggleQuote,
-                    onRemove = viewModel::removeQuote,
+                    onIdentity = viewModel::setIdentity,
+                    onTo = viewModel::setTo,
+                    onCc = viewModel::setCc,
+                    onBcc = viewModel::setBcc,
+                    onSubject = viewModel::setSubject,
+                    onShowCopyFields = viewModel::showCopyFields,
+                    onQueryChanged = viewModel::suggest,
                 )
+
+                PlMailDivider()
+
+                if (state.draft.attachments.isNotEmpty()) {
+                    Attachments(
+                        attachments = state.draft.attachments,
+                        onRemove = viewModel::detach,
+                    )
+                }
+
+                RichTextEditor(
+                    state = body,
+                    placeholder = { Text(stringResource(R.string.compose_body_hint)) },
+                    // Its own defaults draw the Material filled-field container --
+                    // a grey block behind the message, which turns "write" into
+                    // "fill in". The editor is the page here, so it takes the page.
+                    colors =
+                        RichTextEditorDefaults.richTextEditorColors(
+                            containerColor = PlMailTheme.colors.surface,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            cursorColor = PlMailTheme.colors.accent,
+                            placeholderColor = PlMailTheme.colors.fieldPlaceholder,
+                            textColor = PlMailTheme.colors.ink,
+                        ),
+                    modifier =
+                        Modifier.fillMaxWidth().heightIn(min = 240.dp).onFocusChanged { focus ->
+                            // Set here and cleared only when the header opens --
+                            // never on losing focus. Tapping Bold may take focus off
+                            // the editor, and a bar that hid itself the instant it
+                            // was used would be worse than one drawn over the
+                            // message. Opening the header is the honest signal that
+                            // the user has gone back to the envelope.
+                            if (focus.isFocused) isWritingBody = true
+
+                            // Folded when the message itself takes the cursor, and
+                            // on nothing else -- not on the keyboard appearing,
+                            // which also happens when the user taps To. And never
+                            // over an empty To line: there is nothing to summarise
+                            // yet, and hiding the field somebody has still to fill
+                            // in would be the worst moment to save four rows.
+                            if (focus.isFocused && state.draft.hasRecipients) {
+                                isHeaderExpanded = false
+                            }
+                        },
+                )
+
+                if (state.quotedHtml.isNotBlank()) {
+                    Quote(
+                        isExpanded = state.isQuoteExpanded,
+                        html = state.quotedHtml,
+                        onToggle = viewModel::toggleQuote,
+                        onRemove = viewModel::removeQuote,
+                    )
+                }
+
+                SaveState(isSaved = state.isSaved, hasId = state.draft.emailId != null)
             }
 
-            SaveState(isSaved = state.isSaved, hasId = state.draft.emailId != null)
+            // Pinned to the bottom of the frame, which `imePadding` has already put
+            // above the keyboard.
+            //
+            // It used to sit inside the scroller, directly over the message. That is
+            // the one place it cannot be: Android's own selection toolbar -- Cut,
+            // Copy, Paste -- is a floating window that appears *at the selection*,
+            // and selecting a word to make it bold puts it squarely over the bold
+            // button. People reported cutting a word instead of emboldening it,
+            // which is exactly what the layout invited. Down here the two never
+            // occupy the same space, because the selection is in the text and this
+            // is against the keys.
+            //
+            // Drawn only while the cursor is in the message. Formatting controls
+            // over an address field are four buttons that would do nothing, and the
+            // room they cost is the room the suggestions list wants.
+            if (isWritingBody) {
+                PlMailDivider()
+                Formatting(body)
+            }
         }
     }
 }
@@ -491,6 +529,13 @@ private fun OverflowMenu(
  * Deliberately four controls rather than a full toolbar. These are the ones people actually reach
  * for on a phone, and every additional one is another HTML construct the editor has to serialise
  * correctly into a message that has to render in someone else's client.
+ *
+ * **Pinned above the keyboard rather than drawn over the message**, and that is a correction. It
+ * sat inside the scroller directly above the editor, which is the one place it cannot be: Android's
+ * selection toolbar — Cut, Copy, Paste — is a floating window that appears *at the selection*, so
+ * selecting a word in order to embolden it covered these controls with that. The reported result
+ * was cutting the word instead, which is what the layout invited rather than a slip. Against the
+ * keys the two can never want the same pixels.
  */
 @Composable
 private fun Formatting(state: com.mohamedrejeb.richeditor.model.RichTextState) {
