@@ -45,6 +45,17 @@ data class AppearanceSettings(
     val sidebarDensity: String? = null,
     val listDensity: String? = null,
     val readingDensity: String? = null,
+    /**
+     * The logo colourway the user chose on the web, and the one field here with no local half.
+     *
+     * It comes off `Appearance` read-only and there is no control on the phone that writes it, so
+     * [resolve] reads it straight through from the server's copy rather than laying anything over
+     * it. Still a raw wire string like the rest — a colourway added to the server after this build
+     * shipped has to arrive intact and be resolved above. `:app` is the only consumer: it switches
+     * which launcher alias is enabled, which is the only way an installed Android app's icon can
+     * change at all.
+     */
+    val logoStyle: String? = null,
 )
 
 /**
@@ -231,6 +242,7 @@ constructor(private val store: AppearanceStore, private val clients: AccountClie
                 sidebarDensity = sidebarDensity,
                 listDensity = listDensity,
                 readingDensity = readingDensity,
+                logoStyle = logoStyle,
                 state = state.takeIf { it.isNotBlank() },
             )
     }
@@ -271,4 +283,11 @@ internal fun resolve(local: StoredAppearance, remote: RemoteAppearance): Appeara
         sidebarDensity = local.sidebarDensity.orRemote(remote.sidebarDensity),
         listDensity = local.listDensity.orRemote(remote.listDensity),
         readingDensity = local.readingDensity.orRemote(remote.readingDensity),
+        // No `local.` half, and that is the whole of the policy for it: the
+        // colourway is chosen in the browser and read here. A `StoredAppearance`
+        // field would have to be written by something, and the only thing that
+        // could write it is a phone-side picker -- which would be this app
+        // deciding what the account's logo is, from the one surface that has
+        // never been allowed to decide anything about the account's appearance.
+        logoStyle = remote.logoStyle,
     )

@@ -65,6 +65,13 @@ data class AppearanceGetResult(
  * server always sends all three keys, so on a `get` there is no absent case to tell apart — the
  * distinction that does matter is in [AppearancePatch], where absent and null are two different
  * instructions.
+ *
+ * [logoStyle] is **read-only on the server** and is the one property here that has no counterpart
+ * in [AppearancePatch]. It names one of the thirty-two colourways the logo mark is drawn in — the
+ * server's own `LogoStyle`, default `berry` — and it is the only appearance value this app spends
+ * outside the design system: `:app` follows it by switching which launcher alias is enabled. It is
+ * loose like everything else here, and it has to be: a server newer than this build can name a
+ * colourway that shipped after it, and that has to arrive intact and be decided on above.
  */
 @Serializable
 data class Appearance(
@@ -89,6 +96,8 @@ data class Appearance(
     val sidebarDensity: String? = null,
     val listDensity: String? = null,
     val readingDensity: String? = null,
+    /** The logo colourway the user chose on the web. Read-only; see the class docblock. */
+    val logoStyle: String? = null,
 ) {
     /**
      * The same object with everything the server reported changed applied on top.
@@ -147,6 +156,12 @@ data class Appearance(
             sidebarDensity = surfaceDensity("sidebarDensity", sidebarDensity),
             listDensity = surfaceDensity("listDensity", listDensity),
             readingDensity = surfaceDensity("readingDensity", readingDensity),
+            // Reported for completeness rather than because a write could
+            // change it: nothing may patch logoStyle, so the only way this key
+            // appears in `updated` is a server volunteering the value beside
+            // some other change. Believing it costs nothing and ignoring it
+            // would leave the client one round trip behind for no reason.
+            logoStyle = string("logoStyle") ?: logoStyle,
         )
     }
 

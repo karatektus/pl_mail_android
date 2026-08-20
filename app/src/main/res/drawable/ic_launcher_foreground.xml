@@ -14,11 +14,27 @@
   brand hexes. The web dropped those deliberately (see the docblock on
   LogoStyle, which exists because of it); this icon was still wearing them.
 
-  **The mark cannot follow the user's chosen colourway, and does not pretend
-  to.** LogoStyle is a per-user setting on the server and is not published over
-  JMAP, so the phone cannot know it — and a launcher icon could not follow it
-  at runtime regardless without swapping activity-aliases underneath the user.
-  Berry is the default there and the honest default here.
+  **The mark now does follow the user's chosen colourway, and this file is
+  what it falls back to.** `Appearance` publishes a read-only `logoStyle` over
+  JMAP, and the phone swaps activity-aliases to wear it — which is the only way
+  an installed Android app's icon can change, and is exactly the mechanism the
+  previous note here said would be needed. See LogoStyle and AppLauncherIcon.
+
+  So this file is no longer "the icon": it is the **default** icon, in three
+  senses that have to stay the same colourway or the fallbacks stop agreeing
+  with each other. It is the application's own `android:icon`, which is what a
+  launcher draws for anything that is not one of the aliases. It is what the
+  `LogoLauncherBerry` alias points at, rather than that alias getting a
+  generated copy of these seven hexes to drift from. And it is where an unknown
+  colourway lands — a server newer than this build can name one that shipped
+  after it. Berry is the product default on the server and the honest default
+  here.
+
+  Repainting this file is therefore repainting the fallback for all thirty-two.
+  Changing its *geometry* is a change to all thirty-two: the generator reads the
+  strokes out of this file and replaces only their colours, so rerunning
+  `tools/generate_launcher_icons.py` is how a correction to the mark reaches
+  every colourway.
 
   ## The arithmetic, for whoever rescales this
 

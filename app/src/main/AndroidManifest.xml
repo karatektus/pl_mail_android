@@ -66,6 +66,36 @@
           duplicate is one more place to forget when the name changes.
         -->
         <!--
+          **No MAIN/LAUNCHER filter here, and its absence is the feature.**
+
+          The launcher entry is carried by the thirty-two LogoLauncher aliases
+          below, one per logo colourway, exactly one of them enabled. It cannot
+          also be carried here: an always-enabled launcher activity beside an
+          enabled alias is two icons on the home screen, and the alternative —
+          letting this activity be the default colourway's entry and disabling
+          it when the user picks another — means switching the icon disables the
+          component this very process is running in. That is the one thing a
+          feature which edits somebody's home screen must not do.
+
+          So this activity is never disabled by anything, and the icon is
+          switched by turning aliases on and off in front of it. See
+          AppLauncherIcon for the switching, and the alias block below for what
+          an alias can and cannot override.
+
+          The cost, stated where whoever hits it will look: an install upgrading
+          from a build where this activity *did* carry the filter has a home
+          screen shortcut resolved to `.MainActivity`, and that component stops
+          being a launcher entry. Launchers re-read their entries on a package
+          change and put the alias in the drawer, but a shortcut pinned to the
+          old component may not survive the swap. It is a one-time cost at one
+          upgrade, and there is no shape of this feature that avoids it.
+        -->
+        <!--
+          exported stays true, and not for the launcher: the plmail:// pairing
+          link below is the reason. A VIEW filter another app resolves needs it
+          as much as a MAIN one does.
+        -->
+        <!--
           singleTask so a tapped pairing link reaches the activity that is
           already running rather than stacking a second copy of it. Onboarding
           is usually already open when the link is tapped — the user went
@@ -98,11 +128,6 @@
             android:launchMode="singleTask"
             android:theme="@style/Theme.PlMail"
             android:windowSoftInputMode="adjustResize">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-
             <!--
               The pairing deep link. When the QR is on the same device as the
               app, tapping it skips the camera entirely, which is the whole
@@ -204,6 +229,474 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
+
+        <!--
+          THE LAUNCHER ICON, one alias per logo colourway.
+
+          The user picks a colourway on the web — thirty-two of them, `LogoStyle`
+          on the server, default `berry` — and the JMAP `Appearance` singleton
+          publishes the choice as a read-only `logoStyle` string. The phone's
+          launcher icon follows it, and an alias per colourway is the only way an
+          Android app can have an icon that changes: `android:icon` on a
+          component is a resource reference resolved by the *launcher*, out of
+          this manifest, long before any of our code runs. There is no API that
+          hands a launcher a bitmap for an installed app, so what can be changed
+          is not the icon but which component is showing one.
+
+          What an alias can and cannot do is set out at length on CalendarLauncher
+          above and applies here unchanged: name, targetActivity, label, icon,
+          roundIcon, permission, exported and enabled are the whole of an alias's
+          attribute set, and everything else — taskAffinity, launchMode — is
+          inherited from the target and is not settable here. That inheritance is
+          wanted this time rather than worked around. Every one of these points at
+          MainActivity, so every one of them inherits its default affinity and its
+          singleTask, and all thirty-two are therefore doors into the same one
+          mail task. Which door the user came through changes the icon they
+          tapped and nothing else about the app, which is exactly the promise.
+
+          **Exactly one is enabled at any moment, and never zero.** `berry` is
+          enabled here, in the manifest, so a fresh install has a launcher entry
+          before the app has ever run and an older server that publishes no
+          logoStyle leaves it alone. AppLauncherIcon enables the new alias
+          *before* disabling the old one, so there is no instant — not one — in
+          which this app has no launcher entry. An app that vanishes from a home
+          screen for a hundred milliseconds is an app some launchers will not put
+          back.
+
+          label is inherited on purpose, unlike CalendarLauncher's. These are all
+          the mail app; a label here would be @string/app_name written thirty-two
+          more times, and thirty-two more places to forget it.
+
+          icon and roundIcon are pointed at the same drawable. See the header of
+          any generated mipmap for why: roundIcon predates adaptive icons and
+          means nothing at minSdk 31, but left undeclared it would inherit the
+          application's — which is the *default* colourway, so a launcher asking
+          for the round icon would get berry whatever the user had chosen.
+
+          Generated, all thirty-two of them, by tools/generate_launcher_icons.py
+          from tools/logostyles.json — which was extracted by running the
+          server's own enum. Edit the table and rerun; do not hand-edit between
+          the markers. The same script writes LogoStyle.kt, so the names the app
+          switches at runtime and the names declared here come from one source.
+        -->
+        <!-- BEGIN generated launcher aliases: tools/generate_launcher_icons.py -->
+        <activity-alias
+            android:name="de.plmail.LogoLauncherProductBlue"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_product_blue"
+            android:roundIcon="@mipmap/ic_launcher_product_blue"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherInk"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_ink"
+            android:roundIcon="@mipmap/ic_launcher_ink"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherSlate"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_slate"
+            android:roundIcon="@mipmap/ic_launcher_slate"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherForest"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_forest"
+            android:roundIcon="@mipmap/ic_launcher_forest"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherBurgundy"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_burgundy"
+            android:roundIcon="@mipmap/ic_launcher_burgundy"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherDeepViolet"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_deep_violet"
+            android:roundIcon="@mipmap/ic_launcher_deep_violet"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherPostal"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_postal"
+            android:roundIcon="@mipmap/ic_launcher_postal"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherBronzeInk"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_bronze_ink"
+            android:roundIcon="@mipmap/ic_launcher_bronze_ink"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherPetrolCopper"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_petrol_copper"
+            android:roundIcon="@mipmap/ic_launcher_petrol_copper"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherMidnightGold"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_midnight_gold"
+            android:roundIcon="@mipmap/ic_launcher_midnight_gold"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherNavySky"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_navy_sky"
+            android:roundIcon="@mipmap/ic_launcher_navy_sky"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherForestLime"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_forest_lime"
+            android:roundIcon="@mipmap/ic_launcher_forest_lime"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherPlumRose"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_plum_rose"
+            android:roundIcon="@mipmap/ic_launcher_plum_rose"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherCharcoalAmber"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_charcoal_amber"
+            android:roundIcon="@mipmap/ic_launcher_charcoal_amber"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherEspressoCream"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_espresso_cream"
+            android:roundIcon="@mipmap/ic_launcher_espresso_cream"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherCobaltCoral"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_cobalt_coral"
+            android:roundIcon="@mipmap/ic_launcher_cobalt_coral"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherTealGold"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_teal_gold"
+            android:roundIcon="@mipmap/ic_launcher_teal_gold"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherGraphiteRed"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_graphite_red"
+            android:roundIcon="@mipmap/ic_launcher_graphite_red"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherRedFlick"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_red_flick"
+            android:roundIcon="@mipmap/ic_launcher_red_flick"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherSkyFlick"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sky_flick"
+            android:roundIcon="@mipmap/ic_launcher_sky_flick"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherBronzeFlick"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_bronze_flick"
+            android:roundIcon="@mipmap/ic_launcher_bronze_flick"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherVioletFlick"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_violet_flick"
+            android:roundIcon="@mipmap/ic_launcher_violet_flick"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherTricolore"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_tricolore"
+            android:roundIcon="@mipmap/ic_launcher_tricolore"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherIndigoViolet"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_indigo_violet"
+            android:roundIcon="@mipmap/ic_launcher_indigo_violet"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherSunset"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_sunset"
+            android:roundIcon="@mipmap/ic_launcher_sunset"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherOcean"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_ocean"
+            android:roundIcon="@mipmap/ic_launcher_ocean"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherAurora"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_aurora"
+            android:roundIcon="@mipmap/ic_launcher_aurora"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherBerry"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherEmber"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_ember"
+            android:roundIcon="@mipmap/ic_launcher_ember"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherTwilight"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_twilight"
+            android:roundIcon="@mipmap/ic_launcher_twilight"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherCopper"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_copper"
+            android:roundIcon="@mipmap/ic_launcher_copper"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name="de.plmail.LogoLauncherBlueTonal"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_blue_tonal"
+            android:roundIcon="@mipmap/ic_launcher_blue_tonal"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+<!-- END generated launcher aliases -->
 
         <!--
           UnifiedPush delivery, and it must be exported.

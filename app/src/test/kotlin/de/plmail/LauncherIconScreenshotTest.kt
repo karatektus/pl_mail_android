@@ -41,6 +41,28 @@ import org.robolectric.annotation.GraphicsMode
  * it, the whole thing masked — rather than as bare foregrounds, because the safe-zone arithmetic in
  * those files is a claim about exactly that, and a foreground on its own would keep the claim
  * untested. The circle is the harshest common mask; the squircle is the usual one.
+ *
+ * ## The colourways, and why four of thirty-two
+ *
+ * The mail icon now follows the logo colourway the user picked on the web, which means thirty-one
+ * more generated foregrounds — every one of them the same seven strokes with different paint.
+ * Thirty -two baselines would be thirty-two PNGs to re-approve every time the mark moves, for a
+ * generator that gets all of them identically right or identically wrong.
+ *
+ * So four, chosen to be different **in kind** rather than merely different in hue, because the ways
+ * this can go wrong are structural:
+ *
+ * - `product-blue` is flat: one colour for all seven strokes. If the generator ever mispaired the
+ *   list with the paths, this is the one baseline that could not show it — which is exactly why it
+ *   is here as the control that the mark is still the mark.
+ * - `petrol-copper` is a duotone, four strokes then three. It is the case that catches a colour
+ *   list applied in the wrong **order**: the split lands between the p and the l, so a reversed
+ *   list is an obviously wrong picture rather than a subtly wrong one.
+ * - `aurora` is a seven-step sweep, green through to indigo. Every stroke is a different colour, so
+ *   this is the baseline where an off-by-one in the substitution shows.
+ * - `ink` is near-black, a single very dark colour on the off-white tile. It is the contrast case:
+ *   it is what proves the fixed light background is the right one to have painted for, and it is
+ *   the colourway a dark-variant mistake would have made invisible.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -59,6 +81,30 @@ class LauncherIconScreenshotTest {
     @Test
     fun calendar() {
         capture("icon-calendar", R.drawable.ic_launcher_calendar_foreground)
+    }
+
+    /** Flat: one colour, seven strokes. The control. See the class docblock. */
+    @Test
+    fun `mail in product blue`() {
+        capture("icon-mail-product-blue", R.drawable.ic_launcher_product_blue_foreground)
+    }
+
+    /** Duotone, and the split falls between the two letters. Catches a reversed list. */
+    @Test
+    fun `mail in petrol copper`() {
+        capture("icon-mail-petrol-copper", R.drawable.ic_launcher_petrol_copper_foreground)
+    }
+
+    /** Seven distinct colours in a sweep. Catches an off-by-one in the substitution. */
+    @Test
+    fun `mail in aurora`() {
+        capture("icon-mail-aurora", R.drawable.ic_launcher_aurora_foreground)
+    }
+
+    /** Near-ink on off-white: the contrast case, and the one a dark variant would have lost. */
+    @Test
+    fun `mail in ink`() {
+        capture("icon-mail-ink", R.drawable.ic_launcher_ink_foreground)
     }
 
     /**
