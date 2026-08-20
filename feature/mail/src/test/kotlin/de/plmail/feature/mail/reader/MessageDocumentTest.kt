@@ -58,7 +58,7 @@ class MessageDocumentTest {
     @Test
     fun `table cells cannot pin a table wider than the pane`() {
         assertTrue(
-            wrap(MessageRenderStyle.ORIGINAL).contains("td, th, col, colgroup { width: auto"),
+            wrap(MessageRenderStyle.ORIGINAL).contains(":is(td, th, col, colgroup) { width: auto"),
             "cell widths are not released, so a fixed-width table will clip its right-hand column",
         )
     }
@@ -136,15 +136,58 @@ class MessageDocumentTest {
     /**
      * Capping a box does nothing about text inside it that refuses to wrap.
      *
-     * One inline `white-space: nowrap` was worth 81px of sideways scroll in the fixture behind
-     * these tests. Scoped to inline styles because that is how mail carries it.
+     * This began as `[style*="nowrap"]`, which reaches an inline style and nothing else — a class
+     * in the sender's own `<style>` block went straight past it and was worth 48px of sideways
+     * scroll on its own. Hence the universal selector, which is the bluntest rule in the file and
+     * is meant to be.
+     *
+     * The exception matters more than it looks: a plain-text message *is* a `<pre>`, so a rule that
+     * took `pre` with it would collapse every indented plain-text mail in the app.
      */
     @Test
-    fun `text that refuses to wrap is made to wrap`() {
+    fun `text that refuses to wrap is made to wrap, except where wrapping is the content`() {
+        val css = wrap(MessageRenderStyle.ORIGINAL)
+
         assertTrue(
-            wrap(MessageRenderStyle.ORIGINAL)
-                .contains("""[style*="nowrap"] { white-space: normal"""),
+            css.contains("#plmail-message-root * { white-space: normal !important; }"),
             "a paragraph that will not wrap scrolls the message however well its box is capped",
+        )
+        assertTrue(
+            css.contains(Regex(""":is\(pre, code[^{]*\{[^}]*white-space: pre-wrap !important""")),
+            "a plain-text message is a <pre>, and it has to keep its own line breaks",
+        )
+    }
+
+    /**
+     * Every rule is scoped under the root's id, and that is about the cascade rather than tidiness.
+     *
+     * `!important` does not settle a fight between two author stylesheets — specificity does. A
+     * bare `div { min-width: 0 !important }` is (0,0,1), so a newsletter's own `.card { min-width:
+     * 560px !important }` at (0,1,0) beats it outright, and mail carries `!important` in `<style>`
+     * blocks constantly. Measured in headless Chrome: such a fixture scrolled to 572px in a 411px
+     * viewport before the prefix and fits exactly after.
+     *
+     * Asserted as "no rule is left unscoped" rather than by listing them, so a rule added later
+     * without the prefix fails here rather than silently losing to the next newsletter.
+     */
+    @Test
+    fun `no fitting rule can be outranked by the sender's own stylesheet`() {
+        val fitting =
+            wrap(MessageRenderStyle.ORIGINAL)
+                .substringAfter("#plmail-message-root {")
+                .substringAfter("}")
+                .substringBefore("</style>")
+
+        val unscoped =
+            fitting
+                .split("}")
+                .map { it.substringBefore("{").trim() }
+                .filter { it.isNotBlank() && !it.startsWith("#plmail-message-root") }
+
+        assertTrue(
+            unscoped.isEmpty(),
+            "these rules sit at element specificity and a class-based !important beats them: " +
+                unscoped,
         )
     }
 
@@ -268,7 +311,10 @@ class MessageDocumentTest {
         listOf(MessageRenderStyle.DARK_RESTYLED, MessageRenderStyle.DARK_INVERTED).forEach { style
             ->
             assertFalse(
-                Regex("#plmail-message-root[^}]*background:").containsMatchIn(wrap(style)),
+                // Anchored on the root's *own* rule. Every fitting rule is
+                // scoped under the same id now, so an unanchored search matches
+                // the blocked-image hatch and reports paper that is not there.
+                Regex("""#plmail-message-root\s*\{[^}]*background:""").containsMatchIn(wrap(style)),
                 "$style paints its own paper and will not match the card behind it",
             )
         }
@@ -288,7 +334,7 @@ class MessageDocumentTest {
         assertFalse(html.contains("color-scheme"))
         assertFalse(html.contains(palette.ink), "the original must not be recoloured")
         assertFalse(
-            Regex("#plmail-message-root[^}]*background:").containsMatchIn(html),
+            Regex("""#plmail-message-root\s*\{[^}]*background:""").containsMatchIn(html),
             "a light theme must not paint paper the sender did not ask for",
         )
     }

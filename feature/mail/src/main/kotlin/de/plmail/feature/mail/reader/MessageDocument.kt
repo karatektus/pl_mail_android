@@ -253,18 +253,41 @@ object MessageDocument {
      * overflow while the message scrolls sideways underneath. The fixture behind this note put
      * 664px of content in a 500px container before these rules and exactly 500 after.
      *
-     * `[style*="nowrap"]` is the bluntest rule here and it earns its place: capping a paragraph's
-     * box does nothing about text inside it that refuses to wrap, and that fixture scrolled to
-     * 581px on the strength of one inline `white-space: nowrap`. It is scoped to inline styles
-     * because that is how mail carries it; a `nowrap` from a `<style>` block is out of reach and
-     * falls through to the safety net below.
+     * ## Every rule is scoped under `#$ROOT`, and that is about the cascade rather than tidiness
      *
-     * `overflow-x: auto` on the wrapper is the safety net for everything the reflow cannot reach:
-     * an absolutely positioned element at `left: 900px`, a hard `min-width`, a `<pre>` of
-     * unbreakable output. A scroll container clips its own overflow, so nothing escapes to the
-     * viewport and **the page itself never scrolls sideways** — the property that keeps the
-     * reader's vertical drag working. `position: relative` is what puts positioned descendants
-     * inside that container rather than letting them escape to the initial containing block.
+     * `!important` does not settle a fight between two author stylesheets — specificity does, and
+     * only then source order. A bare `div { min-width: 0 !important }` is specificity (0,0,1), so a
+     * newsletter's own `.card { min-width: 560px !important }` at (0,1,0) beats it outright. Mail
+     * carries `!important` in `<style>` blocks constantly, and the sender's block is injected into
+     * the body, which is *later* in document order than this one — so ties go to them as well.
+     *
+     * Prefixing with the root's id makes every rule here (1,0,1), which no class-based selector can
+     * reach. Measured: that fixture scrolled to 572px in a 411px viewport before the prefix and
+     * fits exactly after. `:is()` keeps the lists readable and contributes only its own highest
+     * argument to the specificity, so the id is doing all the work.
+     *
+     * ## Text that will not wrap
+     *
+     * Capping a box does nothing about text inside it that refuses to wrap. This started as
+     * `[style*="nowrap"]`, which only reaches an inline style — and a class in the sender's own
+     * `<style>` block went straight past it, worth 48px of sideways scroll on its own.
+     *
+     * So it is `#$ROOT *`, which is the bluntest rule in the file and is meant to be. The cost is
+     * real: a sender who wrote `nowrap` to hold "1.234,56 €" together loses that, and gets a price
+     * broken across two lines. The alternative is the whole message scrolling sideways, which is
+     * the thing this reader is not allowed to do. `pre`, `code`, `samp`, `kbd` and `textarea` are
+     * put back to `pre-wrap` at (1,0,1) so they win on specificity rather than on source order —
+     * and that matters more than it looks, because a plain-text message *is* a `<pre>`
+     * (`ReaderViewModel.renderable`). Verified: an indented plain-text mail keeps its indentation
+     * and a 96-character unbreakable URL inside it still does not scroll the message.
+     *
+     * `overflow-x: auto` on the wrapper is the safety net for what is genuinely left: an absolutely
+     * positioned element at `left: 900px`, a `<table>` whose cells carry unbreakable content wider
+     * than the pane. It should now be rare rather than routine. A scroll container clips its own
+     * overflow, so nothing escapes to the viewport and **the page itself never scrolls sideways** —
+     * the property that keeps the reader's vertical drag working. `position: relative` is what puts
+     * positioned descendants inside that container rather than letting them escape to the initial
+     * containing block.
      */
     private fun base(): String =
         """
@@ -277,24 +300,27 @@ object MessageDocument {
             position: relative;
             overflow-x: auto;
         }
-        table, tbody, thead, tfoot, tr {
+        #$ROOT :is(table, tbody, thead, tfoot, tr) {
             min-width: 0 !important;
             max-width: calc(100vw - ${INSET_BOTH_PX}px) !important;
         }
-        table { width: auto !important; table-layout: auto !important; }
-        table[width], table[style*="width"] { width: 100% !important; }
-        td, th, col, colgroup { width: auto !important; min-width: 0 !important; }
-        img, picture, video, svg, canvas, iframe, object, embed {
+        #$ROOT table { width: auto !important; table-layout: auto !important; }
+        #$ROOT :is(table[width], table[style*="width"]) { width: 100% !important; }
+        #$ROOT :is(td, th, col, colgroup) { width: auto !important; min-width: 0 !important; }
+        #$ROOT :is(img, picture, video, svg, canvas, iframe, object, embed) {
             max-width: min(100%, calc(100vw - ${INSET_BOTH_PX}px)) !important;
         }
-        img, picture, video { height: auto !important; }
-        div, p, blockquote, pre, section, article, header, footer, main, aside,
-        ul, ol, dl, h1, h2, h3, h4, h5, h6, figure, form, fieldset {
+        #$ROOT :is(img, picture, video) { height: auto !important; }
+        #$ROOT :is(div, p, blockquote, pre, section, article, header, footer, main, aside,
+        ul, ol, dl, h1, h2, h3, h4, h5, h6, figure, form, fieldset) {
             min-width: 0 !important;
             max-width: calc(100vw - ${INSET_BOTH_PX}px) !important;
         }
-        [style*="nowrap"] { white-space: normal !important; }
-        pre { white-space: pre-wrap; word-break: break-word; }
+        #$ROOT * { white-space: normal !important; }
+        #$ROOT :is(pre, code, samp, kbd, textarea) {
+            white-space: pre-wrap !important;
+            word-break: break-word;
+        }
         """
             .trimIndent()
 
@@ -313,6 +339,13 @@ object MessageDocument {
      * message declared, and a floor would inflate a `1×1` tracking pixel into a visible box — see
      * [BlockedImages] for why that is the wrong way to be wrong.
      *
+     * The **selector** is prefixed with the root's id where the web's is not, and that is the one
+     * deliberate divergence. `img[data-plmail-blocked]` is specificity (0,1,1), which a
+     * newsletter's own `.hero img { … !important }` matches and then wins on source order, because
+     * the sender's `<style>` block is injected after this one. The web renders inside an iframe and
+     * has no such fight. The declarations — the values that make the two surfaces agree — are
+     * untouched.
+     *
      * Deliberately unthemed, again matching the web. Under [MessageRenderStyle.DARK_INVERTED] the
      * hatch is inverted with the document and then inverted back by the imagery rule below, so it
      * lands on these greys either way — a placeholder that changed colour with the render strategy
@@ -320,7 +353,7 @@ object MessageDocument {
      */
     private val BLOCKED_IMAGES =
         """
-        img[${BlockedImages.MARKER}] {
+        #$ROOT img[${BlockedImages.MARKER}] {
             background: repeating-linear-gradient(135deg, #f4f4f5 0 6px, #e4e4e7 6px 12px);
             outline: 1px dashed #a1a1aa;
             outline-offset: -1px;
