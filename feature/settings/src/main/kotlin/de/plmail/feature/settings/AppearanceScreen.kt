@@ -1,5 +1,6 @@
 package de.plmail.feature.settings
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.plmail.core.data.AppLanguage
 import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailAppearance
 import de.plmail.core.designsystem.PlMailDensity
@@ -69,16 +71,25 @@ import de.plmail.core.designsystem.swatch
  * drawn from the palettes rather than from static colours: a swatch that is painted rather than
  * sampled is a swatch that can be wrong about the theme it offers.
  *
- * In the order somebody actually decides them: whether the phone follows the browser at all, then
- * the palette, then how it is painted, then how tightly it packs, then the type, then the list, and
- * last the accessibility overrides that outrank all of it. The overrides are phrased as what they
- * *do* rather than as what they are for — "Panes stay solid" rather than "reduce transparency" —
- * because the person who needs one is looking for the effect.
+ * In the order somebody actually decides them: the words, then whether the phone follows the
+ * browser at all, then the palette, then how it is painted, then how tightly it packs, then the
+ * type, then the list, and last the accessibility overrides that outrank all of it. The overrides
+ * are phrased as what they *do* rather than as what they are for — "Panes stay solid" rather than
+ * "reduce transparency" — because the person who needs one is looking for the effect.
  *
- * **[MatchTheWeb] is first because it changes what everything under it means**, not because it is
- * the most important. Every other control on the screen is a shared account preference until that
- * switch is off, at which point the same controls become this device's alone — and nothing about
- * their appearance says so, which is exactly why the switch has to be met before them.
+ * **[MatchTheWeb] comes before everything it governs**, not because it is the most important. Every
+ * control below it is a shared account preference until that switch is off, at which point the same
+ * controls become this device's alone — and nothing about their appearance says so, which is
+ * exactly why the switch has to be met before them.
+ *
+ * **[Language] is the one thing ahead of it, because it is the one thing the switch does not
+ * govern.** It is a device setting Android itself owns and nothing here ever sends it anywhere, and
+ * the position says that before the copy has to: everything the sync switch decides the meaning of
+ * is underneath the sync switch. Its supporting text says it again in words, because position alone
+ * is an argument only somebody who already knew would follow — and because [HomeScreen] is a
+ * device-only control that sits at the bottom, so this screen cannot claim that "above the switch"
+ * is the *only* way of saying it. It also happens to be the choice that decides every other label
+ * on the screen, which is a second reason for it to be read first.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -121,6 +132,7 @@ fun AppearanceScreen(onBack: () -> Unit, viewModel: AppearanceViewModel = hiltVi
                     ),
             verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.large),
         ) {
+            Language()
             MatchTheWeb(appearance, onChange = viewModel::setSyncWithServer)
             Themes(appearance, onChoose = viewModel::choose)
             DynamicColour(appearance, onChange = viewModel::setDynamicColor)
@@ -186,11 +198,101 @@ private fun HomeScreen(viewModel: CalendarLauncherViewModel = hiltViewModel()) {
 }
 
 /**
+ * The language the app is drawn in — **this device's, and never the account's**.
+ *
+ * Above [MatchTheWeb] deliberately: everything that switch decides the meaning of is below it, and
+ * this is not one of those things. Nothing on this path reaches the server in either position of
+ * the switch, there is no language in the account's `Appearance`, and the body says so in words as
+ * well — see the screen's own note for why the position is not left to argue it alone.
+ *
+ * **The control is the platform's own setting and not a copy of it.** From API 33 the same value is
+ * editable in Settings → Apps → plMail → Language, so this reads it back on every resume rather
+ * than remembering what it wrote; a user who set German over there must not come back to a picker
+ * still claiming English. Below 33 there is nothing to come back from — no system entry exists —
+ * which is also why the supporting line about it is only drawn where it is true.
+ *
+ * **[Activity.recreate] below API 33, and nothing above it.** From 33 the platform treats the
+ * per-app locale as a configuration change and re-creates the activity itself; calling it again
+ * would be a second re-creation of a screen that has already gone. Below 33 nothing is watching, so
+ * a language chosen and not applied would sit there looking selected while the app went on in the
+ * old one — which reads as a control that does not work.
+ */
+@Composable
+private fun Language(viewModel: LanguageViewModel = hiltViewModel()) {
+    val activity = LocalActivity.current
+
+    // On resume rather than once, for the reason HomeScreen's note gives: the
+    // answer is the system's, and the system can have been asked by Android's
+    // own settings screen while this one was in the background.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refresh()
+        onPauseOrDispose {}
+    }
+
+    LanguageSection(
+        chosen = viewModel.chosen,
+        hasSystemEntry = viewModel.isAppliedBySystem,
+        onChoose = { language ->
+            viewModel.choose(language)
+
+            if (!viewModel.isAppliedBySystem) activity?.recreate()
+        },
+    )
+}
+
+/**
+ * The picker itself, with no view model and no activity behind it.
+ *
+ * Split out for `LanguageScreenshotTest`, which is the only reason this seam exists and is a good
+ * enough one: this section has three states worth *seeing* rather than asserting — the ordinary
+ * one, the extra line that only appears where Android has a language screen of its own, and the row
+ * with nothing lit that a language this build no longer ships produces. The last of those is a
+ * state nobody will ever reach by hand, and a picture of it is the only way to know it reads as
+ * "none of these" rather than as a control that failed to draw.
+ *
+ * @param chosen null where the app is set to a language this build does not offer, which draws the
+ *   row with nothing selected — see [AppLanguage.of].
+ * @param hasSystemEntry whether Android has its own per-app language screen to point at, which is
+ *   API 33 and up. False below it, where naming a screen the user cannot find is worse than
+ *   silence.
+ */
+@Composable
+internal fun LanguageSection(
+    chosen: AppLanguage?,
+    hasSystemEntry: Boolean,
+    onChoose: (AppLanguage) -> Unit,
+) {
+    Section(stringResource(R.string.appearance_language)) {
+        Choices(
+            options = AppLanguage.entries,
+            chosen = chosen,
+            label = { stringResource(it.label()) },
+            onChoose = onChoose,
+        )
+
+        Text(
+            text = stringResource(R.string.appearance_language_body),
+            style = MaterialTheme.typography.bodySmall,
+            color = PlMailTheme.colors.inkMuted,
+        )
+
+        if (hasSystemEntry) {
+            Text(
+                text = stringResource(R.string.appearance_language_system),
+                style = MaterialTheme.typography.bodySmall,
+                color = PlMailTheme.colors.inkMuted,
+            )
+        }
+    }
+}
+
+/**
  * Whether this phone wears the account's appearance or one of its own.
  *
- * **First on the screen, because it decides what every control below it means.** Off, the pickers
- * stop being a shared preference and become this device's own; nothing about them changes visibly,
- * which is exactly why the switch has to be read before them rather than found afterwards.
+ * **Before everything it governs, because it decides what every control below it means.** Off, the
+ * pickers stop being a shared preference and become this device's own; nothing about them changes
+ * visibly, which is exactly why the switch has to be read before them rather than found afterwards.
+ * Only [Language] is ahead of it, and only because the switch has no say over that one.
  *
  * The supporting text says the two things a user cannot work out by trying it, and both are things
  * they would otherwise only discover by being surprised. That turning it off leaves the browser
@@ -683,11 +785,17 @@ private fun PaneAlpha(appearance: PlMailAppearance, onChange: (Float) -> Unit) {
  * system is the *pane* radius, so a boxed layout would round a control the tokens say must never be
  * rounded. Written out instead, against `radii.control`, which is the rule rather than an exception
  * to it.
+ *
+ * **[chosen] is nullable and none of [options] need match it.** Every caller but one passes a value
+ * from the list, so nothing draws unselected in practice — but [Language] can be set to a language
+ * this build does not ship, and the only honest picture of that is a row with nothing lit. A
+ * control that picked the nearest option instead would be reporting a state the app is not in, and
+ * the state it reported would be the one the user could not then leave.
  */
 @Composable
 private fun <T> Choices(
     options: List<T>,
-    chosen: T,
+    chosen: T?,
     label: @Composable (T) -> String,
     onChoose: (T) -> Unit,
 ) {
@@ -774,6 +882,22 @@ private fun Toggle(title: String, body: String, isOn: Boolean, onChange: (Boolea
         )
     }
 }
+
+/**
+ * The language names, and why two of the three are the same word in both translations.
+ *
+ * "English" and "Deutsch" are endonyms — each language's name for itself — so they are identical in
+ * `values/` and `values-de/` on purpose rather than by omission. Somebody hunting for their own
+ * language in a list they cannot currently read is looking for the word *they* use for it, which is
+ * exactly the case a language picker has to serve; translating them would put "Německy" in front of
+ * the one person who most needs to recognise "Deutsch".
+ */
+private fun AppLanguage.label(): Int =
+    when (this) {
+        AppLanguage.SYSTEM -> R.string.language_system
+        AppLanguage.ENGLISH -> R.string.language_english
+        AppLanguage.GERMAN -> R.string.language_german
+    }
 
 private fun PlMailThemeChoice.label(): Int =
     when (this) {
