@@ -2,6 +2,7 @@ package de.plmail.feature.mail.reader
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.net.Uri
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -60,6 +61,14 @@ fun MessageWebView(
     modifier: Modifier = Modifier,
     /** Resolves an inline `cid:` reference to bytes already in the blob cache. */
     inlineImage: (String) -> InlineImage? = { null },
+    /**
+     * A link the user tapped, already filtered down to one worth leaving the app for.
+     *
+     * The reader opens it; this view deliberately does not, because "what happens to a link" is a
+     * decision about the app rather than about rendering — and a composable that reached for a
+     * `Context` and fired an intent could not be rendered in a test at all.
+     */
+    onLink: (Uri) -> Unit = {},
 ) {
     // Keyed on `remoteImages` as well, because the document itself now differs
     // between the two states -- blocked pictures are rewritten into placeholders
@@ -131,7 +140,7 @@ fun MessageWebView(
         update = { webView ->
             webView.onContentHeight = { height -> contentHeight = height }
 
-            webView.webViewClient = MessageClient(remoteImages, inlineImage)
+            webView.webViewClient = MessageClient(remoteImages, inlineImage, onLink)
 
             if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
                 // Only where the message declared its own dark mode. Letting
@@ -297,9 +306,10 @@ data class InlineImage(val bytes: ByteArray, val mimeType: String) {
 // this line; if anybody deletes the override, put the suppression back only
 // after putting the override back.
 @Suppress("MissingOnRenderProcessGone")
-private class MessageClient(
+internal class MessageClient(
     private val remoteImages: RemoteImages,
     private val inlineImage: (String) -> InlineImage?,
+    private val onLink: (Uri) -> Unit,
 ) : WebViewClient() {
 
     override fun shouldInterceptRequest(
@@ -327,14 +337,20 @@ private class MessageClient(
     }
 
     /**
-     * Nothing navigates inside the reader.
+     * Nothing navigates inside the reader, and a tapped link leaves the app.
      *
-     * A tapped link is handled by the reader itself, which can show where it goes before opening
-     * it. Letting the WebView follow it would replace the message with a web page inside a view
-     * that has no address bar and no way back.
+     * Always true: the WebView never follows a link itself, because that would replace the message
+     * with a web page in a view with no address bar and no way back. What it did *instead*, until
+     * this was fixed, was nothing at all — the docblock here claimed the reader handled the tap and
+     * no code anywhere did. Every link in every message was inert, which is what a user reported.
+     *
+     * See [linkToOpen] for which links leave and which are dropped.
      */
-    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-        true
+    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+        linkToOpen(request.url, request.hasGesture(), request.isForMainFrame)?.let(onLink)
+
+        return true
+    }
 
     /**
      * The renderer died. Take the view down rather than the app.
@@ -414,3 +430,37 @@ private fun WebView.configure() {
     // the gesture -- see ReaderWebView.
     overScrollMode = View.OVER_SCROLL_NEVER
 }
+
+/**
+ * Which tapped links leave the app, and which are dropped on the floor.
+ *
+ * Pure, and separate from the client, because every clause here is a decision about untrusted
+ * content and none of them can be checked by looking at a WebView.
+ *
+ * **An allow-list, not a block-list.** A message is arbitrary HTML from a stranger, and
+ * `startActivity` on a scheme nobody considered is how a mail client becomes a way to poke every
+ * other app on the phone. `intent:` is the sharp one — it encodes a component and extras, and
+ * handing one to the system from message content lets the sender choose what to launch.
+ * `javascript:` and `file:` are the other two worth naming. All three fail closed here by not being
+ * on the list.
+ *
+ * **`http`, `https`, `mailto`, `tel`** are what a mail actually carries, and each is handed to the
+ * system rather than resolved here: the user's chosen browser opens the web link, and `mailto:` is
+ * a scheme this app now claims itself, so it comes back into the composer.
+ *
+ * **A gesture is required.** Without it a message could navigate on load — a `<meta refresh>`, a
+ * redirect — and open a browser at a page nobody asked for, which for a mail client is a tracker
+ * that also gets a foreground window. Only a real tap counts.
+ *
+ * **Main frame only.** A nested frame navigating is the frame's own business and is blocked
+ * elsewhere anyway; it is not the user following a link.
+ */
+internal fun linkToOpen(url: Uri, hasGesture: Boolean, isForMainFrame: Boolean): Uri? {
+    if (!hasGesture || !isForMainFrame) return null
+
+    val scheme = url.scheme?.lowercase() ?: return null
+
+    return url.takeIf { scheme in OPENABLE_SCHEMES }
+}
+
+private val OPENABLE_SCHEMES = setOf("http", "https", "mailto", "tel")

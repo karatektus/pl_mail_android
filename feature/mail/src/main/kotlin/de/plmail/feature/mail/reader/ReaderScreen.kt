@@ -1,7 +1,10 @@
 package de.plmail.feature.mail.reader
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -534,6 +537,7 @@ private fun Message(
     onSaveAttachment: (AttachmentEntity) -> Unit,
     onShowSource: () -> Unit,
 ) {
+    val context = LocalContext.current
     val body = message.body
 
     val profile = remember(body) { MessageColorProfile.of(body.orEmpty()) }
@@ -670,6 +674,7 @@ private fun Message(
             palette = palette,
             remoteImages = message.remoteImages,
             modifier = Modifier.fillMaxWidth(),
+            onLink = context::openLink,
         )
 
         // Under the body, which is where the eye arrives after reading: an
@@ -771,3 +776,31 @@ private fun Context.shareText(title: String, text: String) {
 
 /** What the save picker suggests for a part that arrived with no filename. */
 private const val DEFAULT_SAVE_NAME = "attachment"
+
+/**
+ * Opens a link the user tapped in a message.
+ *
+ * The scheme has already been filtered to one worth leaving the app for — see [linkToOpen], which
+ * is where the reasoning about untrusted content lives. What is left here is the launch, and two
+ * details that are easy to get wrong.
+ *
+ * **No chooser**, unlike an attachment. An attachment leaving the user's own server is a moment to
+ * offer the choice; a web link is not, and a chooser on every tap is the kind of friction people
+ * route around by stopping using the app. The system's default handler is the browser the user
+ * already chose.
+ *
+ * **`NEW_TASK`, because this may be reached from a non-Activity context**, and without it the
+ * launch is a "calling startActivity() from outside of an Activity context" crash rather than a
+ * browser. And a device with nothing registered for the scheme is a real outcome — a phone with no
+ * browser, a `tel:` on a tablet — so the failure is caught and reported rather than allowed to take
+ * the reader down over a link.
+ */
+private fun Context.openLink(url: Uri) {
+    val view = Intent(Intent.ACTION_VIEW, url).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+    try {
+        startActivity(view)
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(this, getString(R.string.link_no_handler), Toast.LENGTH_SHORT).show()
+    }
+}

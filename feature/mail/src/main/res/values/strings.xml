@@ -260,4 +260,6 @@
 
     <string name="action_queued">%1$s here. Your server will be told when it answers.</string>
     <string name="action_queued_host">%1$s here. %2$s will be told when it answers.</string>
+    <!-- A phone with no browser, or a tel: link on a tablet. Rare, and not a crash. -->
+    <string name="link_no_handler">Nothing on this device can open that link.</string>
 </resources>
