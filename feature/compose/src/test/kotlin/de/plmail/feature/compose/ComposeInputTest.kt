@@ -153,6 +153,34 @@ class ComposeInputTest {
         assertTrue(restored.all)
     }
 
+    @Test
+    fun `a share survives being saved and restored whole`() {
+        // The one request whose restore has real consequences. Everything else
+        // in this saver is an id the server can be asked about again; a share
+        // exists only here and in the files it points at, so a field lost in the
+        // bundle is a field nobody can get back. Process death mid-share is the
+        // ordinary case, not the rare one: the share sheet has just handed the
+        // foreground to an app that was not running a second ago.
+        val request =
+            ComposeRequest.Share(
+                to = listOf("anna@example.org", "bruno@example.org"),
+                cc = listOf("carla@example.net"),
+                bcc = listOf("dana@example.net"),
+                subject = "Photos",
+                text = "Here they are",
+                attachments = listOf("/data/cache/shared/one", "/data/cache/shared/two"),
+                tooLarge = listOf("holiday.mp4"),
+                unreadable = listOf("locked.pdf"),
+            )
+
+        assertEquals(request, request.roundTrip())
+    }
+
+    @Test
+    fun `an empty share restores as an empty share rather than as nothing`() {
+        assertEquals(ComposeRequest.Share(), ComposeRequest.Share().roundTrip())
+    }
+
     // ------------------------------------------------------------ formatting
 
     @Test

@@ -103,6 +103,7 @@ constructor(
                 is ComposeRequest.Reply -> startReply(current, request)
                 is ComposeRequest.Forward -> startForward(current, request)
                 is ComposeRequest.Edit -> startEdit(current, request)
+                is ComposeRequest.Share -> startShare(current, request)
             }
 
             readSendWindow()
@@ -432,6 +433,47 @@ constructor(
         }
     }
 
+    /**
+     * Opens on what another app handed over.
+     *
+     * Closest to [startBlank] of the four: there is no original to fetch and no draft on the server
+     * to load, only fields to fill in and an identity to pick. The first identity, because the
+     * intent names no account — see [ComposeRequest.Share].
+     *
+     * The attachments are read from the cache rather than from the intent, and are already there by
+     * the time this runs: [SharedAttachmentStore] copied them before the composer was mounted. A
+     * directory that has since gone — swept, or reclaimed under storage pressure — yields null and
+     * is dropped, which is the only case where the composer opens quieter than it should.
+     * Everything else that went wrong is named in [ComposeRequest.Share.tooLarge] and
+     * [ComposeRequest.Share.unreadable] and is turned into a message here.
+     *
+     * The draft is left `isSaved = false`, so the ordinary autosave picks it up three seconds later
+     * and uploads the files. That is what eventually retires the local copies: once the save comes
+     * back with blob ids, nothing reads them again.
+     */
+    private fun startShare(identities: List<SendIdentity>, request: ComposeRequest.Share) {
+        val identity =
+            identities.firstOrNull()
+                ?: run {
+                    _state.update { it.copy(error = ComposeError.NoIdentity, isLoading = false) }
+                    return
+                }
+
+        val draft = request.asDraft(identity)
+
+        _state.update {
+            it.copy(
+                draft = draft,
+                // Opened when there is something in them, because a share that
+                // filled a Cc line the user cannot see is a share that copies
+                // somebody in silently.
+                isShowingCopyFields = draft.cc.isNotEmpty() || draft.bcc.isNotEmpty(),
+                error = request.refusal(),
+                isLoading = false,
+            )
+        }
+    }
+
     private suspend fun startEdit(identities: List<SendIdentity>, request: ComposeRequest.Edit) {
         val draft =
             compose.loadDraft(request.accountKey, request.emailId)
@@ -538,6 +580,80 @@ constructor(
         const val AUTOSAVE_DELAY_MS = 3_000L
     }
 }
+
+/**
+ * A share as the draft it opens.
+ *
+ * A free function rather than four lines inside the ViewModel, because it is the whole of what
+ * "another app's intent becomes a message" means and it has no collaborators: a request, an
+ * identity, and files that are already on disk. That makes it the piece a test can actually hold —
+ * the ViewModel around it needs a database, a client pool and a send queue to exist at all.
+ *
+ * Addresses go through [parseAddresses], the same parser the recipient field uses on pasted text,
+ * so `Name <address>` and semicolon-separated lists work here for free and an address that would be
+ * refused is refused in one place rather than two.
+ */
+internal fun ComposeRequest.Share.asDraft(identity: SendIdentity): ComposeDraft =
+    ComposeDraft(
+        accountKey = identity.accountKey,
+        identityId = identity.identityId,
+        to = to.flatMap { it.parseAddresses() },
+        cc = cc.flatMap { it.parseAddresses() },
+        bcc = bcc.flatMap { it.parseAddresses() },
+        subject = subject,
+        // The shared text above the signature, the same way a reply puts the
+        // sign-off above the quote. Escaped rather than inserted: shared text is
+        // somebody else's, and a page title containing `<b>` must not start
+        // rendering as markup in the editor.
+        bodyHtml = text.asBodyHtml() + Signatures.block(identity.htmlSignature),
+        // Anything whose directory has gone is dropped rather than carried as a
+        // row pointing at nothing. It is the one case where the composer opens
+        // quieter than the share was.
+        attachments = attachments.mapNotNull(::stagedAttachment),
+    )
+
+/**
+ * What to say about the files a share could not take, or null when it took them all.
+ *
+ * Size first when both happened. There is one error slot on the state and a snackbar shows one
+ * message, and of the two this is the one the user can act on — the file exists and is theirs, it
+ * simply has to go another way.
+ */
+internal fun ComposeRequest.Share.refusal(): ComposeError? =
+    when {
+        tooLarge.isNotEmpty() -> ComposeError.AttachmentsTooLarge(tooLarge, MAX_MEGABYTES)
+        unreadable.isNotEmpty() -> ComposeError.AttachmentsUnreadable(unreadable)
+        else -> null
+    }
+
+/**
+ * Plain text as a body the editor can hold.
+ *
+ * Escaped, then broken at blank lines into paragraphs with single newlines as `<br>` inside them.
+ * The shape matters more than it looks: shared text is usually a URL and a title, or a quoted
+ * paragraph, and collapsing all of it into one run of `<br>` produces a block the editor cannot be
+ * navigated out of sensibly.
+ *
+ * The escaping is four lines rather than a call to `:core:jmap`'s: that one is `internal` to its
+ * own module, and the ways out of that are widening the API of a module this one is not allowed to
+ * touch, or copying four lines. Note the order — `&` first, or every entity written after it is
+ * escaped a second time.
+ */
+internal fun String.asBodyHtml(): String {
+    val text = replace("\r\n", "\n").replace('\r', '\n').trim()
+    if (text.isEmpty()) return ""
+
+    return text.split(Regex("\n{2,}")).joinToString("") { paragraph ->
+        "<p>" + paragraph.escapedForHtml().replace("\n", "<br>") + "</p>"
+    }
+}
+
+private fun String.escapedForHtml(): String =
+    replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace("\"", "&quot;")
+        .replace("'", "&#39;")
 
 /** The message with its quoted original appended, which is the form that is actually sent. */
 internal fun ComposeDraft.withQuote(quotedHtml: String): ComposeDraft =

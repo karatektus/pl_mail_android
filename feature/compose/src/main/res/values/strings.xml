@@ -106,6 +106,18 @@
     <string name="compose_error_already_sent">This message has already been sent.</string>
 
     <!--
+      A share that lost a file, said out loud and by name.
+
+      Says what was NOT attached rather than what was, because the composer
+      already shows what was; the whole point of the sentence is the difference.
+      The limit is a number in the string rather than baked into the words: it is
+      one constant in SharedAttachmentStore, and a translation that spelled
+      "25 MB" out would go stale the day it moves.
+    -->
+    <string name="compose_error_attachments_too_large">Not attached, over %2$d MB: %1$s</string>
+    <string name="compose_error_attachments_unreadable">Not attached, could not be read: %1$s</string>
+
+    <!--
       The attribution line above a quoted reply. Date first, sender second — the
       order most clients use, and the one German reads best in.
     -->

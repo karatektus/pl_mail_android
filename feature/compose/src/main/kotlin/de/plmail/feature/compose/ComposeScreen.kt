@@ -589,7 +589,22 @@ private fun ComposeError.text(): String =
         is ComposeError.CancelFailed ->
             stringResource(R.string.compose_error_cancel_failed, message)
         ComposeError.AlreadySent -> stringResource(R.string.compose_error_already_sent)
+        // Named, every one of them. A share that quietly arrives one file short
+        // is the failure this whole path exists to make impossible, and a count
+        // would leave the user working out which of four photos is missing.
+        is ComposeError.AttachmentsTooLarge ->
+            stringResource(R.string.compose_error_attachments_too_large, names.named(), limitMb)
+        is ComposeError.AttachmentsUnreadable ->
+            stringResource(R.string.compose_error_attachments_unreadable, names.named())
     }
+
+/**
+ * File names as one run of text.
+ *
+ * A plain comma, deliberately not a localised list conjunction: these are file names, and "and"
+ * between two of them reads as part of the second name often enough to matter.
+ */
+private fun List<String>.named(): String = joinToString(", ")
 
 /**
  * A field with no box around it.

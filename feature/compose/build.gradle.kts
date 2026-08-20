@@ -23,6 +23,12 @@ dependencies {
     // reply should start as.
     implementation(projects.core.jmap)
 
+    // IntentCompat, and nothing else. Reading EXTRA_STREAM off a share means
+    // getParcelableExtra, whose untyped overload is deprecated from API 33 --
+    // and deprecation is an error in this build -- while the typed one does not
+    // exist at minSdk 31. The compat shim is the only spelling that compiles on
+    // both, and writing it by hand would be an SDK_INT branch per call site.
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.hilt.navigation.compose)

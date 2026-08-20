@@ -34,6 +34,8 @@ import de.plmail.feature.compose.ComposeRequest
 import de.plmail.feature.compose.ComposeRequestSaver
 import de.plmail.feature.compose.ScheduledSendsBar
 import de.plmail.feature.compose.SendStatusHost
+import de.plmail.feature.compose.ShareIntake
+import de.plmail.feature.compose.SharedMessage
 import de.plmail.feature.mail.MailShell
 import de.plmail.feature.mail.ThreadTarget
 import de.plmail.feature.onboarding.OnboardingScreen
@@ -59,8 +61,27 @@ class MainActivity : ComponentActivity() {
      * replace it while the activity is alive — tapping a pairing link while onboarding is already
      * open is the ordinary case, not an edge one, and reading `intent` during composition would
      * keep showing the URI the activity first launched with.
+     *
+     * **Filtered by scheme**, which it did not used to have to be. This activity now answers VIEW
+     * for `mailto:` as well as for `plmail://`, and both arrive as `intent.data` — so handing
+     * whatever turned up straight to onboarding would have it try to redeem an email address as a
+     * pairing code.
      */
     private var pendingLink by mutableStateOf<String?>(null)
+
+    /**
+     * What another app shared, if this launch came from a share sheet or a `mailto:`.
+     *
+     * The parsing happens here and the copying does not: turning the intent into a [SharedMessage]
+     * is field access, while taking a copy of the files is IO and belongs in a scope. See
+     * [MainViewModel.stage].
+     *
+     * Not cleared by an ordinary launch. A share that arrives before the app has a server waits
+     * here through the whole of onboarding and opens the moment there is an account to send it
+     * from, which is the difference between "share into plMail" working on a fresh install and it
+     * dropping the user's photo on the floor.
+     */
+    private var pendingShare by mutableStateOf<SharedMessage?>(null)
 
     /**
      * What a tapped notification asked for, if this launch came from one.
@@ -93,8 +114,26 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        pendingLink = intent?.data?.toString()
-        pendingNotification = intent?.notificationRequest()
+        // Only on a fresh create, and this is a fix rather than tidiness.
+        //
+        // `getIntent()` keeps returning the intent that started the activity for
+        // as long as the activity exists, and onCreate runs again on every
+        // recreation — a rotation, a theme change, a process death the task
+        // survived. Re-reading it there means acting on the same intent twice.
+        // For the pairing link that is a code redeemed a second time; for a
+        // share it is every attached file copied again, tens of megabytes at a
+        // time, on a gesture as ordinary as turning the phone.
+        //
+        // Nothing is lost by not re-reading. What the composer is open on lives
+        // in a `rememberSaveable` below and comes back on its own, which is
+        // exactly what a saved request is for.
+        //
+        // The one cost, stated because it is real: a rotation during the second
+        // or two in which a share's files are still being copied loses that
+        // share, because the copy had not finished and there is no saved request
+        // yet. Sharing again is the recovery, and it is a smaller window than
+        // the one this closes.
+        if (savedInstanceState == null) accept(intent)
 
         setContent {
             PlMailAppTheme {
@@ -103,6 +142,8 @@ class MainActivity : ComponentActivity() {
                     onLinkHandled = { pendingLink = null },
                     notification = pendingNotification,
                     onNotificationHandled = { pendingNotification = null },
+                    share = pendingShare,
+                    onShareHandled = { pendingShare = null },
                 )
             }
         }
@@ -114,12 +155,36 @@ class MainActivity : ComponentActivity() {
         // setIntent as well, so anything that later reads getIntent() sees the
         // one that is actually being acted on rather than the launch intent.
         setIntent(intent)
-        pendingLink = intent.data?.toString()
+        accept(intent)
+    }
+
+    /**
+     * Sorts one intent into the three things it can be.
+     *
+     * Shared between [onCreate] and [onNewIntent] rather than written twice, and it became worth
+     * sharing the moment there were three: this activity is `singleTask` and carries five intent
+     * filters, so every one of these can arrive either way and a rule applied in one place only is
+     * a rule that holds on a cold start and not on a warm one.
+     */
+    private fun accept(intent: Intent?) {
+        // Only our own scheme. The mailto: filter added beside the pairing one
+        // is also VIEW, so `intent.data` is no longer proof of a pairing link.
+        pendingLink = intent?.data?.toString()?.takeIf { it.startsWith(PAIRING_SCHEME) }
 
         // Replaced rather than merged. Tapping a second notification while the
         // first conversation is open means "show me that one instead", and a
         // queue would make the second tap open the first mail again.
-        pendingNotification = intent.notificationRequest()
+        pendingNotification = intent?.notificationRequest()
+
+        // Assigned only when there is one, unlike the two above. A share that is
+        // waiting for an account must survive whatever else happens to this
+        // activity in the meantime, and during onboarding what happens is a
+        // pairing link arriving through this very method.
+        ShareIntake.read(intent)?.let { pendingShare = it }
+    }
+
+    private companion object {
+        const val PAIRING_SCHEME = "plmail:"
     }
 }
 
@@ -137,6 +202,8 @@ private fun PlMailApp(
     onLinkHandled: () -> Unit,
     notification: NotificationRequest?,
     onNotificationHandled: () -> Unit,
+    share: SharedMessage?,
+    onShareHandled: () -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val connection by viewModel.connection.collectAsStateWithLifecycle()
@@ -221,6 +288,29 @@ private fun PlMailApp(
                 // answer. See the composable's own note for why it is not asked
                 // again after a refusal.
                 RequestNotificationPermission()
+
+                // Inside the connected branch, and that placement is the whole
+                // handling of "shared into an app with no account". This effect
+                // does not exist while onboarding is on screen, so the share
+                // simply waits in MainActivity's state; the frame after pairing
+                // finishes, this composes for the first time and the composer
+                // opens on it. No branch, no message, no dropped photo.
+                //
+                // The staging inside is IO over files that may be megabytes, so
+                // there is a beat between the share sheet closing and the
+                // composer appearing. That beat is on purpose: it is where the
+                // bytes are copied out of a grant that is about to expire, and
+                // it happens with the intent's task still alive, which is the
+                // only window in which it is legal.
+                LaunchedEffect(share) {
+                    val message = share ?: return@LaunchedEffect
+
+                    // Search would otherwise still be behind the composer for
+                    // someone who shared into plMail mid-query.
+                    isSearching = false
+                    composing = viewModel.stage(message)
+                    onShareHandled()
+                }
 
                 // Mounted for every screen below, so an undo remains reachable
                 // after the user has navigated on. Reopening replaces whatever
