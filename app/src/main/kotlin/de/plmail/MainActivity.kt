@@ -1,5 +1,6 @@
 package de.plmail
 
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -25,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
+import de.plmail.core.data.AppLocaleOverride
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.feature.calendar.CalendarScreen
 import de.plmail.feature.compose.ComposeHost
@@ -69,6 +71,21 @@ class MainActivity : ComponentActivity() {
      * connected.
      */
     private var pendingNotification by mutableStateOf<NotificationRequest?>(null)
+
+    /**
+     * The chosen language, laid over this activity's own configuration.
+     *
+     * An activity's configuration comes from the ActivityThread rather than from the application's,
+     * so `PlMailApplication`'s wrap does not reach it and this is not a duplicate of it. On API 33
+     * and up [AppLocaleOverride.wrap] hands the context back untouched — the platform has already
+     * applied the per-app locale, and a second override is a second answer.
+     *
+     * This is also what makes the choice take effect: below API 33 the settings screen re-creates
+     * the activity, and re-creation runs this again against the tag that was just stored.
+     */
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocaleOverride.wrap(newBase))
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Before setContent, so the first frame is already drawn edge to edge

@@ -109,6 +109,33 @@
     <string name="appearance_title">Appearance</string>
 
     <!--
+      The language picker, above the sync switch because the switch has no say
+      over it.
+
+      The body carries the one thing the position can only imply: this is a
+      setting on the phone and it goes nowhere. It is worth saying outright on
+      this screen in particular, because every other control here is an account
+      preference shared with the browser and somebody who has read that far will
+      reasonably assume this one is too.
+
+      The two language names are endonyms and are deliberately the same word in
+      both translations. Somebody who has landed in a language they cannot read
+      is looking for the name their own language calls itself.
+    -->
+    <string name="appearance_language">Language</string>
+    <string name="language_system">Follow the system</string>
+    <string name="language_english">English</string>
+    <string name="language_german">Deutsch</string>
+    <string name="appearance_language_body">The language plMail is written in on this phone. It is a setting on this device only — it is never sent to your account and never reaches your browser or your other devices.</string>
+    <!--
+      Only shown from Android 13, where the same setting exists in the system's
+      own app list. Naming the path makes the two obviously one setting rather
+      than two that might disagree, and it is left out below Android 13 because
+      there is no such screen to send anybody to.
+    -->
+    <string name="appearance_language_system">This is the same setting as Android\'s own, under Settings → Apps → plMail → Language. Changing it in either place changes both.</string>
+
+    <!--
       The sync switch, first on the screen because it decides what every control
       below it means.
 
