@@ -19,6 +19,26 @@ on:
     # release after the ref it was given.
     workflow_dispatch:
 
+# One publish per tag at a time.
+#
+# GitHub delivered the v0.0.18 tag push twice, seven seconds apart, and started
+# two identical Release runs on the same SHA — both `run_attempt: 1`, so this
+# was a duplicated event rather than a retry. They raced each other to publish
+# the same release and both uploaded the same six assets. It came out clean
+# that time, because `action-gh-release` updates an existing release in place,
+# but two jobs writing one release's assets concurrently is not something to
+# leave to luck.
+#
+# `cancel-in-progress: false` on purpose. Cancelling would mean the *newer* run
+# killing the older one, which can be mid-upload; a half-published release is a
+# far worse outcome than a wasted ten minutes. The duplicate queues, runs after
+# the first has finished, and republishes identical artefacts over identical
+# ones — harmless because that operation is idempotent, which is exactly why it
+# is safe to serialise rather than to suppress.
+concurrency:
+    group: release-${{ github.ref }}
+    cancel-in-progress: false
+
 # Only the release step needs more than read, but the token is job-wide, so
 # this is the smallest scope that works: contents:write creates the release and
 # uploads the assets to it.
