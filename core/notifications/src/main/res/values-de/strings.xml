@@ -9,6 +9,15 @@
     <string name="action_archive">Archivieren</string>
     <string name="action_mark_read">Als gelesen markieren</string>
     <string name="action_reply">Antworten</string>
+    <string name="action_try_again">Erneut versuchen</string>
+
+    <string name="reply_hint">Ihre Antwort</string>
+    <string name="reply_sending">Wird gesendet …</string>
+
+    <string name="reply_not_sent">Antwort nicht gesendet</string>
+    <string name="reply_failed_offline">Es bestand keine Verbindung zu Ihrem Server. Ihre Antwort ist noch da.</string>
+    <string name="reply_failed_unanswerable">Auf diese Nachricht kann aus der Benachrichtigung heraus nicht geantwortet werden. Öffnen Sie plMail, um zu antworten.</string>
+    <string name="reply_failed_refused">Ihr Server hat die Antwort nicht angenommen. Öffnen Sie plMail, um sie zu senden.</string>
 
     <plurals name="new_messages">
         <item quantity="one">1 neue Nachricht</item>

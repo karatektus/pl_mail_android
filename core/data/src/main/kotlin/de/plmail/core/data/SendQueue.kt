@@ -95,6 +95,43 @@ constructor(
         }
     }
 
+    /**
+     * Saves and submits one draft, here and now, and says what happened.
+     *
+     * The path a reply typed in the notification shade takes. It is [enqueue]'s body with two
+     * things taken off it, and both removals are the point:
+     *
+     * **No undo window.** The window is a snackbar's worth of grace, and a shade reply has no
+     * snackbar — nowhere to put an Undo button and nobody looking at the screen. A six-second hold
+     * on a submission nothing can call back is six seconds of delay bought for nothing.
+     *
+     * **No [state].** That flow drives the composer's snackbar. A reply tapped out on the lock
+     * screen must not make the mail list, if it happens to be open behind it, announce a send the
+     * user did not start there — and, worse, must not overwrite a [SendState.Pending] that a real
+     * composer is counting down. The shade reply's own outcome is reported by returning, and its
+     * caller has a notification to say it with.
+     *
+     * **The mutex is kept, and it is the reason this lives here rather than beside the caller.**
+     * Two writes to one account's Email state at once come back as `stateMismatch` — a rejection
+     * the user cannot connect to anything, since the two things that collided were a composer and a
+     * notification. Waiting behind an in-flight send costs at most one undo window and removes the
+     * whole class of it.
+     *
+     * Throws whatever the send threw. The caller has to tell a network failure apart from a
+     * refusal, and swallowing it into a `Boolean` here would take that away.
+     */
+    suspend fun sendNow(draft: ComposeDraft): Submitted = mutex.withLock {
+        // The same ordering the composer's send obeys, for the same reason:
+        // the draft has to exist on the server before anything asks for it
+        // to leave, so the worst case of a failed send is a message sitting
+        // in Drafts rather than one that was never anywhere.
+        job?.join()
+
+        val saved = compose.save(draft)
+
+        compose.submit(saved, hold = null)
+    }
+
     private suspend fun run(draft: ComposeDraft, at: Instant?) {
         // Tracked separately so a failure reports the draft as the *server* last
         // knew it. Reporting the one handed in would drop the id a successful
