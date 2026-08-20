@@ -19,6 +19,34 @@
     <string name="compose_subject">Subject</string>
     <string name="compose_body_hint">Write your message</string>
 
+    <!--
+      The header folded into one line, once the message itself is being written.
+
+      "(no subject)" in brackets rather than an empty gap: the summary is a claim
+      about what the message currently is, and a blank there reads as a rendering
+      fault rather than as a subject nobody has typed yet.
+    -->
+    <string name="compose_no_subject">(no subject)</string>
+    <!--
+      What a double tap does, read out after the line itself. A label rather than
+      a sentence, because TalkBack prefixes it with "double tap to".
+    -->
+    <string name="compose_summary_expand">show the sender, recipients and subject</string>
+    <!--
+      The spoken form of the line. The line on screen uses two marks to save
+      width; nothing announces "›" usefully, so the description spells out what
+      they stand for.
+    -->
+    <string name="compose_summary_description">From %1$s to %2$s, subject %3$s</string>
+    <!--
+      The recipients the line had no room to name, spoken. A count, so it is a
+      plural rather than a format string with a number in it.
+    -->
+    <plurals name="compose_summary_more">
+        <item quantity="one">and 1 more</item>
+        <item quantity="other">and %1$d more</item>
+    </plurals>
+
     <string name="compose_bold">Bold</string>
     <string name="compose_italic">Italic</string>
     <string name="compose_underline">Underline</string>

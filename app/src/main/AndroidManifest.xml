@@ -56,11 +56,31 @@
           instance would redeem against a ViewModel the visible screen is not
           observing.
         -->
+        <!--
+          adjustResize, and it is a bug fix rather than tidiness.
+
+          Left unset the mode is SOFT_INPUT_ADJUST_UNSPECIFIED, which asks the
+          window manager to guess. It guesses by looking for a scrolling view in
+          the hierarchy, finds none — a Compose activity is one ComposeView with
+          no ScrollView anywhere the platform can recognise — and settles on
+          PAN. Panning translates the whole window upward to keep the cursor
+          visible, so opening the keyboard in the composer's message body slid
+          the top app bar up underneath the status bar, title and back arrow cut
+          in half. Nothing in the Compose code could have corrected that: the
+          window itself had moved.
+
+          With adjustResize the window stays where it is and the IME arrives as
+          an inset instead, which is what the app already knows how to spend —
+          see ComposeScreen's imePadding. The two have to be set together:
+          adjustResize alone under edge-to-edge would leave the body behind the
+          keys, and imePadding alone cannot un-pan a window.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
-            android:theme="@style/Theme.PlMail">
+            android:theme="@style/Theme.PlMail"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -133,12 +153,20 @@
           not mirrored into DataStore: the system owns this, and a second copy
           would be a second copy that can be wrong.
         -->
+        <!--
+          adjustResize here too, for the reason MainActivity's note gives. The
+          calendar app has an event editor with text fields in it, so it is the
+          same window that would otherwise be panned — and two activities onto
+          the same install disagreeing about how the keyboard arrives is the
+          kind of difference nobody notices until one of them is reported.
+        -->
         <activity
             android:name=".CalendarActivity"
             android:exported="false"
             android:launchMode="singleTask"
             android:taskAffinity=":calendar"
-            android:theme="@style/Theme.PlMail" />
+            android:theme="@style/Theme.PlMail"
+            android:windowSoftInputMode="adjustResize" />
 
         <!--
           Its own label and its own icon, both in resources so German gets the
