@@ -251,3 +251,11 @@ tasks.register("printVersionName") {
 
     doLast { println(versionName) }
 }
+
+// `verifyScreenshotsOnCheck` — a baseline recorded from a broken build once
+// shipped describing itself as proof of the fix, and nothing noticed.
+tasks.matching { it.name == "check" }.configureEach { dependsOn("verifyRoborazziFossDebug") }
+
+// The screenshots are a gate, not documentation — see core/ui/build.gradle.kts
+// for why this is wired by hand and why it is safe to make mandatory.
+tasks.matching { it.name == "check" }.configureEach { dependsOn("verifyRoborazziFossDebug") }
