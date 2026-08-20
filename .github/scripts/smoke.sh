@@ -18,8 +18,9 @@ set -euo pipefail
 
 apk="${1:?usage: smoke.sh <apk>}"
 
-adb install -r "$apk"
-
+# The package is resolved before anything is installed, because the install
+# itself depends on it -- see the uninstall below.
+#
 # Read out of the APK, not off the device.
 #
 # The flavours carry an applicationIdSuffix -- google is `de.plmail.google`,
@@ -40,6 +41,19 @@ if [ -z "$package" ]; then
     echo "::error::Could not read a package name out of $apk."
     exit 1
 fi
+
+# Whatever is already there goes first, and the `|| true` is the whole point:
+# most of the time there is nothing to remove.
+#
+# The AVD is restored from a cached snapshot, so it can arrive carrying this app
+# from a previous run -- signed with that run's throwaway key, since a fresh one
+# is generated every time. `adb install -r` then refuses the whole thing with
+# INSTALL_FAILED_UPDATE_INCOMPATIBLE, and the job fails for a reason that has
+# nothing to do with the build under test. A check that depends on the device
+# being in a particular state beforehand is a check that will eventually report
+# on something other than the artifact it was given.
+adb uninstall "$package" > /dev/null 2>&1 || true
+adb install "$apk"
 
 echo "Starting $package"
 
