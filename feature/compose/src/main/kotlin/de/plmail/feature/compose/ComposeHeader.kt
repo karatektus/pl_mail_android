@@ -267,7 +267,10 @@ private fun SummaryRow(state: ComposeUiState, onExpand: () -> Unit) {
         // whole width.
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(theme.spacing.hair),
+            // A real gap rather than a hairline. Two lines a hairline apart read
+            // as one wrapped sentence, which is the opposite of what splitting
+            // them was for -- the whole point is that these are two facts.
+            verticalArrangement = Arrangement.spacedBy(theme.spacing.tiny),
         ) {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(theme.spacing.small),
@@ -298,18 +301,41 @@ private fun SummaryRow(state: ComposeUiState, onExpand: () -> Unit) {
                 }
             }
 
-            // The brighter of the two, because it is what the message *is*. On
-            // the single-line version this had to compete with the addressing
-            // for the same run of pixels and lost about half of itself; here it
-            // has the row.
-            Text(
-                text = summary.subject,
-                style = MaterialTheme.typography.bodyMedium,
-                color = theme.colors.ink,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(theme.spacing.tiny),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                // Named, because on its own a second line of text is just more
+                // text: "Re: die Nebenkostenabrechnung" under a row of names
+                // could be read as another recipient at a glance. The word is
+                // the same one the expanded field uses, so the folded header is
+                // the open one in shorthand rather than a second design.
+                //
+                // Faint and small: it is a signpost, and a label that competed
+                // with what it labels would be worse than none. The colon lives
+                // in the string rather than in the layout, because where it goes
+                // — and whether it takes a space before it — is a question about
+                // the language.
+                Text(
+                    text = stringResource(R.string.compose_summary_subject),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = theme.colors.inkFaint,
+                    maxLines = 1,
+                )
+
+                // The brighter of the two lines, because it is what the message
+                // *is*. On the single-line version this had to compete with the
+                // addressing for the same run of pixels and lost about half of
+                // itself; here it has the row.
+                Text(
+                    text = summary.subject,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = theme.colors.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
 
         Icon(

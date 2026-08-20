@@ -17,6 +17,12 @@
     <string name="compose_bcc">Bcc</string>
     <string name="compose_show_copy_fields">Cc / Bcc</string>
     <string name="compose_subject">Subject</string>
+    <!--
+      The label on the folded header's second line. Carries its own colon: where
+      the punctuation goes, and whether it takes a space before it, is a question
+      about the language rather than about the layout.
+    -->
+    <string name="compose_summary_subject">Subject:</string>
     <string name="compose_body_hint">Write your message</string>
 
     <!--
