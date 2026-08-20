@@ -1,10 +1,12 @@
 package de.plmail.feature.compose
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -16,7 +18,9 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -41,6 +45,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -284,22 +291,129 @@ private fun SuggestionList(
         // regardless, so the rows are as tappable as they ever were.
         properties = PopupProperties(focusable = false),
     ) {
+        // Measured rather than assumed. A row is a line of text between two
+        // spacing tokens, so its height moves with the density *and* with the
+        // app's own font scale -- and a flat cap in dp therefore cuts the list
+        // at an arbitrary point. The reported symptom was the giveaway: a half
+        // row with no text in it, which is the cap landing in the padding under
+        // the last line it could fit.
+        var rowHeight by remember { mutableStateOf(0.dp) }
+        val density = LocalDensity.current
+
+        val listState = rememberLazyListState()
+
+        // A whole number of rows, plus a deliberate slice of the next one.
+        //
+        // The slice is what says "there is more", and it has to cut through the
+        // *text* to say it -- a gap of padding says the list has ended untidily.
+        // Zero until the first row has been measured, which is one frame, and
+        // the fallback for that frame is the flat cap this replaced.
+        val cap =
+            if (rowHeight <= 0.dp) MAX_HEIGHT
+            else {
+                // The pitch, not the row. Every row after the first carries a
+                // hairline above it, and `onSizeChanged` measures the row alone
+                // -- so an arithmetic in bare row heights drifts by a divider
+                // per row and the peek ends up a quarter of what was asked for,
+                // which is how this landed back in the padding the first time.
+                val pitch = rowHeight + theme.spacing.hair
+                val peek = pitch * ROW_PEEK
+                val whole = ((MAX_HEIGHT - peek) / pitch).toInt().coerceAtLeast(1)
+
+                // Minus one hairline, because the first row has no divider over
+                // it and `whole` pitches have counted one for it.
+                pitch * whole - theme.spacing.hair + peek
+            }
+
         Box(
             modifier =
                 Modifier.width(width)
-                    .heightIn(max = MAX_HEIGHT)
+                    .heightIn(max = cap)
                     .clip(shape)
                     .background(theme.colors.raised, shape)
                     .border(theme.spacing.hair, theme.colors.lineStrong, shape)
         ) {
-            LazyColumn {
+            LazyColumn(state = listState) {
                 itemsIndexed(suggestions) { index, suggestion ->
                     if (index > 0) PlMailDivider()
 
-                    SuggestionRow(suggestion = suggestion, onClick = { onPicked(suggestion) })
+                    SuggestionRow(
+                        suggestion = suggestion,
+                        onClick = { onPicked(suggestion) },
+                        // Only the first, because they are all the same height
+                        // and a callback on every row would rewrite the cap
+                        // while the list is being scrolled.
+                        onMeasured =
+                            if (index != 0) null
+                            else ({ height -> rowHeight = with(density) { height.toDp() } }),
+                    )
                 }
             }
+
+            ScrollHint(state = listState)
         }
+    }
+}
+
+/**
+ * A slim thumb on the trailing edge, drawn only while there is something to scroll to.
+ *
+ * Android draws no scrollbar for a `LazyColumn` unless one is asked for, and a floating list with a
+ * clipped row at the bottom and nothing on its edge does not read as scrollable — the report that
+ * prompted this was exactly that. A partial row alone is too quiet a signal when the thing it is
+ * partial *in* is a small panel that could plausibly just be short.
+ *
+ * Derived from the layout rather than from an item count, so it stays honest if the rows ever stop
+ * being a uniform height: the thumb is as long a fraction of the track as the viewport is of the
+ * whole content, positioned by how far through that content the viewport has got.
+ *
+ * Not draggable. It is an indicator, not a control — the list is scrolled by touching the list, and
+ * a 4dp target would be a control nobody could hit.
+ */
+@Composable
+private fun BoxScope.ScrollHint(state: LazyListState) {
+    val theme = LocalPlMailTheme.current
+    val colour = theme.colors.lineStrong
+    val density = LocalDensity.current
+    val thumbWidth = with(density) { THUMB_WIDTH.toPx() }
+    val inset = with(density) { theme.spacing.tiny.toPx() }
+
+    // Everything is read inside the draw lambda, which is the point of drawing
+    // it rather than laying it out. `layoutInfo` and `firstVisibleItemScrollOffset`
+    // change on every frame of a fling, and reading them in composition
+    // recomposes this subtree that often -- Compose's own lint fails the build
+    // for it, correctly. In the draw phase the same reads cost a repaint of one
+    // rectangle.
+    Canvas(modifier = Modifier.matchParentSize()) {
+        val info = state.layoutInfo
+        val items = info.visibleItemsInfo
+        if (items.isEmpty()) return@Canvas
+
+        val viewport = (info.viewportEndOffset - info.viewportStartOffset).toFloat()
+        if (viewport <= 0f) return@Canvas
+
+        // The average is what makes this work for rows that are not all the same
+        // height: with uniform rows it is exact, and with mixed ones the thumb
+        // breathes a little rather than lying.
+        val averageRow = items.sumOf { it.size }.toFloat() / items.size
+        val content = averageRow * info.totalItemsCount
+
+        // Everything fits, so there is nothing to hint at.
+        if (content <= viewport) return@Canvas
+
+        val fraction = (viewport / content).coerceIn(MIN_THUMB, 1f)
+        val track = size.height - 2 * inset
+        val thumb = (track * fraction).coerceAtLeast(thumbWidth)
+
+        val scrolled = state.firstVisibleItemIndex * averageRow + state.firstVisibleItemScrollOffset
+        val progress = (scrolled / (content - viewport)).coerceIn(0f, 1f)
+
+        drawRoundRect(
+            color = colour,
+            topLeft = Offset(size.width - inset - thumbWidth, inset + progress * (track - thumb)),
+            size = Size(thumbWidth, thumb),
+            cornerRadius = CornerRadius(thumbWidth / 2f),
+        )
     }
 }
 
@@ -316,7 +430,11 @@ private fun SuggestionList(
  * otherwise have its address printed twice on one line, which looks like a duplicate result.
  */
 @Composable
-private fun SuggestionRow(suggestion: EmailAddress, onClick: () -> Unit) {
+private fun SuggestionRow(
+    suggestion: EmailAddress,
+    onClick: () -> Unit,
+    onMeasured: ((Int) -> Unit)? = null,
+) {
     val theme = LocalPlMailTheme.current
     val email = suggestion.email.orEmpty()
     val name = suggestion.name?.takeIf { it.isNotBlank() && it != email }
@@ -324,6 +442,10 @@ private fun SuggestionRow(suggestion: EmailAddress, onClick: () -> Unit) {
     Row(
         modifier =
             Modifier.fillMaxWidth()
+                .then(
+                    if (onMeasured == null) Modifier
+                    else Modifier.onSizeChanged { onMeasured(it.height) }
+                )
                 .clickable(onClick = onClick)
                 .padding(
                     horizontal = theme.spacing.medium,
@@ -397,6 +519,21 @@ private class UnderTheField(private val gap: Int, private val keyboard: Int) :
  * allowed to cover, and that is the same amount on a phone and on a tablet.
  */
 private val MAX_HEIGHT = 240.dp
+
+/**
+ * How much of the row beyond the last whole one is left showing.
+ *
+ * Enough to cut through the text rather than through the padding under it. A row is a line of type
+ * between two `small` gaps, so six tenths of it is the gap plus most of the glyphs — visibly a row
+ * that continues, which is the whole job. Half was the accidental value before this and landed in
+ * the padding, which is why the list looked like it ended in a blank strip.
+ */
+private const val ROW_PEEK = 0.6f
+
+private val THUMB_WIDTH = 3.dp
+
+/** The thumb never shrinks past this, or a long list gives it nothing to draw. */
+private const val MIN_THUMB = 0.12f
 
 /**
  * Turns typed text into addresses.

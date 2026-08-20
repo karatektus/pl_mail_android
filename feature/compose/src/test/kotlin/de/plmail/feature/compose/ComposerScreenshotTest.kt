@@ -280,6 +280,14 @@ class ComposerScreenshotTest {
             EmailAddress(name = "Anton Weiß", email = "anton@example.org"),
             EmailAddress(name = "Susanne Anders", email = "susanne@anders.example"),
             EmailAddress(name = "Bank Andechs", email = "service@andechs.example"),
+            // Past the cap on purpose. Eight results fitted, and a list that
+            // fits says nothing about the case the scroll hint exists for --
+            // the panel is capped, the last row is deliberately cut through its
+            // text, and the thumb on the trailing edge is what says so.
+            EmailAddress(name = "Andreas Nowak", email = "a.nowak@example.org"),
+            EmailAddress(name = "Angela Ferber", email = "angela@example.org"),
+            EmailAddress(name = "Antiquariat Sand", email = "kontakt@sand.example"),
+            EmailAddress(name = "Anwaltskanzlei Brandt", email = "kanzlei@brandt.example"),
         )
 
     private companion object {
