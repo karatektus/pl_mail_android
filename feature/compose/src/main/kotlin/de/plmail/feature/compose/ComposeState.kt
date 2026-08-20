@@ -66,6 +66,28 @@ data class ComposeUiState(
     val showsAccountNames: Boolean
         get() = identities.distinctBy { it.accountKey }.size > 1
 
+    /**
+     * Whether the collapsed header has to name the sender.
+     *
+     * Only when it could be something else. With one account and one alias the answer is fixed for
+     * the whole session, and spending forty per cent of a single-line summary restating it leaves
+     * the two facts that *do* change — who it is going to, and what it is about — as a pair of
+     * ellipses. That is what the first version of the line looked like.
+     *
+     * Two cases, and each is a genuine surprise worth the room. Several accounts are connected, so
+     * which mailbox this leaves from is a real choice the user makes and can get wrong. Or the
+     * draft is not on its account's default alias — a reply picks the alias the mail was addressed
+     * to, which is exactly the moment somebody wants to see it before they send.
+     *
+     * The expanded header is unaffected: it always shows the From row, because that is where the
+     * sender is *chosen* rather than merely reported.
+     */
+    val summaryNamesSender: Boolean
+        get() =
+            showsAccountNames ||
+                identities.firstOrNull { it.accountKey == draft.accountKey }?.identityId !=
+                    draft.identityId
+
     /** Whether "Send later" belongs in the menu at all. The session decides, not this client. */
     val canScheduleSend: Boolean
         get() = submission.supportsScheduledSend

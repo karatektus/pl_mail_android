@@ -211,13 +211,17 @@ private fun SummaryRow(state: ComposeUiState, onExpand: () -> Unit) {
             summariseRecipients(draft.to, draft.cc, draft.bcc)
         }
 
-    // The address rather than `label`, and rather than Gmail's "me". This app
-    // makes a point of never hiding which alias is sending — see FromRow — and
-    // the address is the part that actually differs between two aliases whose
-    // display name is the same account's. It is also the first thing the line
-    // gives up when there is no room, which is the right order: the sender is
-    // stable across a whole session and the other two facts are not.
-    val from = state.identity?.email ?: stringResource(R.string.compose_from_unknown)
+    // The address rather than `label`, and rather than Gmail's "me": the address
+    // is the part that actually differs between two aliases whose display name
+    // is the same account's.
+    //
+    // Blank where naming the sender would say nothing — see `summaryNamesSender`.
+    // The first version of this line always drew it, and on a phone the result
+    // was "jan@plmail.example › Katrin Voge… +1 · Re: die Neben…": the one fact
+    // that could not change had eaten the two that could.
+    val from =
+        if (!state.summaryNamesSender) ""
+        else state.identity?.email ?: stringResource(R.string.compose_from_unknown)
     val noSubject = stringResource(R.string.compose_no_subject)
     val summary = composeSummary(from, recipients, draft.subject, noSubject)
 
@@ -457,11 +461,16 @@ internal fun composeSummary(
     val people = recipients.names.joinToString(", ")
 
     return ComposeSummary(
-        // The mark is dropped entirely rather than left as an empty gap. This is
-        // only reachable from a draft with recipients, but an addressing reading
-        // "me › " would be a rendering fault rather than a summary, and the cost
-        // of not producing one is one branch.
-        addressing = if (people.isEmpty()) from else "$from $RECIPIENT_MARK $people",
+        // The mark is drawn only with something on both sides of it. Either half
+        // can be absent — a draft addressed to nobody, or a sender the line has
+        // no reason to name — and an addressing reading "› Katrin" or "me › "
+        // would be a rendering fault rather than a summary.
+        addressing =
+            when {
+                from.isEmpty() -> people
+                people.isEmpty() -> from
+                else -> "$from $RECIPIENT_MARK $people"
+            },
         more = if (recipients.more > 0) "+${recipients.more}" else "",
         subject = subject.ifBlank { noSubject },
     )

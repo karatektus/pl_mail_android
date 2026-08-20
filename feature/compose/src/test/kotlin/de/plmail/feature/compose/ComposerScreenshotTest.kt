@@ -76,6 +76,24 @@ class ComposerScreenshotTest {
     }
 
     /**
+     * The same line when the sender *is* worth naming, which is the other branch.
+     *
+     * The first version of this line always drew the sending address, and on a phone the result was
+     * "jan@plmail.example › Katrin Voge… +1 · Re: die Neben…" — the one fact that could not change
+     * had eaten the two that could. It is drawn only when it could be something else: several
+     * accounts connected, or a draft on an alias that is not the account's default, which is what a
+     * reply picks and exactly when somebody wants to see it before they send.
+     *
+     * Both baselines exist so the rule is visible as a pair rather than asserted in prose.
+     */
+    @Test
+    fun headerCollapsedOnAnAlias() {
+        capture("header-collapsed-alias", height = 120.dp) {
+            Header(isExpanded = false, state = fromAnAlias)
+        }
+    }
+
+    /**
      * The To line at a width where the chips have to wrap.
      *
      * The question this answers is the one the trailing-slot decision was made against: whether a
@@ -232,6 +250,21 @@ class ComposerScreenshotTest {
                 ),
             identities = listOf(identity),
             isLoading = false,
+        )
+
+    /** A second address on the same account, and the one this draft is not sending from. */
+    private val alias = identity.copy(identityId = "i2", email = "rechnungen@plmail.example")
+
+    /**
+     * The same draft sent from the alias rather than the default.
+     *
+     * The order matters as much as the ids: `summaryNamesSender` calls the *first* identity on an
+     * account its default, so the alias has to be second for this to be the case it claims to be.
+     */
+    private val fromAnAlias =
+        draft.copy(
+            draft = draft.draft.copy(identityId = alias.identityId),
+            identities = listOf(identity, alias),
         )
 
     /** Everybody on the To line, so a narrow window has to wrap them. */

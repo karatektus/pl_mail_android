@@ -141,5 +141,40 @@ class ComposeSummaryTest {
             noSubject = "(no subject)",
         )
 
+    /**
+     * The sender is omitted where naming it would say nothing, and then the mark goes with it.
+     *
+     * `ComposeUiState.summaryNamesSender` decides *whether* — one account with one alias can only
+     * ever send from itself — and this is the other half: a summary that still drew the `›` would
+     * open with a mark pointing at nothing.
+     */
+    @Test
+    fun `an unnamed sender takes its mark with it`() {
+        val summary =
+            composeSummary(
+                from = "",
+                recipients = summariseRecipients(to = listOf(person("Katrin Vogel", "k@x.de"))),
+                subject = "Nebenkosten",
+                noSubject = "(no subject)",
+            )
+
+        assertEquals("Katrin Vogel", summary.addressing)
+        assertEquals("Nebenkosten", summary.subject)
+    }
+
+    @Test
+    fun `neither half is a blank line rather than a stray mark`() {
+        val summary =
+            composeSummary(
+                from = "",
+                recipients = summariseRecipients(to = emptyList()),
+                subject = "",
+                noSubject = "(no subject)",
+            )
+
+        assertEquals("", summary.addressing)
+        assertEquals("(no subject)", summary.subject)
+    }
+
     private fun person(name: String?, email: String) = EmailAddress(name = name, email = email)
 }
