@@ -211,6 +211,19 @@ object MessageDocument {
      * `break-word` it lowers the *minimum content width*, which is what gives the reflow above
      * somewhere to go.
      *
+     * **Images are capped, never resized.** This rule carried a `width: auto !important` beside the
+     * cap, and that was a bug rather than belt and braces: `auto` does not mean "as wide as it may
+     * be", it means *discard the width the sender declared and use the file's own*. A newsletter
+     * that sizes a row of icons `width="16"` off 48px assets had every one of them drawn at 48px,
+     * and marketing mail sizes images that way constantly — which is why the report was "images
+     * look too large, on many emails" rather than about one message.
+     *
+     * `max-width` alone does the job it was there for. A declared width is honoured until it
+     * exceeds the viewport, and then the cap wins, because a cap always outranks a used width.
+     * `height: auto !important` stays and is what keeps a capped image undistorted: the height is
+     * recomputed from the width the cap allowed, against the file's own aspect ratio. Where nothing
+     * was capped it resolves back to the declared height, so the ordinary case is untouched.
+     *
      * `overflow-x: auto` on the wrapper is the safety net for everything the reflow cannot reach:
      * an absolutely positioned element at `left: 900px`, a hard `min-width`, a `<pre>` of
      * unbreakable output. A scroll container clips its own overflow, so nothing escapes to the
@@ -233,7 +246,6 @@ object MessageDocument {
         table[width], table[style*="width"] { width: 100% !important; }
         td, th, col, colgroup { width: auto !important; min-width: 0 !important; }
         img, picture, video, svg, canvas, iframe, object, embed {
-            width: auto !important;
             max-width: min(100%, calc(100vw - ${INSET_BOTH_PX}px)) !important;
         }
         img, picture, video { height: auto !important; }

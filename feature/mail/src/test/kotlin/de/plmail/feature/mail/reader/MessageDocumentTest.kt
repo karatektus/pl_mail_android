@@ -79,6 +79,31 @@ class MessageDocumentTest {
     }
 
     /**
+     * Capping a picture is not the same as resizing it, and the reset used to do both.
+     *
+     * `width: auto !important` sat beside the cap. `auto` does not mean "as wide as it may be" — it
+     * means *discard the width the sender declared and use the file's own*, so a newsletter sizing
+     * a row of icons `width="16"` off 48px assets had every one of them drawn at 48px. Marketing
+     * mail sizes images that way constantly, which is why this was reported as "images look too
+     * large, on many emails" rather than against one message.
+     *
+     * Asserted against the image rule rather than against the whole sheet, because tables and cells
+     * legitimately keep a `width: auto` of their own a few lines above.
+     */
+    @Test
+    fun `the reset caps an image without discarding the width the sender declared`() {
+        val css = wrap(MessageRenderStyle.ORIGINAL)
+        val rule = css.substringAfter("img, picture, video, svg").substringBefore("}")
+
+        assertTrue(rule.contains("max-width"), "the cap is what stops a wide image scrolling")
+        assertFalse(
+            rule.contains("width: auto"),
+            "a declared width has to survive, or every deliberately small image is drawn at its " +
+                "file's own size",
+        )
+    }
+
+    /**
      * The wrapper's padding and the width an image may reach are one number twice.
      *
      * Drift between them is invisible in review and shows up as a sliver of the sender's background
