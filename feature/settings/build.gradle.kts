@@ -42,6 +42,8 @@ dependencies {
     testImplementation(libs.roborazzi)
     testImplementation(libs.roborazzi.compose)
     testImplementation(libs.androidx.compose.ui.test.junit4)
+    // The touch-target and labelling assertion, shared so the rule has one home.
+    testImplementation(testFixtures(projects.core.ui))
     testImplementation(libs.androidx.test.ext.junit)
     testRuntimeOnly(libs.junit.platform.launcher)
     // Robolectric, and therefore Roborazzi, is JUnit 4. This module's other
@@ -51,3 +53,11 @@ dependencies {
     // nothing.
     testRuntimeOnly(libs.junit.vintage.engine)
 }
+
+// `verifyScreenshotsOnCheck` — a baseline recorded from a broken build once
+// shipped describing itself as proof of the fix, and nothing noticed.
+tasks.matching { it.name == "check" }.configureEach { dependsOn("verifyRoborazziDebug") }
+
+// The screenshots are a gate, not documentation — see core/ui/build.gradle.kts
+// for why this is wired by hand and why it is safe to make mandatory.
+tasks.matching { it.name == "check" }.configureEach { dependsOn("verifyRoborazziDebug") }

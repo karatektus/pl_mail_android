@@ -301,7 +301,17 @@ private fun SidebarContent(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = theme.spacing.small),
                 horizontalArrangement = Arrangement.Start,
             ) {
-                TextButton(onClick = onCreate) {
+                // 48dp, and no density exception. The rows above take one --
+                // see `PlMailDensity.sidebarRowHeight` -- because each is the
+                // full width of the drawer and reached in a list that is
+                // scrolled rather than aimed at. This is a button: small,
+                // isolated, and exactly the kind of control `touchTarget`
+                // exists to protect. Material's own TextButton is 40dp high,
+                // which an audit of the semantics tree flagged at every density.
+                TextButton(
+                    onClick = onCreate,
+                    modifier = Modifier.heightIn(min = theme.spacing.touchTarget),
+                ) {
                     Icon(imageVector = Icons.Filled.Add, contentDescription = null)
                     Text(
                         text = stringResource(R.string.label_new),

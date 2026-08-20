@@ -222,9 +222,29 @@ enum class PlMailDensity(
      * of this says, which is why the sidebar draws its own row.
      *
      * A **minimum** rather than a height: the app has its own font scale on top of the system's,
-     * and a fixed box clips the label of anyone who has turned either up. 48dp is Material's touch
-     * target and the comfortable value for that reason; below it the rows are still reachable
-     * because the whole row is the target and the list is scrolled rather than aimed at.
+     * and a fixed box clips the label of anyone who has turned either up.
+     *
+     * ## 48 / 44 / 40, and the bottom two are a deliberate, bounded deviation
+     *
+     * [PlMailSpacing.touchTarget] says 48dp is the smallest a tappable thing may be, "never scaled
+     * below this, whatever the density". These rows go under it, so the exception has to be argued
+     * rather than assumed — an accessibility guideline is not a style preference, and stacked
+     * navigation rows are the *worst* case for it: every neighbour is also a target, so a mis-tap
+     * does not miss, it opens the wrong list.
+     *
+     * What makes it defensible is that these are not the isolated small controls the rule is aimed
+     * at. A drawer row is the full width of the drawer — roughly 400dp against 40 — reached with a
+     * thumb in a vertical list that is scrolled rather than aimed at, and the whole row is the
+     * target rather than the glyph inside it. Gmail's own compact drawer sits at about 40dp, and
+     * matching Gmail's density at Gmail's row height is the whole point of the setting.
+     *
+     * The floor moved up from 36dp after an audit of the semantics tree flagged it. 36dp was 12dp
+     * under the guideline with nothing to say why; 40dp is 8dp under it with this paragraph. The
+     * cost is real and small: at 411×891 a compact drawer shows about eighteen rows rather than
+     * twenty, against thirteen for the fixed 56dp Material component this replaced.
+     *
+     * Anything that is *not* a full-width row — a button, an icon, a chip — takes `touchTarget` and
+     * does not get this exception.
      */
     val sidebarRowHeight: Dp,
     /**
@@ -237,8 +257,8 @@ enum class PlMailDensity(
     val sidebarIconSize: Dp,
 ) {
     COMFORTABLE("comfortable", 1f, 76.dp, 48.dp, 24.dp),
-    COSY("cosy", 0.85f, 68.dp, 42.dp, 22.dp),
-    COMPACT("compact", 0.72f, 60.dp, 36.dp, 20.dp);
+    COSY("cosy", 0.85f, 68.dp, 44.dp, 22.dp),
+    COMPACT("compact", 0.72f, 60.dp, 40.dp, 20.dp);
 
     companion object {
         fun fromWire(value: String?): PlMailDensity =
