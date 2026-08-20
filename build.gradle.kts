@@ -23,9 +23,17 @@ plugins {
 spotless {
     val ktfmtVersion = libs.versions.ktfmt.get()
 
+    // Never anything under `.claude/`, which is not part of the project. It is
+    // gitignored tooling scratch space and it can contain whole git worktrees of
+    // this same repository -- so without this the root project formats, and
+    // fails on, source files that belong to a different checkout entirely. A
+    // build that goes red because of a file `git status` does not even list is
+    // a build nobody can debug.
+    val outsideTheProject = arrayOf("**/build/**", ".claude/**")
+
     kotlin {
         target("**/*.kt")
-        targetExclude("**/build/**")
+        targetExclude(*outsideTheProject)
         ktfmt(ktfmtVersion).kotlinlangStyle()
         trimTrailingWhitespace()
         endWithNewline()
@@ -33,7 +41,7 @@ spotless {
 
     kotlinGradle {
         target("**/*.gradle.kts")
-        targetExclude("**/build/**")
+        targetExclude(*outsideTheProject)
         ktfmt(ktfmtVersion).kotlinlangStyle()
         trimTrailingWhitespace()
         endWithNewline()
@@ -41,7 +49,7 @@ spotless {
 
     format("misc") {
         target("**/*.md", "**/*.yml", "**/*.yaml", "**/.gitignore")
-        targetExclude("**/build/**")
+        targetExclude(*outsideTheProject)
         trimTrailingWhitespace()
         endWithNewline()
     }
