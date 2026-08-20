@@ -224,6 +224,41 @@ object MessageDocument {
      * recomputed from the width the cap allowed, against the file's own aspect ratio. Where nothing
      * was capped it resolves back to the declared height, so the ordinary case is untouched.
      *
+     * ## The cap is written twice, in two different forms, and that is not an oversight
+     *
+     * Blocks and tables take `calc(100vw - Npx)`. Images take `min(100%, calc(100vw - Npx))`. Each
+     * form is wrong in the other's place, and both were measured rather than reasoned about — see
+     * below for how.
+     *
+     * A percentage is **indefinite during intrinsic sizing**. So `min(100%, …)` on a `<div>` that
+     * asked for 640px caps what is *painted* at the viewport, and leaves the element still
+     * contributing 640px to its ancestors' min-content width. A shrink-to-fit table around it grows
+     * to 640, and the message scrolls sideways with every block inside it neatly capped. That is
+     * exactly the shape of the bug this fixed: a table declaring `min-width: 600px` — `min-width`
+     * outranks `max-width`, and nothing here was clearing it — sitting inside a page where every
+     * individual element looked contained.
+     *
+     * The pure viewport cap has no percentage in it, resolves during intrinsic sizing, and stops
+     * the ancestor growing. Applied to an **image**, though, it is worse than useless: an image in
+     * a 120px column is capped at the viewport rather than at its column, so it bursts out of the
+     * cell, and the few pixels of table chrome around it push the total past the viewport.
+     * Measured: a 600px image in a 120px column renders 302px wide under `min(100%, …)` and 476px
+     * under the pure cap, overflowing by 3px. Images keep the percentage; boxes do not.
+     *
+     * **How to check this rather than argue about it.** Android's WebView is Chromium, so headless
+     * Chrome at a phone width is a faithful proxy. Write a hostile body to a file, run it through
+     * [wrap], append a script that reports `#$ROOT`'s `scrollWidth` against its `clientWidth`, and
+     * `google-chrome --headless --window-size=411,891 --dump-dom` it. **Measure `#$ROOT`, not the
+     * document** — the root is the scroll container, so a document-level measurement reports no
+     * overflow while the message scrolls sideways underneath. The fixture behind this note put
+     * 664px of content in a 500px container before these rules and exactly 500 after.
+     *
+     * `[style*="nowrap"]` is the bluntest rule here and it earns its place: capping a paragraph's
+     * box does nothing about text inside it that refuses to wrap, and that fixture scrolled to
+     * 581px on the strength of one inline `white-space: nowrap`. It is scoped to inline styles
+     * because that is how mail carries it; a `nowrap` from a `<style>` block is out of reach and
+     * falls through to the safety net below.
+     *
      * `overflow-x: auto` on the wrapper is the safety net for everything the reflow cannot reach:
      * an absolutely positioned element at `left: 900px`, a hard `min-width`, a `<pre>` of
      * unbreakable output. A scroll container clips its own overflow, so nothing escapes to the
@@ -242,7 +277,11 @@ object MessageDocument {
             position: relative;
             overflow-x: auto;
         }
-        table { width: auto !important; max-width: 100% !important; }
+        table, tbody, thead, tfoot, tr {
+            min-width: 0 !important;
+            max-width: calc(100vw - ${INSET_BOTH_PX}px) !important;
+        }
+        table { width: auto !important; table-layout: auto !important; }
         table[width], table[style*="width"] { width: 100% !important; }
         td, th, col, colgroup { width: auto !important; min-width: 0 !important; }
         img, picture, video, svg, canvas, iframe, object, embed {
@@ -251,8 +290,10 @@ object MessageDocument {
         img, picture, video { height: auto !important; }
         div, p, blockquote, pre, section, article, header, footer, main, aside,
         ul, ol, dl, h1, h2, h3, h4, h5, h6, figure, form, fieldset {
-            max-width: 100% !important;
+            min-width: 0 !important;
+            max-width: calc(100vw - ${INSET_BOTH_PX}px) !important;
         }
+        [style*="nowrap"] { white-space: normal !important; }
         pre { white-space: pre-wrap; word-break: break-word; }
         """
             .trimIndent()

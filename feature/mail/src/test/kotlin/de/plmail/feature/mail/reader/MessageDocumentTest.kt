@@ -79,6 +79,76 @@ class MessageDocumentTest {
     }
 
     /**
+     * A declared `min-width` outranks every cap, so it has to be cleared rather than out-argued.
+     *
+     * This is what made a marketing mail scroll sideways while every element in it looked
+     * contained: one outer `<table style="min-width:600px">`. `min-width` beats `max-width` in the
+     * cascade's final step, so the table stayed 600px wide in a 411px viewport and everything
+     * inside it laid out against that. Measured in headless Chrome, the fixture put 664px of
+     * content in a 500px container before this rule and exactly 500 after.
+     */
+    @Test
+    fun `a declared minimum width cannot pin the message wider than the pane`() {
+        val css = wrap(MessageRenderStyle.ORIGINAL)
+
+        assertTrue(
+            css.contains(Regex("""table[^{]*\{[^}]*min-width: 0 !important""")),
+            "a table's own minimum width outranks the cap and has to be released",
+        )
+        assertTrue(
+            css.contains(Regex("""div, p,[^{]*\{[^}]*min-width: 0 !important""")),
+            "so does a block's",
+        )
+    }
+
+    /**
+     * Boxes are capped in viewport units alone; pictures keep the percentage. Both are deliberate.
+     *
+     * A percentage is indefinite during intrinsic sizing, so `min(100%, …)` on a block caps what is
+     * painted and lets the element go on contributing its declared width to an ancestor's
+     * min-content — a shrink-to-fit table grows, and the message scrolls with every child neatly
+     * capped. The pure viewport cap resolves during intrinsic sizing and stops that.
+     *
+     * On a picture the same form is worse than useless: one in a 120px column is capped at the
+     * viewport rather than at its column and bursts out of the cell. Measured, a 600px image in a
+     * 120px column renders 302px under `min(100%, …)` and 476px under the pure cap.
+     *
+     * Pinned because the two look like an inconsistency somebody would tidy up.
+     */
+    @Test
+    fun `boxes are capped against the viewport and pictures against their column`() {
+        val css = wrap(MessageRenderStyle.ORIGINAL)
+        val blocks = css.substringAfter("div, p, blockquote").substringBefore("}")
+        val pictures = css.substringAfter("img, picture, video, svg").substringBefore("}")
+
+        assertTrue(blocks.contains("max-width: calc(100vw"), "a block takes the pure viewport cap")
+        assertFalse(
+            blocks.contains("min(100%"),
+            "a percentage is indefinite during intrinsic sizing, so a block capped with one still " +
+                "pushes its ancestors wide",
+        )
+        assertTrue(
+            pictures.contains("max-width: min(100%"),
+            "a picture is capped against its column as well, or it bursts out of a narrow cell",
+        )
+    }
+
+    /**
+     * Capping a box does nothing about text inside it that refuses to wrap.
+     *
+     * One inline `white-space: nowrap` was worth 81px of sideways scroll in the fixture behind
+     * these tests. Scoped to inline styles because that is how mail carries it.
+     */
+    @Test
+    fun `text that refuses to wrap is made to wrap`() {
+        assertTrue(
+            wrap(MessageRenderStyle.ORIGINAL)
+                .contains("""[style*="nowrap"] { white-space: normal"""),
+            "a paragraph that will not wrap scrolls the message however well its box is capped",
+        )
+    }
+
+    /**
      * Capping a picture is not the same as resizing it, and the reset used to do both.
      *
      * `width: auto !important` sat beside the cap. `auto` does not mean "as wide as it may be" — it
