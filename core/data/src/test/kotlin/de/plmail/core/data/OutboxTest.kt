@@ -179,6 +179,41 @@ class OutboxTest {
         assertTrue(outbox.state.first().isEmpty)
     }
 
+    /**
+     * Offline, the reader's mark-read is the one queued change that is about a *message*.
+     *
+     * The queue's stored target is a flattened shape of its own, so a field it does not copy is not
+     * a compile error anywhere — it is a scope that silently widens between the tap and the drain.
+     * Read one message on a train, and what reaches the server when the phone finds signal would be
+     * "the whole conversation is read", including the two below it nobody has opened.
+     */
+    @Test
+    fun `a change about one message is still about that message when it drains`() = runTest {
+        val outbox = outbox()
+        val message = ActionTarget("https://nas.local/1", "t1", emailId = "m2")
+
+        outbox.enqueue(MailAction.MarkRead(seen = true), listOf(message), at = 1)
+
+        val drained = mutableListOf<ActionTarget>()
+        outbox.drain { _, targets -> drained += targets }
+
+        assertEquals(listOf(message), drained)
+    }
+
+    /** And the default survives the same round trip as the "all of them" it has always meant. */
+    @Test
+    fun `a change about a conversation drains without a message id`() = runTest {
+        val outbox = outbox()
+
+        outbox.enqueue(MailAction.MarkRead(seen = true), targets, at = 1)
+
+        val drained = mutableListOf<ActionTarget>()
+        outbox.drain { _, t -> drained += t }
+
+        assertEquals(targets, drained)
+        assertEquals(null, drained.single().emailId)
+    }
+
     @Test
     fun `a queue written by a build that is no longer installed clears rather than crashes`() =
         runTest {

@@ -7,7 +7,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import de.plmail.core.data.ActionOutcome
+import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.BlobStore
+import de.plmail.core.data.MailAction
+import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
 import de.plmail.core.data.MessageLoader
 import de.plmail.core.database.AttachmentEntity
@@ -117,6 +121,7 @@ class ReaderViewModel
 @Inject
 constructor(
     private val mail: MailRepository,
+    private val actions: MailActions,
     private val loader: MessageLoader,
     private val blobs: BlobStore,
     @param:ApplicationContext private val context: Context,
@@ -384,10 +389,48 @@ constructor(
      * loads every message in a thread, so marking on load would clear the unread badge on mail the
      * user has never seen — the one bug in a mail client that cannot be undone by the user, because
      * they no longer know what they missed.
+     *
+     * **Through [MailActions], not the cache.** This used to write `isSeen` locally and stop there,
+     * which held for exactly as long as nothing asked the server: the next refresh read `$seen`
+     * back as absent — because the server had never been told — and the conversation you had just
+     * finished reading turned unread again under your thumb. The action path is local-first in the
+     * same way, and additionally sends `Email/set` and queues it when the server cannot be reached.
+     *
+     * Scoped to the one message by [ActionTarget.emailId]. A conversation-wide mark would retire
+     * the unread marker on everything below it the moment the thread opened, which is the bug the
+     * paragraph above exists to prevent, arriving from the other end.
      */
-    fun markRead(accountKey: String, uid: String) {
-        viewModelScope.launch { mail.markSeen(accountKey, uid) }
+    fun markRead(accountKey: String, email: EmailEntity) {
+        // The message row in hand is a snapshot the reader rebuilds from cache,
+        // so `isSeen` alone would let a collapse-and-reopen send the same change
+        // twice before any rebuild happened. The set is what makes this idempotent
+        // for as long as the reader is open, which is as long as it can repeat.
+        if (email.isSeen || !marked.add(email.uid)) return
+
+        val threadId = email.threadId ?: return
+
+        viewModelScope.launch {
+            val outcome =
+                actions.apply(
+                    MailAction.MarkRead(seen = true),
+                    listOf(ActionTarget(accountKey, threadId, email.emailId)),
+                )
+
+            // Logged rather than shown. Every other action here is something the
+            // user asked for by name and a failed one has to say so; this one is
+            // a consequence of scrolling, and a snackbar for it would interrupt
+            // reading to report on a thing nobody did. The local write stands
+            // either way, and a queued change still reaches the server.
+            if (outcome is ActionOutcome.Rejected) {
+                marked.remove(email.uid)
+
+                Log.w(TAG, "Could not mark ${email.uid} read: ${outcome.reason}")
+            }
+        }
     }
+
+    /** Messages already marked read this session — see [markRead]. */
+    private val marked = mutableSetOf<String>()
 
     private companion object {
         const val TAG = "plMail.Reader"

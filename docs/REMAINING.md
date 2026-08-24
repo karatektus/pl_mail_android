@@ -74,6 +74,31 @@ on an emulator, so they run on every build.
 and web compose — record through `PostIngestPipeline`, so `Email/changes` really did have the
 insert to report. Every cause above was on this side.
 
+### M5 — the last thing in it that was never built, closed 2026-08-24
+
+M5 shipped every mutation the user makes *by name* — swipe, toolbar, selection, undo, and the
+offline queue behind all of them. It did not ship the one the user makes by reading. The reader's
+mark-on-display went to `MailRepository.markSeen`, which wrote `isSeen` into the cache and stopped
+there; the method's own docblock said so and pointed at M5 for the `Email/set` that never arrived.
+
+The symptom is the milestone table's own warning about ticking a box early, in miniature: open a
+conversation, come back, the row is read. Pull to refresh and it is unread again — the server had
+never been told, so `Email/changes` handed the old `$seen` straight back and the sync overwrote the
+local row. A read receipt that survives everything except asking.
+
+What landed: `ActionTarget` gained an optional `emailId`, `MailActions` honours it in both the local
+write and the `Email/set`, `PendingMutation.Target` carries it through the offline queue, and the
+reader goes through `MailActions.apply` like every other mutation. `MailRepository.markSeen` is
+gone.
+
+The message scope is the part worth keeping. The obvious repair — send the `MarkRead` that already
+exists — is conversation-wide, and would retire the unread marker on every message below the fold
+the moment a thread opened. That is the one mistake in a mail client a user cannot undo, because
+afterwards they do not know what they missed, and it is the same bug the "after display, never on
+prefetch" rule was written against, arriving from the other end. `MarkReadTest` asserts the scope on
+the wire rather than only in the database, because what the server is told is the half no local
+assertion can see.
+
 ### M10 — done as of this session
 
 Everything M10 asked for is in:
@@ -144,7 +169,17 @@ Everything below is untouched. Rough order of value:
 8. **Roborazzi across themes × densities × phone/tablet.** Today's baselines are light and dark, at
    411dp, phone only. The matrix is six themes × three densities × two form factors and wants a
    parameterised test rather than a hand-written one per case.
-9. **Queued mutations in the composer.** The outbox covers mail *actions*. A send that fails offline
+9. **`$answered` is fetched, stored and used for nothing.** `Email.isAnswered` is on the wire,
+   `EmailEntity.isAnswered` is a column, `Mappers` fills it in — and no surface reads it and nothing
+   ever writes it. So the reader draws no reply indicator on a message that has been answered, and
+   replying from this phone leaves the original unflagged for every other client, the browser
+   included. The read half is free and is client-side only. The write half is a server ask first:
+   `Keyword.ANSWERED` is expressible as a patch (`EmailPatch.keyword`), but whether plMail accepts
+   `keywords/$answered` on an update is unprobed — `EmailFilter`'s own note says `$draft` and
+   `$answered` live in the IMAP flags column rather than in a timestamp of their own, and `$draft`
+   is documented in `SERVER_REQUESTS.md` as silently ignoring every attempt to change it. Probe
+   before building.
+10. **Queued mutations in the composer.** The outbox covers mail *actions*. A send that fails offline
    still goes through `SendQueue`, which is in-memory and does not survive the process — worth
    deciding whether a draft that could not be submitted should join the outbox.
 

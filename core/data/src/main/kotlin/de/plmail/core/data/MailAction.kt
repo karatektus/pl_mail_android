@@ -84,14 +84,26 @@ sealed interface MailAction {
 }
 
 /**
- * One conversation an action applies to.
+ * One conversation an action applies to, or one message inside it.
  *
- * Deliberately *not* carrying message ids. A conversation's messages are known to the cache and not
- * to the list row, and letting a caller supply them invites the mistake of passing the thread id --
- * which is a different id space, so the server would be told to change messages that do not exist
- * while the local row moved anyway.
+ * [emailId] is null for everything the user aims at a *conversation* -- every swipe, every toolbar
+ * button, every selection -- and the messages are resolved from the cache at send time. That
+ * default is the important half: a conversation's messages are known to the cache and not to the
+ * list row, and a caller supplying them invites the mistake of passing the thread id, which is a
+ * different id space, so the server would be told to change messages that do not exist while the
+ * local row moved anyway.
+ *
+ * It is set for the one thing that is genuinely per message: the reader marking a message read
+ * because it was scrolled into view. Widening that to the conversation would clear the unread
+ * marker on messages further down a thread the moment it was opened -- the one mistake in a mail
+ * client the user cannot undo, because afterwards they no longer know what they missed.
  */
-data class ActionTarget(val accountKey: String, val threadId: String)
+data class ActionTarget(
+    val accountKey: String,
+    val threadId: String,
+    /** A JMAP Email id, never a thread id. Null means "every message in the conversation". */
+    val emailId: String? = null,
+)
 
 /**
  * One leg of the way back from a change.

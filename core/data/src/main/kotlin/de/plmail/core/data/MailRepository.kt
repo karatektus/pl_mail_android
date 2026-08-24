@@ -217,33 +217,6 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
         database.emails().attachments(emailUid).filterNot { it.isInline }
 
     /**
-     * Marks a message read locally.
-     *
-     * Local only for now. The `Email/set` that tells the server arrives with M5, where it belongs
-     * alongside the rest of the local-first mutations and the undo that goes with them — writing it
-     * here would mean a mutation with no rollback path.
-     */
-    suspend fun markSeen(accountKey: String, emailUid: String) {
-        database.withTransaction {
-            val email = database.emails().byUid(emailUid) ?: return@withTransaction
-            if (email.isSeen) return@withTransaction
-
-            database.emails().upsert(listOf(email.copy(isSeen = true)))
-
-            // The thread row is denormalised, so it has to be recomputed or the
-            // list keeps showing the conversation as unread.
-            email.threadId?.let { threadId ->
-                database.threads().byUid(StoreKey.objectKey(accountKey, threadId))?.let { thread ->
-                    val messages = database.emails().inThread(accountKey, threadId)
-                    database
-                        .threads()
-                        .upsert(listOf(thread.copy(isUnread = messages.any { !it.isSeen })))
-                }
-            }
-        }
-    }
-
-    /**
      * Stores the Email state a page was read at.
      *
      * Only ever moves from *absent* to set here; delta sync owns it afterwards. That sentence was

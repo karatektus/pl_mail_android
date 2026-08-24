@@ -46,7 +46,19 @@ internal data class PendingMutation(
         SNOOZE,
     }
 
-    @Serializable data class Target(val accountKey: String, val threadId: String)
+    /**
+     * Mirrors [ActionTarget], including its optional message id.
+     *
+     * Nullable rather than added as a second kind, so a queue written by an older build decodes
+     * unchanged: an entry with no `emailId` is a conversation-wide change, which is what every
+     * entry written before this field existed was.
+     */
+    @Serializable
+    data class Target(
+        val accountKey: String,
+        val threadId: String,
+        val emailId: String? = null,
+    )
 }
 
 /** How many changes are waiting, for the banner that says so. */
@@ -168,7 +180,12 @@ constructor(
             }
 
             try {
-                send(action, pending.targets.map { ActionTarget(it.accountKey, it.threadId) })
+                send(
+                    action,
+                    pending.targets.map {
+                        ActionTarget(it.accountKey, it.threadId, it.emailId)
+                    },
+                )
                 sent++
             } catch (offline: IOException) {
                 return stopAt(queued, index, sent, offline)
@@ -223,7 +240,7 @@ private fun MailAction.asPending(
     targets: List<ActionTarget>,
     at: Long,
 ): PendingMutation? {
-    val stored = targets.map { PendingMutation.Target(it.accountKey, it.threadId) }
+    val stored = targets.map { PendingMutation.Target(it.accountKey, it.threadId, it.emailId) }
 
     return when (this) {
         MailAction.Archive -> PendingMutation(PendingMutation.Kind.ARCHIVE, stored, at)

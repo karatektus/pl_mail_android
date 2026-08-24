@@ -238,7 +238,7 @@ fun ReaderScreen(
                         onToggle = { viewModel.toggleExpanded(message.email.uid) },
                         onShowImages = { viewModel.allowRemoteImages(message.email.uid) },
                         onToggleOriginal = { viewModel.toggleOriginal(message.email.uid) },
-                        onDisplayed = { viewModel.markRead(accountKey, message.email.uid) },
+                        onDisplayed = { viewModel.markRead(accountKey, message.email) },
                         onOpenAttachment = viewModel::openAttachment,
                         onSaveAttachment = { attachment ->
                             saving = attachment

@@ -204,18 +204,26 @@ constructor(
 
                     is MailAction.Star -> database.threads().setFlagged(threadUid, action.flagged)
 
+                    // Whole conversation, or the one message the reader has
+                    // just shown. The thread's own unread flag is *recomputed*
+                    // rather than assigned in the second case: a thread with
+                    // three unread messages does not stop being unread because
+                    // one of them was scrolled past.
                     is MailAction.MarkRead -> {
-                        database.threads().setUnread(threadUid, !action.seen)
+                        val messages =
+                            database.emails().inThread(target.accountKey, target.threadId)
 
-                        database
-                            .emails()
-                            .inThread(target.accountKey, target.threadId)
-                            .filter { it.isSeen != action.seen }
-                            .let { changed ->
-                                database
-                                    .emails()
-                                    .upsert(changed.map { it.copy(isSeen = action.seen) })
-                            }
+                        val changed =
+                            messages
+                                .filter { target.emailId == null || it.emailId == target.emailId }
+                                .filter { it.isSeen != action.seen }
+                                .map { it.copy(isSeen = action.seen) }
+
+                        if (changed.isNotEmpty()) database.emails().upsert(changed)
+
+                        val after = messages.associateBy { it.uid } + changed.associateBy { it.uid }
+
+                        database.threads().setUnread(threadUid, after.values.any { !it.isSeen })
                     }
 
                     // The bindings on the message rows, so the label sheet
@@ -377,8 +385,18 @@ constructor(
                 // list row only knows the former.
                 val ids =
                     forAccount
-                        .flatMap { database.emails().inThread(it.accountKey, it.threadId) }
-                        .map { EmailId(it.emailId) }
+                        .flatMap { target ->
+                            // A message-scoped target names its own id and needs
+                            // no lookup. Everything else is a conversation, and
+                            // its messages are only known to the cache.
+                            target.emailId?.let { listOf(it) }
+                                ?: database
+                                    .emails()
+                                    .inThread(target.accountKey, target.threadId)
+                                    .map { it.emailId }
+                        }
+                        .distinct()
+                        .map(::EmailId)
 
                 if (ids.isEmpty()) return@forEach
 
