@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -33,7 +34,9 @@ import de.plmail.core.designsystem.PlMailThemeChoice
 import java.time.LocalDate
 import java.time.ZoneOffset
 import java.util.TimeZone
+import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -194,6 +197,91 @@ class SidebarScreenshotTest {
             Column {
                 arrivals.forEach { CategoryBundleRow(arrivals = it, onClick = {}) }
             }
+        }
+    }
+
+    /**
+     * The list scrolled past its bundles, which is where the digest used to simply vanish.
+     *
+     * This is the capture the fix exists for. The bundles are gone — that part is deliberate and
+     * unchanged — and the one-line bar is holding their place, so "something landed in Promotions"
+     * survives a scroll instead of needing one back to the top to discover.
+     *
+     * **Scrolled after the rows arrive, not seeded with an initial index**, and the first attempt
+     * at this test got it wrong in a way worth recording: `rememberLazyListState(
+     * initialFirstVisibleItemIndex = n)` is applied at first composition, and at that moment Paging
+     * has handed over nothing, so the list is the bundles alone and the index is clamped to zero.
+     * It never re-applies once the mail lands. The capture looked exactly like an unscrolled list —
+     * which is to say, like the bug — while asserting nothing at all.
+     */
+    @Test
+    fun primaryScrolledPastBundles() {
+        val scheme = mutableStateOf(PlMailThemeChoice.LIGHT)
+        lateinit var listState: LazyListState
+
+        compose.setContent {
+            listState = rememberLazyListState()
+
+            PlMailTheme(theme = scheme.value) {
+                Surface(modifier = Modifier.width(411.dp).height(500.dp)) {
+                    ThreadList(
+                        // A longer run than the other captures use: a list
+                        // has to be able to scroll past its own bundles before
+                        // there is anything here to photograph. Re-keyed rather
+                        // than repeated -- the row key is the uid, and three
+                        // copies of one list is three duplicate keys, which
+                        // LazyColumn rejects outright.
+                        threads = pagedThreads(repeatedMail),
+                        rowsInFeed = repeatedMail.size,
+                        labels = sections.other,
+                        viewing = null,
+                        isSyncing = false,
+                        selection = emptySet(),
+                        arrivals = arrivals,
+                        isMerged = false,
+                        badgedNew = badgedNew,
+                        listState = listState,
+                        onOpenCategory = {},
+                        onShown = {},
+                        onThreadSelected = {},
+                        onToggleSelected = {},
+                        onAction = { _, _ -> },
+                    )
+                }
+            }
+        }
+
+        compose.waitForIdle()
+        runBlocking { listState.scrollToItem(arrivals.size + 1) }
+        compose.waitForIdle()
+
+        // Asserted rather than assumed, because the list clamps to its own end
+        // and a short fixture simply cannot scroll past two bundles in a 500dp
+        // viewport -- which is what happened here first, leaving a capture that
+        // showed a half-scrolled list and no bar and looked like a failed fix.
+        assertTrue(
+            digestHasScrolledAway(listState.firstVisibleItemIndex, arrivals),
+            "the fixture is too short to scroll the bundles away",
+        )
+
+        listOf(PlMailThemeChoice.LIGHT, PlMailThemeChoice.DARK).forEach { choice ->
+            scheme.value = choice
+            compose.waitForIdle()
+
+            compose
+                .onRoot()
+                .captureRoboImage(
+                    "src/test/screenshots/primary-scrolled-past-bundles-" +
+                        "${choice.name.lowercase()}.png"
+                )
+        }
+    }
+
+    /** The bar on its own, for the detail the list-level capture is too busy to show. */
+    @Test
+    fun categoryDigestBar() {
+        capture("category-digest-bar", width = 411.dp, height = 80.dp) {
+            CategoryDigestBar(arrivals = arrivals, onClick = {})
         }
     }
 
@@ -370,6 +458,10 @@ class SidebarScreenshotTest {
 
     /** The two rows the badge is drawn on, so the capture shows it beside a row without one. */
     private val badgedNew = setOf("https://nas.local/1#1", "https://nas.local/1#2")
+
+    /** The seeded mail three times over, each round re-keyed so the rows stay distinct. */
+    private val repeatedMail =
+        (0 until 3).flatMap { round -> mail.map { it.copy(uid = "${it.uid}-$round") } }
 
     private val arrivals =
         listOf(

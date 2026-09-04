@@ -1,6 +1,11 @@
 package de.plmail.feature.mail
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -42,9 +47,11 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -75,6 +82,7 @@ import de.plmail.core.designsystem.PlMailEmptyState
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.ui.rowLabelSlots
 import java.time.Instant
+import kotlinx.coroutines.launch
 
 /**
  * The unified inbox.
@@ -582,6 +590,25 @@ internal fun ThreadList(
     // one per row, fifty times a scroll, is not.
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val labelSlots = rowLabelSlots(maxWidth)
+        val scope = rememberCoroutineScope()
+
+        // Whether the bundles are off the top of the viewport, which is the one
+        // question [CategoryDigestBar] exists to answer.
+        //
+        // The bundles are the first `arrivals.size` items in the list, so "the
+        // first visible item is past them" is the whole test -- no measurement,
+        // no keys to look up, and correct while a row is half-scrolled because
+        // `firstVisibleItemIndex` only advances once a row's top edge has gone.
+        //
+        // [derivedStateOf] rather than reading the state directly: the index
+        // changes on every row that crosses the edge, and this composable cares
+        // about the handful of frames where the *boolean* flips. Without it the
+        // bar's subtree recomposes on every scrolled row, for a value that
+        // spends an entire fling unchanged.
+        val digestOffScreen by
+            remember(arrivals.size) {
+                derivedStateOf { digestHasScrolledAway(listState.firstVisibleItemIndex, arrivals) }
+            }
 
         LazyColumn(
             state = listState,
@@ -705,8 +732,52 @@ internal fun ThreadList(
                 }
             }
         }
+
+        // Over the list rather than above it, so the mail keeps the full height
+        // of the pane and the bar costs nothing while the bundles are on screen
+        // -- which, on a list nobody has scrolled, is always.
+        //
+        // Sliding out through the top edge rather than fading in place, because
+        // that is where it goes when the user follows it: the gesture that
+        // dismisses the bar and the animation that removes it are the same
+        // direction, and the tap that summons the bundles back reverses both.
+        AnimatedVisibility(
+            visible = digestOffScreen,
+            enter = fadeIn() + slideInVertically { -it },
+            exit = fadeOut() + slideOutVertically { -it },
+            modifier = Modifier.align(Alignment.TopCenter),
+        ) {
+            CategoryDigestBar(
+                arrivals = arrivals,
+                // Animated rather than an instant jump: the bundles are two
+                // taps of context above wherever the user was reading, and a
+                // list that teleports there leaves them working out whether
+                // they are at the top of the same list or in a different one.
+                onClick = { scope.launch { listState.animateScrollToItem(0) } },
+            )
+        }
     }
 }
+
+/**
+ * Whether the category bundles have left the top of the viewport.
+ *
+ * Extracted from the composable for the reason [hasNothingToShow] was: it is the whole behaviour of
+ * [CategoryDigestBar], and a rule left inline in a `derivedStateOf` can only be checked by
+ * scrolling a real list and looking at it.
+ *
+ * The bundles are the first [arrivals]`.size` items in the list, so the first visible index passing
+ * them is the entire test — no measurement and no keys to resolve. It is deliberately an index
+ * comparison rather than anything about offsets: `firstVisibleItemIndex` only advances once a row's
+ * top edge has actually left, so a bundle scrolled half out of view still counts as on screen and
+ * the bar does not flicker in over the top of it.
+ *
+ * Empty arrivals answer false rather than true, which matters more than it looks: `0 >= 0` is true,
+ * so a rule written without the emptiness check would pin an empty bar over every list in the app
+ * that has no bundles at all — which is every list but Primary.
+ */
+internal fun digestHasScrolledAway(firstVisibleItemIndex: Int, arrivals: List<CategoryArrivals>) =
+    arrivals.isNotEmpty() && firstVisibleItemIndex >= arrivals.size
 
 /**
  * Whether the list may say "Nothing here yet".

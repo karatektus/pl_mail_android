@@ -232,6 +232,14 @@
     -->
     <string name="category_has_new_a11y">New mail</string>
 
+    <!--
+      The pinned one-line digest, for when the bundles have scrolled away. Two
+      substitutions rather than one sentence, because the names and the count
+      are assembled from plurals the bar already has to resolve, and building
+      the sentence here would mean a translator could not reorder them.
+    -->
+    <string name="category_digest_bar_a11y">%1$s, %2$s. Show the senders.</string>
+
     <string name="label_color">Colour</string>
     <string name="label_color_none">No colour</string>
 

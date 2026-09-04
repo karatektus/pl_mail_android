@@ -156,6 +156,8 @@
 
     <string name="category_has_new_a11y">Neue Nachrichten</string>
 
+    <string name="category_digest_bar_a11y">%1$s, %2$s. Absender anzeigen.</string>
+
     <string name="label_color">Farbe</string>
     <string name="label_color_none">Keine Farbe</string>
 
