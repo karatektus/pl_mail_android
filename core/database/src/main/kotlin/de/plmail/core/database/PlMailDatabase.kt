@@ -8,16 +8,16 @@ import androidx.room.RoomDatabase
 /**
  * The local cache.
  *
- * **Version 7**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
+ * **Version 8**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
  * `labelKeys`; version 3 gave `MailboxEntity` a `color` and `ThreadEntity` a `category`; version 4
  * added the three calendar tables; version 5 gave `IdentityEntity` its `htmlSignature`; version 6
- * gave `ThreadEntity` its `isNew`, and version 7 its `isInInbox`. Rather than writing a migration
- * each bump deliberately falls through to dropping the database and syncing again — which is
- * exactly what the schema's central constraint was for. Every row here is reconstructible from the
- * server (see `Entities.kt`), so the cost of the drop is one page of mail per list the user opens,
- * and the alternative is the first hand-written migration in a schema designed never to need one,
- * plus a backfill that would have to reconstruct labels by string matching `mailboxIds` against
- * `mailboxes` in SQL.
+ * gave `ThreadEntity` its `isNew`, version 7 its `isInInbox`, and version 8 gave `AccountEntity`
+ * the two calendar sync cursors. Rather than writing a migration each bump deliberately falls
+ * through to dropping the database and syncing again — which is exactly what the schema's central
+ * constraint was for. Every row here is reconstructible from the server (see `Entities.kt`), so the
+ * cost of the drop is one page of mail per list the user opens, and the alternative is the first
+ * hand-written migration in a schema designed never to need one, plus a backfill that would have to
+ * reconstruct labels by string matching `mailboxIds` against `mailboxes` in SQL.
  *
  * Version 4 is a pure addition and Room could have been given an empty migration for it — three
  * `CREATE TABLE`s and nothing to move. It is a destructive bump anyway, because the value of the
@@ -34,6 +34,14 @@ import androidx.room.RoomDatabase
  * straight back off `Identity/get`, which the directory refresh already calls beside `Mailbox/get`,
  * so the drop costs one request the app was going to make anyway — and the column exists precisely
  * so the composer does not have to wait for it.
+ *
+ * Version 8 is the cheapest bump of the eight, and worth naming because it looks like it should be
+ * free rather than cheap. `calendarState` and `calendarEventState` are sync cursors: the correct
+ * value for a database that has just been dropped is null, which is what a fresh row already has,
+ * and a null cursor means the next calendar refresh does the full window fetch it would have done
+ * anyway. So the drop costs nothing this column would have saved. That is an argument for the bump
+ * being harmless, not for skipping it — the schema still changed, and `MigrationTest` compares the
+ * entity against the exported description rather than against what the data cost.
  *
  * The exported schemas are still checked in and `MigrationTest` still validates them, because that
  * is what catches an entity and its exported description drifting apart — a drift which, on the day
@@ -58,7 +66,7 @@ import androidx.room.RoomDatabase
             CalendarEventEntity::class,
             CalendarOccurrenceEntity::class,
         ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class PlMailDatabase : RoomDatabase() {

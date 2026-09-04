@@ -1,5 +1,6 @@
 package de.plmail.core.data
 
+import de.plmail.core.database.AccountEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.core.datastore.ServerConnection
@@ -87,6 +88,20 @@ internal class FakeCalendarServer(
     var onSet: ((JsonObject) -> String)? = null,
     /** Refuses an expanded query with the horizon error, whatever the window. */
     var refuseExpansion: Boolean = false,
+    /**
+     * What the two `/changes` methods report *on top of* what this server can work out for itself.
+     *
+     * Usually nothing needs setting. A test that mutates [events] between refreshes has changed the
+     * calendar, and [eventsChangedSinceLastRead] notices — see the note there for why that is not a
+     * convenience.
+     *
+     * These stay for the cases the fingerprint cannot see: a change on the server that leaves the
+     * seeded fixture identical, which is what a test forcing a re-fetch is usually after.
+     */
+    var changedEvents: List<String> = emptyList(),
+    var changedCalendars: List<String> = emptyList(),
+    /** Answers both `/changes` with `cannotCalculateChanges`, whatever the token. */
+    var refuseChanges: Boolean = false,
 ) {
     /**
      * Every window a `CalendarEvent/query` asked about, in order, **as it arrived on the wire**.
@@ -103,6 +118,48 @@ internal class FakeCalendarServer(
 
     var collapsedQueries = 0
         private set
+
+    /** How many times either `/changes` method was asked, so a test can pin the cheap path. */
+    var changesQueries = 0
+        private set
+
+    /** The `sinceState` values the client handed back, newest last. */
+    val sinceStates = mutableListOf<String>()
+
+    internal fun recordChanges(sinceState: String) {
+        changesQueries++
+        sinceStates += sinceState
+    }
+
+    /**
+     * The fixture as it stood when this server last handed out events.
+     *
+     * Null until the first `CalendarEvent/get`, which is the honest starting point: a client that
+     * has read nothing has nothing to be told about.
+     */
+    private var readFingerprint: String? = null
+
+    private fun fingerprint(): String =
+        events
+            .sortedBy { it.id }
+            .joinToString("|") { "${it.id}:${it.title}:${it.start}:${it.days.sorted()}" }
+
+    internal fun recordRead() {
+        readFingerprint = fingerprint()
+    }
+
+    /**
+     * Whether the seeded events have moved since the client last read them.
+     *
+     * **This exists because the delta and the fixture were two sources of truth, and a test could
+     * put them out of sync without noticing.** A suite that removes an event from [events] and then
+     * refreshes has described a server on which something changed; a `/changes` that answered
+     * "nothing" there is a fake contradicting itself, and the client would be marked correct for
+     * believing it. Two real assertions failed exactly that way when the delta path landed, which
+     * is the whole argument for deriving this rather than declaring it.
+     */
+    internal fun eventsChangedSinceLastRead(): Boolean =
+        readFingerprint?.let { it != fingerprint() } ?: false
 
     /**
      * The id this server hands out for one occurrence, minted on first sight and stable after.
@@ -287,12 +344,50 @@ private fun answer(server: FakeCalendarServer, requestBody: String): String {
 
                 val list = wanted.mapNotNull { server.objectFor(it) }.joinToString(",")
 
+                server.recordRead()
+
                 responses +=
                     """
                     ["CalendarEvent/get",
                      {"accountId":"$TEST_ACCOUNT_ID","state":"fixed","list":[$list],
                       "notFound":[]},"$callId"]
                     """
+            }
+
+            "Calendar/changes",
+            "CalendarEvent/changes" -> {
+                server.recordChanges(arguments["sinceState"]!!.jsonPrimitive.content)
+
+                if (server.refuseChanges) {
+                    responses += """["error", {"type":"cannotCalculateChanges"}, "$callId"]"""
+                } else {
+                    val changed =
+                        if (name == "Calendar/changes") {
+                            server.changedCalendars
+                        } else {
+                            // The fixture's own answer, plus anything the test
+                            // asked for explicitly.
+                            server.changedEvents +
+                                if (server.eventsChangedSinceLastRead()) listOf(MOVED)
+                                else emptyList()
+                        }
+
+                    val ids = changed.joinToString(",") { "\"$it\"" }
+
+                    // `newState` is the same token the client sent back. The
+                    // real server moves it on every change; a fake that
+                    // invented a new one each round would have the client
+                    // storing cursors this stack cannot answer from, and the
+                    // suite would be testing the fake's bookkeeping rather
+                    // than the client's.
+                    responses +=
+                        """
+                        ["$name",
+                         {"accountId":"$TEST_ACCOUNT_ID","oldState":"fixed","newState":"fixed",
+                          "hasMoreChanges":false,"created":[],"updated":[$ids],"destroyed":[]},
+                         "$callId"]
+                        """
+                }
             }
 
             "CalendarEvent/set" ->
@@ -594,6 +689,28 @@ internal suspend fun calendarStack(
 ): CalendarRepository {
     if (paired) credentials.pairWithTestServer()
 
+    // The account row, which this stack did not need until the calendar gained
+    // sync cursors -- they are columns on it, and `setCalendarState` against a
+    // missing row is a silent no-op UPDATE rather than an error.
+    //
+    // Seeded here because it is what the app itself does: `MailRepository
+    // .replaceAccounts` writes a row for every id in `session.accountIds`, and
+    // the calendar account is one of them. A stack without it was testing a
+    // device on which no session had ever been fetched, which is not a device
+    // that can reach the calendar screen.
+    database
+        .accounts()
+        .upsert(
+            listOf(
+                AccountEntity(
+                    uid = testAccountKey,
+                    serverId = TEST_SERVER,
+                    accountId = TEST_ACCOUNT_ID,
+                    name = "someone@example.com",
+                )
+            )
+        )
+
     val transports =
         object : TransportFactory {
             override fun create(address: ServerAddress, pinned: KeyFingerprint?): JmapTransport =
@@ -627,3 +744,12 @@ internal suspend fun CredentialStore.pairWithTestServer() {
         )
     )
 }
+
+/**
+ * The id a derived delta names when the fixture moved.
+ *
+ * Deliberately not one of the seeded ids. The client must not fetch the events a delta names — it
+ * re-runs the window instead — so an id that matches nothing on this server is the strongest
+ * available statement that nothing downstream is allowed to look it up.
+ */
+private const val MOVED = "moved"

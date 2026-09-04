@@ -8,6 +8,7 @@ import de.plmail.jmap.protocol.CalendarEventId
 import de.plmail.jmap.protocol.CalendarId
 import de.plmail.jmap.protocol.JmapMethod
 import de.plmail.jmap.protocol.ResultReference
+import de.plmail.jmap.protocol.StateToken
 import de.plmail.jmap.protocol.backReference
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -19,11 +20,17 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * `Calendar/get` — and it is the entire Calendar surface.
+ * `Calendar/get` — the calendars themselves, not what is in them.
  *
- * There is no query, no changes and no set. The state is the literal string `"fixed"`, so there is
- * nothing to compare against and no delta to ask for: refreshing the calendar list means fetching
- * it again.
+ * There is still no `Calendar/set`: the two provisioned roles come from the server's own
+ * provisioner and a mirrored one from the subscribe flow, neither of which a JMAP create could
+ * stand in for.
+ *
+ * **There is now a `Calendar/changes`, and [state] is a real cursor.** This doc used to say the
+ * state was the literal `"fixed"` and must not be stored, which was true of the server it was
+ * written against and stopped being true on 2026-08-27. A fixed state is a standing claim that
+ * nothing has changed, and a client is entitled to believe it — renaming a calendar left the old
+ * name in the sidebar until something unrelated forced a reload. See [CalendarChanges].
  */
 class CalendarGet(private val accountId: AccountId, private val ids: List<CalendarId>? = null) :
     JmapMethod<CalendarGetResult> {
@@ -50,7 +57,7 @@ class CalendarGet(private val accountId: AccountId, private val ids: List<Calend
 @Serializable
 data class CalendarGetResult(
     val accountId: String = "",
-    /** Always `"fixed"`. Opaque, and it never changes — do not store it as a sync cursor. */
+    /** Opaque, and a real cursor: store it and hand it back to [CalendarChanges]. */
     val state: String = "",
     val list: List<Calendar> = emptyList(),
     val notFound: List<CalendarId> = emptyList(),
@@ -241,7 +248,7 @@ class CalendarEventGet(
 @Serializable
 data class CalendarEventGetResult(
     val accountId: String = "",
-    /** Always `"fixed"`. */
+    /** Opaque, and a real cursor: store it and hand it back to [CalendarEventChanges]. */
     val state: String = "",
     val list: List<CalendarEvent> = emptyList(),
     val notFound: List<CalendarEventId> = emptyList(),
@@ -259,4 +266,122 @@ data class CalendarEventGetResult(
         val byId = list.associateBy { it.id }
         return ids.mapNotNull { byId[it] }
     }
+}
+
+/**
+ * `Calendar/changes` — which calendars were added, renamed or removed.
+ *
+ * Calendar ids, not event ids. An event moving between calendars is not a change here: both
+ * collections still exist and neither was renamed.
+ *
+ * The gap this closes is small in bytes and not small in correctness. `Calendar/get` returns every
+ * calendar a user has, and there are a handful, so re-running it is cheap — that argument is why
+ * this landed after [CalendarEventChanges] rather than with it. It is also beside the point: while
+ * the state was fixed it was a standing claim that nothing had changed, and a client that believed
+ * it kept drawing a calendar's old name until something unrelated forced a reload.
+ *
+ * **Every failure mode is one recovery.** The server raises `cannotCalculateChanges` for a missing
+ * token, an unrecognised one, one ahead of the log, and one older than retained history. A client
+ * cannot tell those apart and does not need to: all four mean the cursor is worthless and the
+ * answer is a full [CalendarGet]. [de.plmail.jmap.protocol.JmapError.requiresResync] is the test,
+ * and it is the same one the mail delta sync uses.
+ */
+class CalendarChanges(
+    private val accountId: AccountId,
+    private val sinceState: StateToken,
+    private val maxChanges: Int = MAX_CHANGES,
+) : JmapMethod<CalendarChangesResult> {
+
+    override val name = "Calendar/changes"
+
+    override fun arguments(): JsonObject = buildJsonObject {
+        put("accountId", accountId.value)
+        put("sinceState", sinceState.value)
+        put("maxChanges", maxChanges)
+    }
+
+    override fun decode(json: Json, arguments: JsonObject): CalendarChangesResult =
+        json.decodeFromJsonElement(CalendarChangesResult.serializer(), arguments)
+
+    companion object {
+        /** The server's own page size, matching `Email/changes`. */
+        const val MAX_CHANGES = 256
+    }
+}
+
+@Serializable
+data class CalendarChangesResult(
+    val accountId: String = "",
+    val oldState: String = "",
+    val newState: String = "",
+    val hasMoreChanges: Boolean = false,
+    val created: List<CalendarId> = emptyList(),
+    val updated: List<CalendarId> = emptyList(),
+    val destroyed: List<CalendarId> = emptyList(),
+) {
+    val isEmpty: Boolean
+        get() = created.isEmpty() && updated.isEmpty() && destroyed.isEmpty()
+}
+
+/**
+ * `CalendarEvent/changes` — which events moved, without asking what is in the window.
+ *
+ * This is the one that pays for itself. A calendar refresh is otherwise two windowed queries and
+ * two paged gets *every time the screen is opened*, whether or not a single event moved — and the
+ * common case, by a wide margin, is that none did. Asking here first turns that into one request
+ * that answers "nothing" and stops.
+ *
+ * **It does not replace the window fetch, and cannot.** A delta reports the events that changed, in
+ * event-id terms, for the whole account; the calendar screen draws *occurrences inside a date
+ * range*. Those are different questions, and only the query answers the second — a month the device
+ * has never held has no changes to report because nothing about it changed, and it is still empty.
+ * So the delta's job is narrow and worth stating: it decides whether a window the cache already
+ * holds needs re-fetching. First visits, and any window the cache has not seen, go straight to the
+ * query as before.
+ *
+ * Asking from [StateToken.INITIAL] is not a way to enumerate a calendar, for the same reason
+ * `Email/changes` is not: there have been no *changes* since the beginning of the log.
+ */
+class CalendarEventChanges(
+    private val accountId: AccountId,
+    private val sinceState: StateToken,
+    private val maxChanges: Int = MAX_CHANGES,
+) : JmapMethod<CalendarEventChangesResult> {
+
+    override val name = "CalendarEvent/changes"
+
+    override fun arguments(): JsonObject = buildJsonObject {
+        put("accountId", accountId.value)
+        put("sinceState", sinceState.value)
+        put("maxChanges", maxChanges)
+    }
+
+    override fun decode(json: Json, arguments: JsonObject): CalendarEventChangesResult =
+        json.decodeFromJsonElement(CalendarEventChangesResult.serializer(), arguments)
+
+    companion object {
+        const val MAX_CHANGES = 256
+    }
+}
+
+@Serializable
+data class CalendarEventChangesResult(
+    val accountId: String = "",
+    val oldState: String = "",
+    val newState: String = "",
+    val hasMoreChanges: Boolean = false,
+    val created: List<CalendarEventId> = emptyList(),
+    val updated: List<CalendarEventId> = emptyList(),
+    val destroyed: List<CalendarEventId> = emptyList(),
+) {
+    /**
+     * Whether anything at all moved.
+     *
+     * The only question the repository asks of this. Which events changed is deliberately not used
+     * to fetch them individually: an occurrence inside a window is not addressable by series id,
+     * and a recurrence whose rule changed alters occurrences whose ids never appear in a delta. So
+     * a non-empty answer re-runs the window, and an empty one skips it.
+     */
+    val isEmpty: Boolean
+        get() = created.isEmpty() && updated.isEmpty() && destroyed.isEmpty()
 }

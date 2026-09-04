@@ -14,6 +14,8 @@ import de.plmail.jmap.calendar.CalendarEvent
 import de.plmail.jmap.calendar.CalendarEventFilter
 import de.plmail.jmap.calendar.RecurrenceRule
 import de.plmail.jmap.client.JmapClient
+import de.plmail.jmap.methods.CalendarChanges
+import de.plmail.jmap.methods.CalendarEventChanges
 import de.plmail.jmap.methods.CalendarEventGet
 import de.plmail.jmap.methods.CalendarEventPatch
 import de.plmail.jmap.methods.CalendarEventQuery
@@ -32,6 +34,7 @@ import de.plmail.jmap.protocol.MaterialisedHorizon
 import de.plmail.jmap.protocol.RequestBuilder
 import de.plmail.jmap.protocol.ResultReference
 import de.plmail.jmap.protocol.Session
+import de.plmail.jmap.protocol.StateToken
 import java.io.IOException
 import java.time.Clock
 import java.time.Duration
@@ -459,6 +462,27 @@ constructor(
                     horizon = horizon,
                 )
 
+        // Nothing has moved since the last look, so the window already on the
+        // device is still the window on the server, and the five calls below
+        // would all answer what the cache already says.
+        //
+        // Gated on `lastRefreshed == window` and not on the cursors alone. A
+        // delta reports *events that changed*; the screen draws *occurrences in
+        // a range*, and a month this process has never fetched has no changes
+        // to report precisely because nothing about it changed -- believing the
+        // delta there would leave the month blank forever. Requiring that this
+        // exact window was fetched is what makes "nothing changed" mean "your
+        // copy is current" rather than "you have no copy".
+        if (lastRefreshed == window && unchangedSince(client, session, accountId, accountKey)) {
+            return CalendarRefresh.Refreshed(
+                events = 0,
+                occurrences = 0,
+                requests = 1,
+                mayBeIncomplete = asked != window,
+                horizon = horizon,
+            )
+        }
+
         val fetched =
             try {
                 fetch(client, session, accountId, asked, deviceZone, pageSize)
@@ -546,6 +570,13 @@ constructor(
             database.calendarEvents().deleteUnplacedEvents()
         }
 
+        // After the transaction, never before it. The cursor is a claim that
+        // the cache is current as of that state, and a cursor written ahead of
+        // the rows it describes is a lie the next refresh would act on -- it
+        // would ask for changes since a moment whose data never landed.
+        fetched.calendarState?.let { database.accounts().setCalendarState(accountKey, it) }
+        fetched.eventState?.let { database.accounts().setCalendarEventState(accountKey, it) }
+
         lastRefreshed = window
 
         return CalendarRefresh.Refreshed(
@@ -565,6 +596,18 @@ constructor(
         /** One per occurrence in the window, each already resolved against its override. */
         val occurrences: List<CalendarEvent>,
         val requests: Int,
+        /**
+         * The two states the first page's `get`s reported, which become the next refresh's cursors.
+         *
+         * Read off the *first* page deliberately, not the last. A cursor has to name a moment the
+         * cache is known to be complete at, and the only such moment is before the paging started:
+         * an event created while page three was in flight is in neither the pages already read nor
+         * the delta a cursor taken afterwards would report, and would stay invisible until
+         * something unrelated forced a full refresh. Taking the earlier state can only re-report a
+         * change the fetch already has, which costs one redundant window fetch and loses nothing.
+         */
+        val calendarState: String?,
+        val eventState: String?,
     )
 
     /**
@@ -592,6 +635,75 @@ constructor(
      * hundred. The two sides page independently: a month of one weekly meeting is one series and
      * five occurrences, and a daily standup reaches a hundred occurrences in a quarter.
      */
+    /**
+     * Whether the server agrees that nothing has changed since the stored cursors.
+     *
+     * One request carrying `Calendar/changes` and `CalendarEvent/changes`, against the five calls
+     * and two paged gets a window fetch costs. The common case for a calendar screen is that it is
+     * reopened onto a month nobody has touched, and this is the difference between paying for that
+     * and not.
+     *
+     * **False is always the safe answer**, and every uncertain path takes it: no cursor stored yet,
+     * a cursor the server will not answer from, a delta with anything in it at all. The cost of a
+     * wrong false is one window fetch that was not needed; the cost of a wrong true is a calendar
+     * that silently stops updating, which is the failure this whole path has to be trusted not to
+     * cause.
+     *
+     * A non-empty delta is not used to fetch the events it names. An occurrence inside a window is
+     * not addressable by series id, and a recurrence whose *rule* changed alters occurrences whose
+     * ids no delta will ever mention — so "something moved" re-runs the window, and the ids are
+     * only ever a yes or no. See [de.plmail.jmap.methods.CalendarEventChanges].
+     */
+    private suspend fun unchangedSince(
+        client: JmapClient,
+        session: Session,
+        accountId: AccountId,
+        accountKey: String,
+    ): Boolean {
+        val account = database.accounts().byUid(accountKey) ?: return false
+        val calendarCursor = account.calendarState ?: return false
+        val eventCursor = account.calendarEventState ?: return false
+
+        val batch = request(session)
+        val calendars = batch.add(CalendarChanges(accountId, StateToken(calendarCursor)))
+        val events = batch.add(CalendarEventChanges(accountId, StateToken(eventCursor)))
+
+        // Both the send *and* the two reads are inside the try, which is not
+        // belt and braces: this client surfaces a method-level error when the
+        // result is read, not when the batch is sent, so a try around the send
+        // alone catches nothing and lets `cannotCalculateChanges` escape as a
+        // failed refresh. That is what it did the first time this was written.
+        val (calendarDelta, eventDelta) =
+            try {
+                val answers = client.send(batch)
+
+                answers.result(calendars) to answers.result(events)
+            } catch (resync: JmapError) {
+                if (!resync.requiresResync) throw resync
+
+                // Forgotten rather than retried. The server raises this for a
+                // token it does not recognise, one ahead of its log and one
+                // older than retained history, and none of the three gets
+                // better by being asked again -- keeping it would buy a refused
+                // call on top of the full fetch, every refresh, forever.
+                database.accounts().setCalendarState(accountKey, null)
+                database.accounts().setCalendarEventState(accountKey, null)
+
+                return false
+            }
+
+        database.accounts().setCalendarState(accountKey, calendarDelta.newState)
+        database.accounts().setCalendarEventState(accountKey, eventDelta.newState)
+
+        // `hasMoreChanges` is checked beside the emptiness rather than trusted
+        // to imply it: a page that reported nothing while the server still has
+        // more to say is a "nothing changed" that is only true of the page.
+        return calendarDelta.isEmpty &&
+            eventDelta.isEmpty &&
+            !calendarDelta.hasMoreChanges &&
+            !eventDelta.hasMoreChanges
+    }
+
     private suspend fun fetch(
         client: JmapClient,
         session: Session,
@@ -610,6 +722,8 @@ constructor(
         val series = mutableListOf<CalendarEvent>()
         val occurrences = mutableListOf<CalendarEvent>()
         var requests = 0
+        var calendarState: String? = null
+        var eventState: String? = null
 
         while (seriesPaging.hasMore || occurrencePaging.hasMore) {
             val batch = request(session)
@@ -659,11 +773,20 @@ constructor(
 
             requests++
 
-            calendarsHandle?.let { calendars = answers.result(it).list }
+            calendarsHandle?.let {
+                val answer = answers.result(it)
+                calendars = answer.list
+                calendarState = answer.state
+            }
 
             seriesHandles?.let { (queryHandle, getHandle) ->
                 seriesPaging.advance(answers.result(queryHandle))
-                series += answers.result(getHandle).list
+
+                val answer = answers.result(getHandle)
+                series += answer.list
+
+                // First page only -- see the note on [Fetched.eventState].
+                if (eventState == null) eventState = answer.state
             }
 
             occurrenceHandles?.let { (queryHandle, getHandle) ->
@@ -672,7 +795,7 @@ constructor(
             }
         }
 
-        return Fetched(calendars, series, occurrences, requests)
+        return Fetched(calendars, series, occurrences, requests, calendarState, eventState)
     }
 
     /**

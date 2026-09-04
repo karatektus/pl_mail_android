@@ -49,6 +49,12 @@ interface AccountDao {
     @Query("UPDATE accounts SET threadState = :state WHERE uid = :uid")
     suspend fun setThreadState(uid: String, state: String?)
 
+    @Query("UPDATE accounts SET calendarState = :state WHERE uid = :uid")
+    suspend fun setCalendarState(uid: String, state: String?)
+
+    @Query("UPDATE accounts SET calendarEventState = :state WHERE uid = :uid")
+    suspend fun setCalendarEventState(uid: String, state: String?)
+
     /**
      * A sync that worked. Clears the last error, because it is no longer true.
      *

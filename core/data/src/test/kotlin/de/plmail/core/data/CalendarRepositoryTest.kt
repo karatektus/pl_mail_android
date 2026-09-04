@@ -111,6 +111,92 @@ class CalendarRepositoryTest {
     }
 
     /**
+     * The second look at a month nobody touched costs one request, not the window fetch.
+     *
+     * The whole point of the delta path. `collapsedQueries` is the assertion that matters: it is
+     * zero for the second refresh, meaning the client did not re-run the window it already holds —
+     * a version that asked `/changes` and then re-fetched anyway would pass an assertion on
+     * `requests` alone and cost more than doing nothing.
+     */
+    @Test
+    fun `a second refresh of an unchanged window skips the fetch`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        val queriesAfterFirst = server.collapsedQueries
+
+        val again = repository.refresh(week)
+
+        assertTrue(again is CalendarRefresh.Refreshed, "got $again")
+        assertEquals(1, again.requests, "one /changes request and nothing else")
+        assertEquals(queriesAfterFirst, server.collapsedQueries, "the window was re-queried")
+        assertEquals(2, server.changesQueries, "Calendar/changes and CalendarEvent/changes")
+        assertEquals(listOf("fixed", "fixed"), server.sinceStates, "the stored cursor went back")
+
+        // And the rows are still there: a skipped fetch must not be a skipped
+        // reconcile that empties the days it declined to ask about.
+        assertEquals(5, repository.occurrences(week).first().size)
+    }
+
+    /**
+     * A delta with anything in it re-runs the window, ids and all.
+     *
+     * The client deliberately does not fetch the events a delta names — an occurrence is not
+     * addressable by series id, and a changed recurrence rule moves occurrences no delta mentions.
+     * So the assertion is that the window was queried again, not that the named event was.
+     */
+    @Test
+    fun `a non-empty delta re-runs the window`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        val queriesAfterFirst = server.collapsedQueries
+        server.changedEvents = listOf("10865")
+
+        repository.refresh(week)
+
+        assertTrue(server.collapsedQueries > queriesAfterFirst, "the window was not re-queried")
+    }
+
+    /**
+     * A refused cursor costs a full fetch, not the refresh.
+     *
+     * `cannotCalculateChanges` covers four conditions the client cannot tell apart — a token that
+     * is unrecognised, ahead of the log, older than retained history, or missing — and every one of
+     * them means the same thing: the cheap path is unavailable, so take the expensive one. What it
+     * must **not** mean is a failed refresh, which is what it did mean the first time this was
+     * written: the client surfaces a method error when the result is *read* rather than when the
+     * batch is sent, so a `try` around the send alone let the refusal escape as
+     * `CalendarRefresh.Rejected` and the calendar screen showed an error over a month it could
+     * perfectly well have drawn.
+     */
+    @Test
+    fun `a refused cursor falls back to the full fetch rather than failing`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek())
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        val queriesAfterFirst = server.collapsedQueries
+        server.refuseChanges = true
+
+        val afterRefusal = repository.refresh(week)
+
+        assertTrue(afterRefusal is CalendarRefresh.Refreshed, "got $afterRefusal")
+        assertEquals(5, afterRefusal.occurrences, "the refusal must still produce a full fetch")
+        assertTrue(server.collapsedQueries > queriesAfterFirst, "the window was not re-queried")
+
+        // The rows survived the round trip, which is the part a user would
+        // notice: a refusal that emptied the month would also "pass" an
+        // assertion that the fetch ran.
+        assertEquals(5, repository.occurrences(week).first().size)
+    }
+
+    /**
      * The colour comes off the calendar, resolved by the join rather than copied onto the row.
      *
      * Copied would have been fewer moving parts and wrong the first time somebody recolours a

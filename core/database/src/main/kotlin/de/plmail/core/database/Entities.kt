@@ -65,6 +65,19 @@ data class AccountEntity(
     val emailState: String? = null,
     val threadState: String? = null,
     val mailboxState: String? = null,
+    /**
+     * The calendar cursors, which arrived after the mail ones and behave differently.
+     *
+     * Both are null until the first refresh reads a state off a `get`, and both go back to null the
+     * moment the server answers `cannotCalculateChanges` — a worthless cursor has to be forgotten
+     * rather than retried, or every later refresh pays for the same refusal.
+     *
+     * [calendarEventState] does **not** decide what is fetched, only whether. See
+     * `CalendarRepository.runRefresh`: a window the cache has never held is not addressed by any
+     * delta, so the cursor gates the re-fetch of windows already on the device and nothing else.
+     */
+    val calendarState: String? = null,
+    val calendarEventState: String? = null,
     val lastSyncedAt: Long? = null,
     /**
      * The last failure, kept so the diagnostics screen can show it. Users self-host: when something
