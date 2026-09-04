@@ -80,6 +80,28 @@ data class Appearance(
     val layout: String? = null,
     val accent: String? = null,
     val paneAlpha: Float? = null,
+    /**
+     * The floating surfaces' own opacity, which used to be [paneAlpha]'s job.
+     *
+     * The server split the knob on 2026-08-27 because translucency multiplies: a composer at 0.7
+     * over a pane at 0.7 left about a tenth of the wallpaper landing in the middle of the text
+     * being read. Structural surfaces — sidebar, top bar, the panes — keep [paneAlpha]; floating
+     * ones — the compose window, dialogs, sheets, menus and toasts — take this.
+     *
+     * The server guarantees a **floor of 0.5** rather than merely defaulting to it, so a popover
+     * can never be made as see-through as a pane. Read like every other value here and never sent:
+     * appearance travels one way on this client.
+     *
+     * **Nothing on Android draws with it yet, and that is the honest state rather than an
+     * oversight.** The web's problem is a floating surface compositing over a desktop wallpaper
+     * through a translucent pane; this app's dialogs, sheets and menus are Material 3 surfaces with
+     * no alpha at all, sitting over the app's own opaque background — already more solid than the
+     * floor this property guarantees. Carrying the value keeps `Appearance/get` decoding complete
+     * so the property is not silently dropped, and leaves it here for whatever first needs it.
+     * Resolving it into a design token with no surface to apply it to would be the mistake
+     * `PlMailSurfaces` already refuses for `paneBlur`.
+     */
+    val popoverAlpha: Float? = null,
     val paneBlur: Float? = null,
     val radius: Float? = null,
     val density: String? = null,
@@ -140,6 +162,7 @@ data class Appearance(
             layout = string("layout") ?: layout,
             accent = string("accent") ?: accent,
             paneAlpha = float("paneAlpha") ?: paneAlpha,
+            popoverAlpha = float("popoverAlpha") ?: popoverAlpha,
             paneBlur = float("paneBlur") ?: paneBlur,
             radius = float("radius") ?: radius,
             density = string("density") ?: density,
