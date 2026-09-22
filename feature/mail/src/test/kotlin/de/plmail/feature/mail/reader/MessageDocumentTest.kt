@@ -86,18 +86,25 @@ class MessageDocumentTest {
      * cascade's final step, so the table stayed 600px wide in a 411px viewport and everything
      * inside it laid out against that. Measured in headless Chrome, the fixture put 664px of
      * content in a 500px container before this rule and exactly 500 after.
+     *
+     * Asserted against the universal rule rather than against a tag list, because that is where the
+     * release now lives — the same one sentence clears `min-width` and applies the cap, for tables
+     * and blocks alike. This test used to name `table` and `div, p,` and passed only because those
+     * strings happened to sit in the selector; it would have gone on passing had the rule stopped
+     * reaching either.
      */
     @Test
     fun `a declared minimum width cannot pin the message wider than the pane`() {
         val css = wrap(MessageRenderStyle.ORIGINAL)
+        val cap = css.substringAfter("*:not(:is(").substringBefore("}")
 
         assertTrue(
-            css.contains(Regex("""table[^{]*\{[^}]*min-width: 0 !important""")),
-            "a table's own minimum width outranks the cap and has to be released",
+            cap.contains("min-width: 0 !important"),
+            "a declared minimum outranks the cap in the cascade and has to be released outright",
         )
-        assertTrue(
-            css.contains(Regex("""div, p,[^{]*\{[^}]*min-width: 0 !important""")),
-            "so does a block's",
+        assertFalse(
+            cap.substringBefore("{").contains(Regex("""\b(table|div|p)\b""")),
+            "a table's and a block's release must come from the universal rule, not an exclusion",
         )
     }
 
@@ -118,8 +125,8 @@ class MessageDocumentTest {
     @Test
     fun `boxes are capped against the viewport and pictures against their column`() {
         val css = wrap(MessageRenderStyle.ORIGINAL)
-        val blocks = css.substringAfter("div, p, blockquote").substringBefore("}")
-        val pictures = css.substringAfter("img, picture, video, svg").substringBefore("}")
+        val blocks = css.substringAfter("*:not(:is(").substringBefore("}")
+        val pictures = css.substringAfter(":is(img, picture, video, svg").substringBefore("}")
 
         assertTrue(blocks.contains("max-width: calc(100vw"), "a block takes the pure viewport cap")
         assertFalse(
@@ -131,6 +138,47 @@ class MessageDocumentTest {
             pictures.contains("max-width: min(100%"),
             "a picture is capped against its column as well, or it bursts out of a narrow cell",
         )
+    }
+
+    /**
+     * The cap names what it leaves out, because naming what it covers left things out.
+     *
+     * It was a tag list, and a tag list is a claim to have thought of every element mail is built
+     * from. `<center>` was missing — from a list that had `figure` and `fieldset` on it — and
+     * `<center>` is in a large share of all marketing mail. Measured in Chromium at 411px, a
+     * `<center style="width:780px">` laid out 804px wide: the message half off the screen with its
+     * text clipped mid-word. `<li>`, `<dt>`, `<dd>`, `<address>` and every form control were
+     * missing too; an `<input size="90">` was worth 757px by itself.
+     *
+     * Asserted as "these are the only exclusions" rather than by naming the elements that are now
+     * covered, because the point of the inversion is that the covered set is not enumerable. A
+     * tighter test would be one that has to be edited every time mail invents another tag, which is
+     * the failure this is fixing.
+     */
+    @Test
+    fun `the cap covers everything except cells and replaced elements`() {
+        val css = wrap(MessageRenderStyle.ORIGINAL)
+        val excluded = css.substringAfter("*:not(:is(").substringBefore("))")
+
+        listOf("td", "th", "col", "colgroup").forEach {
+            assertTrue(
+                excluded.contains(it),
+                "a cell capped at the viewport bursts out of a column narrower than one",
+            )
+        }
+
+        listOf("img", "picture", "video", "svg", "canvas", "iframe", "object", "embed").forEach {
+            assertTrue(excluded.contains(it), "a picture is capped against its column instead")
+        }
+
+        // The regression itself: anything not excluded is covered, so the
+        // elements that used to fall through must not appear in the exclusion.
+        listOf("center", "li", "dt", "dd", "address", "input", "select", "button").forEach {
+            assertFalse(
+                excluded.contains(Regex("\\b$it\\b")),
+                "$it is a box like any other and must be capped, not excluded",
+            )
+        }
     }
 
     /**

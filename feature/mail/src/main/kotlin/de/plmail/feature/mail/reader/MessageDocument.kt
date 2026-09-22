@@ -266,6 +266,37 @@ object MessageDocument {
      * fits exactly after. `:is()` keeps the lists readable and contributes only its own highest
      * argument to the specificity, so the id is doing all the work.
      *
+     * ## The cap names what it excludes, not what it covers
+     *
+     * It used to be a list of tags — `div, p, blockquote, … h1…h6, figure, form, fieldset` — and a
+     * list is a promise to have thought of everything. It had not. **`<center>` was not on it**,
+     * and `<center>` is in a large share of all marketing mail; neither were `<li>`, `<dt>`,
+     * `<dd>`, `<address>`, `<details>`, or any form control. Measured in Chromium at a 411px
+     * viewport, a `<center style="width:780px">` put **804px of content in a 411px pane** — the
+     * message then sits half off the screen with its text clipped mid-word, which is exactly what
+     * it looked like. An `<input size="90">` was worth 757px on its own.
+     *
+     * So the rule is inverted: everything inside the root is capped **except** the two groups that
+     * must not be. Cells (`td`, `th`, `col`, `colgroup`) are excluded because a cell capped at the
+     * viewport bursts out of a column narrower than one, which is the bug described further up.
+     * Replaced elements are excluded because they need the `min(100%, …)` form below — capping a
+     * picture at the viewport alone lets it overflow its own column. Nothing else is special, and
+     * an element nobody has thought of yet is now capped by default rather than missed by default.
+     *
+     * `:not()` takes the highest specificity among its arguments, so these rules are (1,0,2) rather
+     * than (1,0,1). That is *higher* than the cell and picture rules below, which is harmless
+     * precisely because those elements are the ones excluded here — the two never meet.
+     *
+     * ## What this still does not fix: padding
+     *
+     * A box's horizontal padding is part of its minimum width, and `max-width` cannot shrink a box
+     * below its minimum — the same rule that makes a declared cell width load-bearing. So a `<td
+     * style="padding: 0 180px">` pins its table 360px wider than its text however this file is
+     * written, and measured, the candidates above leave 60px of it on the table. Capping padding
+     * would mean overriding spacing every sender deliberately chose, on every message, to rescue
+     * the few that abuse it. That trade has not been made here. `overflow-x: auto` on the wrapper
+     * is what carries the remainder, which is what it is for.
+     *
      * ## Text that will not wrap
      *
      * Capping a box does nothing about text inside it that refuses to wrap. This started as
@@ -300,7 +331,8 @@ object MessageDocument {
             position: relative;
             overflow-x: auto;
         }
-        #$ROOT :is(table, tbody, thead, tfoot, tr) {
+        #$ROOT *:not(:is(td, th, col, colgroup,
+        img, picture, video, svg, canvas, iframe, object, embed)) {
             min-width: 0 !important;
             max-width: calc(100vw - ${INSET_BOTH_PX}px) !important;
         }
@@ -311,11 +343,6 @@ object MessageDocument {
             max-width: min(100%, calc(100vw - ${INSET_BOTH_PX}px)) !important;
         }
         #$ROOT :is(img, picture, video) { height: auto !important; }
-        #$ROOT :is(div, p, blockquote, pre, section, article, header, footer, main, aside,
-        ul, ol, dl, h1, h2, h3, h4, h5, h6, figure, form, fieldset) {
-            min-width: 0 !important;
-            max-width: calc(100vw - ${INSET_BOTH_PX}px) !important;
-        }
         #$ROOT * { white-space: normal !important; }
         #$ROOT :is(pre, code, samp, kbd, textarea) {
             white-space: pre-wrap !important;
