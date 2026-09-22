@@ -118,6 +118,10 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
      * Threads are summarised from the messages **already stored plus the ones arriving**, not from
      * the arriving page alone. A page carrying one reply to a long conversation would otherwise
      * rewrite that conversation's row as a one-message thread from a single participant.
+     *
+     * Cached bodies that this page contradicts are dropped first — see [staleBodies]. Every path
+     * that writes a message row comes through here, which is what makes this the one place that can
+     * see a message change.
      */
     suspend fun storeEmails(
         accountKey: String,
@@ -128,6 +132,12 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
         if (emails.isEmpty() && threads.isEmpty()) return
 
         database.withTransaction {
+            // Before the upsert, because the stored row is half the evidence,
+            // and before the body write below, so a page that carries a fresh
+            // body puts it straight back.
+            val stale = staleBodies(accountKey, emails)
+            if (stale.isNotEmpty()) database.emails().deleteBodies(stale)
+
             database.emails().upsert(emails.map { it.toEntity(accountKey) })
 
             emails.forEach { email ->
@@ -188,6 +198,50 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
                     }
                 )
         }
+    }
+
+    /**
+     * The cached bodies this page proves wrong.
+     *
+     * The body table was written once and never invalidated, and for received mail that is right: a
+     * message that has arrived does not change. **A draft does.** The composer autosaves one on the
+     * server the moment a reply is opened, it lands in the same conversation as the mail it
+     * answers, and anything that downloads bodies — the reader opening that thread, the prefetcher
+     * on its fifteen-minute round — will happily cache whatever the half-written draft held at that
+     * moment. Sending it does not change the message *id*: the server clears `$draft`, moves it to
+     * Sent and leaves everything else where it was. So the finished mail inherited the cache entry
+     * of the unfinished one, for good.
+     *
+     * What that looked like was a message sent from the phone whose conversation row read correctly
+     * — `preview` is a list-row property and every sync refreshes it — and which opened to the text
+     * the draft held when it was cached. In the common case, an autosave that beat the user's first
+     * keystroke, that text was *nothing*: `markFetchedBodylessMessages` had recorded an empty body,
+     * and an empty body renders as an empty card rather than as an error. Collapsed, the message
+     * was right; expanded, it was blank.
+     *
+     * Three cases, and the third is a repair rather than a rule:
+     * 1. **It is a draft now.** Its body is mutable by definition, so nothing cached for it can be
+     *    trusted past this sync. Cheap: drafts are a handful of rows, and the reader re-fetches.
+     * 2. **The cache says draft and the server no longer does.** The transition this exists for.
+     *    The body cached from the draft is not the body that was sent.
+     * 3. **We cached "this has no body" for a message the server gives a preview for.** A preview
+     *    is derived from the body — RFC 8621 defines it that way and plMail computes it from the
+     *    stored text — so the two cannot both be true. This is what heals the installs that already
+     *    hold a poisoned marker: they need no migration, only the next sync that touches the row.
+     */
+    private suspend fun staleBodies(accountKey: String, emails: List<Email>): List<String> {
+        if (emails.isEmpty()) return emptyList()
+
+        val uids = emails.map { StoreKey.objectKey(accountKey, it.id.value) }
+        val wasDraft = database.emails().draftsAmong(uids).toSet()
+        val bodyless = database.emails().bodylessMarkersAmong(uids).toSet()
+
+        return emails
+            .map { email -> email to StoreKey.objectKey(accountKey, email.id.value) }
+            .filter { (email, uid) ->
+                email.isDraft || uid in wasDraft || (uid in bodyless && email.preview.isNotBlank())
+            }
+            .map { (_, uid) -> uid }
     }
 
     /** One conversation's messages, oldest first, from the cache. */

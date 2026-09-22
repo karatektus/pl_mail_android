@@ -287,6 +287,40 @@ interface EmailDao {
     suspend fun body(uid: String): EmailBodyEntity?
 
     /**
+     * Throws away cached bodies, for messages whose body is no longer the one that was cached.
+     *
+     * Distinct from [evictBodiesOlderThan], which frees space and spares drafts. This is the
+     * opposite case: the row is *wrong*, and keeping it costs correctness rather than bytes. See
+     * `MailRepository.storeEmails`.
+     */
+    @Query("DELETE FROM email_bodies WHERE uid IN (:uids)")
+    suspend fun deleteBodies(uids: List<String>)
+
+    /**
+     * Which of these messages the cache currently holds as drafts.
+     *
+     * The stored side of the draft→sent transition. Asked as one `IN` over the page rather than a
+     * read per message, because this runs on every write of every list page.
+     */
+    @Query("SELECT uid FROM emails WHERE uid IN (:uids) AND isDraft = 1")
+    suspend fun draftsAmong(uids: List<String>): List<String>
+
+    /**
+     * Which of these messages carry the "fetched, genuinely has no body" marker.
+     *
+     * The marker is an empty `textBody` with no html — see `markFetchedBodylessMessages`. It has to
+     * be recognisable again, because a marker written while a message was an empty draft is a claim
+     * that stops being true the moment the draft is written and sent.
+     */
+    @Query(
+        """
+        SELECT uid FROM email_bodies
+        WHERE uid IN (:uids) AND htmlBody IS NULL AND (textBody IS NULL OR textBody = '')
+        """
+    )
+    suspend fun bodylessMarkersAmong(uids: List<String>): List<String>
+
+    /**
      * The newest messages whose bodies are not on the device, for the prefetcher to go and get.
      *
      * Newest first because that is the order they will be opened in. The `LEFT JOIN` rather than a

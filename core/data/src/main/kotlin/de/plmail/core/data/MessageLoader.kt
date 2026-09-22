@@ -40,7 +40,28 @@ constructor(
      */
     suspend fun loadBodies(accountKey: String, threadId: String) {
         val stored = database.emails().inThread(accountKey, threadId)
-        val (missing, held) = stored.partition { database.emails().body(it.uid) == null }
+
+        // A draft counts as missing however much of it is on disk. Everything
+        // else in this table is a message that has arrived and will never say
+        // anything different, which is what makes caching a body once correct;
+        // a draft is the one row somebody is still editing, quite possibly in
+        // another window right now. `MailRepository.storeEmails` drops the
+        // cached copy whenever a sync touches the row, and this is the other
+        // half: a conversation reopened without a sync in between still shows
+        // the draft as it stands rather than as it was first seen.
+        //
+        // So does a row whose cache contradicts it -- see `contradicts`. That
+        // is the repair, and it has to be here rather than only in the sync:
+        // the mail this happened to was sent weeks ago and the server will
+        // never report it as changed again, so a phone already holding a
+        // poisoned marker would keep it forever. This is the screen where the
+        // blank message is, and it is where it gets fixed.
+        val (missing, held) =
+            stored.partition { email ->
+                val body = database.emails().body(email.uid)
+                email.isDraft || body == null || body.contradicts(email)
+            }
+
         val now = System.currentTimeMillis()
 
         // Opening a conversation is the event eviction should be measured from,
@@ -88,6 +109,6 @@ constructor(
         // this it is "missing a body" again the next time the thread is opened --
         // one `Email/get` per open, forever, for a message that has nothing to
         // fetch. See `markFetchedBodylessMessages`.
-        database.markFetchedBodylessMessages(accountKey, emails.map { it.id.value }, now)
+        database.markFetchedBodylessMessages(accountKey, emails, now)
     }
 }

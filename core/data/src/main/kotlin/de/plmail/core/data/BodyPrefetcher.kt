@@ -1,8 +1,10 @@
 package de.plmail.core.data
 
 import de.plmail.core.database.EmailBodyEntity
+import de.plmail.core.database.EmailEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
+import de.plmail.jmap.mail.Email
 import de.plmail.jmap.methods.EmailGet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.EmailId
@@ -79,7 +81,7 @@ constructor(
             // same way a sync writes them and the thread summary is recomputed
             // once.
             mail.storeEmails(accountKey, emails, fetchedAt = now)
-            database.markFetchedBodylessMessages(accountKey, emails.map { it.id.value }, now)
+            database.markFetchedBodylessMessages(accountKey, emails, now)
         }
     }
 
@@ -133,17 +135,43 @@ constructor(
  *
  * Written only where no row exists, so this can never overwrite a body [MailRepository] has just
  * stored — including on the ordinary path, where nearly every fetched message has one.
+ *
+ * **Never for a draft.** The marker is a claim that this message has nothing to download, and the
+ * one kind of message that can acquire a body later is the one somebody is still writing. An
+ * autosave routinely beats the first keystroke, so the empty draft behind every reply sent from the
+ * phone was being recorded as permanently bodyless — and it kept that record after it was sent,
+ * because sending does not change the message id. See `MailRepository.staleBodies`, which clears up
+ * after the markers this used to leave.
  */
 internal suspend fun PlMailDatabase.markFetchedBodylessMessages(
     accountKey: String,
-    emailIds: List<String>,
+    fetched: List<Email>,
     at: Long,
 ) {
-    emailIds.forEach { id ->
-        val uid = StoreKey.objectKey(accountKey, id)
+    fetched
+        .filterNot { it.isDraft }
+        .forEach { email ->
+            val uid = StoreKey.objectKey(accountKey, email.id.value)
 
-        if (emails().body(uid) == null) {
-            emails().upsertBody(EmailBodyEntity(uid = uid, textBody = "", fetchedAt = at))
+            if (emails().body(uid) == null) {
+                emails().upsertBody(EmailBodyEntity(uid = uid, textBody = "", fetchedAt = at))
+            }
         }
-    }
 }
+
+/**
+ * Whether this cached body claims the message has nothing, while the message says otherwise.
+ *
+ * The marker written by [markFetchedBodylessMessages] is a statement of fact — "asked, and there is
+ * no body to download" — and a `preview` is the opening of the body text: RFC 8621 derives it from
+ * the body, and plMail computes it from the stored text. Both cannot be true, so a row where they
+ * disagree is one the cache got wrong, which is exactly what an empty draft left behind before that
+ * function learned to skip them.
+ *
+ * The same rule in SQL is `EmailDao.bodylessMarkersAmong`, which `MailRepository.storeEmails` reads
+ * over a whole page; this is the per-row form the reader uses. A refetch either fills the row in —
+ * which is the end of it — or writes the marker back, and costs one `Email/get` per open of the one
+ * conversation until it does.
+ */
+internal fun EmailBodyEntity.contradicts(email: EmailEntity): Boolean =
+    htmlBody == null && textBody.isNullOrEmpty() && email.preview.isNotBlank()
