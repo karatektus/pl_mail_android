@@ -88,6 +88,18 @@ object MessageDocument {
     private const val INSET_BOTH_PX = INSET_PX * 2
 
     /**
+     * The most of the pane a sender's own horizontal padding may take, per side.
+     *
+     * A separate constant from [INSET_PX] on purpose: the two are not required to agree and
+     * pretending they were would be a false economy. [INSET_PX] is the gap between the pane and the
+     * message; this is a ceiling on what the message may then inset itself by. The number was
+     * chosen by measuring both directions at a 411px viewport — see the padding section of [base]'s
+     * docblock — and 16 is where an ordinary receipt reflows to exactly the same height it had
+     * before while four nested wrapper tables still leave 84px of indent rather than 220.
+     */
+    private const val PADDING_CAP_PX = 16
+
+    /**
      * Wraps [body] for [style], adapting to [palette] where the style adapts anything at all.
      *
      * [body] is the server's sanitised HTML. It is never escaped here — escaping it would render
@@ -183,8 +195,10 @@ object MessageDocument {
      * roughly half scale, which turns 15px type into 7px. A message nobody can read is not a
      * message that fits.
      *
-     * Three rules do the fitting and each one was arrived at by watching the receipt fail without
-     * it. `max-width: 100%` alone — which is what this file used to carry — fixes none of them.
+     * Three rules do the reflow and each one was arrived at by watching the receipt fail without
+     * it. `max-width: 100%` alone — which is what this file used to carry — fixes none of them. Two
+     * more, further down, are about padding rather than width, and padding turned out to overflow
+     * for two reasons that have nothing to do with each other.
      *
      * **Table cells.** Per CSS 2.1 §17.5.2.2 a column with a *specified* width takes that width as
      * its **minimum**, not its preference, and `max-width` can never shrink a box below its minimum
@@ -287,15 +301,97 @@ object MessageDocument {
      * than (1,0,1). That is *higher* than the cell and picture rules below, which is harmless
      * precisely because those elements are the ones excluded here — the two never meet.
      *
-     * ## What this still does not fix: padding
+     * ## Padding overflows in two unrelated ways, and they need two different rules
      *
-     * A box's horizontal padding is part of its minimum width, and `max-width` cannot shrink a box
-     * below its minimum — the same rule that makes a declared cell width load-bearing. So a `<td
-     * style="padding: 0 180px">` pins its table 360px wider than its text however this file is
-     * written, and measured, the candidates above leave 60px of it on the table. Capping padding
-     * would mean overriding spacing every sender deliberately chose, on every message, to rescue
-     * the few that abuse it. That trade has not been made here. `overflow-x: auto` on the wrapper
-     * is what carries the remainder, which is what it is for.
+     * **One: the cap used to mean the content box.** `max-width` sizes the content box unless
+     * `box-sizing` says otherwise, so padding is added *outside* the cap and a box capped at the
+     * pane ends up wider than the pane by exactly its own padding. Measured at a 411px viewport,
+     * `<a style="display:inline-block; width:780px; padding:14px">` scrolled the message by 28px —
+     * its 14px twice, and nothing to do with minimum widths. `box-sizing: border-box` on everything
+     * inside the root is the whole fix, it costs a declared width only the padding and border it
+     * already contained, and it is why a fat-padded `<div>` now starves its text instead of
+     * overflowing: a block has no minimum of its own once the cap covers its padding.
+     *
+     * **Two: a cell's padding is part of its table's minimum.** Same rule as a declared cell width
+     * — `max-width` cannot shrink a box below its minimum content width — so a `<td style="padding:
+     * 0 180px">` pins its table 360px wider than its text however the rules above are written, and
+     * left 60px of it on the table. Nothing that caps a *width* can reach this. Only replacing the
+     * padding can, and replacing it is a real cost, so the rule below is narrowed four separate
+     * ways, each one measured.
+     *
+     * ## The padding cap, and the four ways it is narrowed
+     *
+     * `padding-inline`, set to [PADDING_CAP_PX], on a box that declared horizontal padding at all.
+     * CSS has no `max-padding`, so this **sets** rather than caps: a sender who asked for more
+     * loses the difference and one who asked for less is given it. That second half is the
+     * dangerous one and is what the exclusions are about.
+     *
+     * **Only where padding was declared.** `[style*="padding:" i]` and the explicit longhands, plus
+     * `table[cellpadding]`, which is an attribute no `[style]` selector can see and which applies
+     * to every cell at once. A box that declared nothing keeps nothing. This reads like the
+     * tag-list mistake above in a new costume — it enumerates *how* the padding was written rather
+     * than *what* it is on — except that in this app it is not a guess: the server flattens every
+     * `<style>` block onto its elements as inline styles at ingest and then drops the block
+     * (`MailBodySanitizer`, step 3), so by the time a body reaches this WebView a sender's
+     * stylesheet padding **is** an inline style. `@media` and pseudo-class rules are not flattened
+     * and do still escape.
+     *
+     * **Only a box that wraps a block.** `:has(> :not(:is(a, span, …)))`. A box whose every child
+     * is inline-level is a label — a button, a badge, a receipt cell — and its padding is its whole
+     * design; a box containing a block is a layout wrapper, and that is the only place fat padding
+     * has ever been found. Without this the rule flattened the bulletproof button, which is `<td
+     * style="padding:14px 40px"><a>…</a></td>` and is the single most common way a button is built
+     * in mail: measured, it went from 141px wide with 40px of padding to 93px with 16px, and under
+     * a percentage form to 61px with 2px, which is not a button any more. With it, that button and
+     * a three-column receipt with 8px cells come through **byte for byte unchanged**. The inline
+     * elements are enumerated rather than the blocks on purpose: one missed here makes a label look
+     * like a wrapper, and the cost of that is a tighter button, where one missed on a list of
+     * blocks would be a message that scrolls.
+     *
+     * **Not a zero.** `padding:0` is a reset, not a design, and it is in half of all mail. Anchored
+     * so that `padding:0 180px` — which opens with the same `padding:0` — is not caught: excluded
+     * only where that `padding:0` is *not* followed by a space. Without this, four nested wrapper
+     * cells that each asked for no padding at all were given 16px each and the first word of the
+     * message moved from 20px in to 100px in. `cellpadding="0"` is excluded the same way and for
+     * the same reason, and it is on very nearly every wrapper table ever sent.
+     *
+     * `:has()` is the one selector here newer than the app's `minSdk` 31 — it wants a Chromium of
+     * 105 where `:is()` wants 88 — and it is kept in a rule of its own for that reason. A WebView
+     * too old to parse it drops **this block only**, which leaves the padding exactly as the
+     * message declared it and the message scrolling, which is where this file was yesterday.
+     *
+     * **Horizontal only.** `padding-inline`, so a card's top and bottom spacing is untouched;
+     * vertical padding cannot make anything overflow sideways. A consequence worth knowing: a box
+     * that declared only `padding-left` is given the same value on the right, because
+     * `padding-inline` sets both.
+     *
+     * ## What the cap costs, measured
+     *
+     * At a 411px viewport, first-text offset before → after: `<td style="padding:0 180px">` 194 →
+     * 30, four nested `cellpadding="50"` tables 220 → 84, three nested 60px cells 198 → 66. A 640px
+     * picture in a cell padded `0 150px` was drawn 68px wide and is now 336px — fat padding was not
+     * overflowing there, it was starving the picture.
+     *
+     * Against that: a layout wrapper that chose a 24px inset gets 16px, and one that chose 40px
+     * gets 16px. An asymmetric inset is squared up — `padding: 0 320px 0 24px` becomes 16px both
+     * sides — because one declaration cannot preserve a ratio it cannot read. A receipt reflowed to
+     * exactly the same height as before, and buttons did not move at all.
+     *
+     * ## What is still not fixed: a declared width inside any inset
+     *
+     * A box takes the *pure* viewport cap, which is a length and therefore equal to the root's
+     * whole content width. It knows nothing about padding above it, so a box that declared a width
+     * wider than the pane and sits inside any horizontal inset overflows by that inset less this
+     * wrapper's own [INSET_PX]. Measured: `<td style="padding:0 40px"><div style="width:600px">`
+     * was 84px over and is 36px over; `<li style="width:780px">` is 28px over on the user agent's
+     * own 40px list indent, which no rule here declares.
+     *
+     * The textbook fix is the percentage form, and it is worse rather than better — which is the
+     * same finding as the cap section above, re-measured against this case rather than argued from
+     * it. Giving boxes `max-width: min(100%, calc(100vw - Npx))` takes the `<li>` to 0 and takes
+     * that `<div>` from 84px over to **217px** over, because the percentage is indefinite while the
+     * table around it is being sized and the declared 600px goes back to setting the table's
+     * minimum. `overflow-x: auto` carries this remainder, which is what it is for.
      *
      * ## Text that will not wrap
      *
@@ -331,6 +427,7 @@ object MessageDocument {
             position: relative;
             overflow-x: auto;
         }
+        #$ROOT * { box-sizing: border-box !important; }
         #$ROOT *:not(:is(td, th, col, colgroup,
         img, picture, video, svg, canvas, iframe, object, embed)) {
             min-width: 0 !important;
@@ -339,6 +436,14 @@ object MessageDocument {
         #$ROOT table { width: auto !important; table-layout: auto !important; }
         #$ROOT :is(table[width], table[style*="width"]) { width: 100% !important; }
         #$ROOT :is(td, th, col, colgroup) { width: auto !important; min-width: 0 !important; }
+        #$ROOT :is([style*="padding:" i], [style*="padding-left" i],
+        [style*="padding-right" i], [style*="padding-inline" i],
+        table[cellpadding]:not([cellpadding="0"]) > * > tr > :is(td, th)):has(> :not(:is(a,
+        span, b, strong, i, em, u, s, small, big, font, br, wbr, nobr, code, tt, sub, sup,
+        label, abbr, time, mark))):not(:is([style*="padding:0" i]:not([style*="padding:0 " i]),
+        [style*="padding: 0" i]:not([style*="padding: 0 " i]))) {
+            padding-inline: ${PADDING_CAP_PX}px !important;
+        }
         #$ROOT :is(img, picture, video, svg, canvas, iframe, object, embed) {
             max-width: min(100%, calc(100vw - ${INSET_BOTH_PX}px)) !important;
         }

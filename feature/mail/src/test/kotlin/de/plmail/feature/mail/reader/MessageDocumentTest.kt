@@ -49,6 +49,18 @@ class MessageDocumentTest {
         MessageDocument.wrap(html, MessageRenderStyle.ORIGINAL, palette, RemoteImages.BLOCKED)
 
     /**
+     * The one rule that replaces a sender's horizontal padding — selector and declaration both.
+     *
+     * Found by its *declaration*, not by its selector: the selector is what the cases below are
+     * asserting about, and anchoring the lookup on it would make them agree with themselves. No
+     * rule here nests, so splitting on `}` is what separates them; `padding-inline:` appears in
+     * exactly one declaration, and the `[style*="padding-inline" i]` in the selector carries no
+     * colon, so it cannot be mistaken for one.
+     */
+    private fun paddingCap(): String =
+        wrap(MessageRenderStyle.ORIGINAL).split("}").first { it.contains("padding-inline:") }
+
+    /**
      * The rule the reported bug turned on.
      *
      * A receipt whose columns are `<td width="380">` is pinned at 760px by the table algorithm and
@@ -179,6 +191,155 @@ class MessageDocumentTest {
                 "$it is a box like any other and must be capped, not excluded",
             )
         }
+    }
+
+    /**
+     * The cap has to mean the whole box, or padding is added outside it.
+     *
+     * `max-width` sizes the content box by default, so a box capped at the pane and carrying its
+     * own padding ends up wider than the pane by exactly that padding. Measured in Chromium at a
+     * 411px viewport, `<a style="display:inline-block; width:780px; padding:14px">` scrolled the
+     * message 28px — its 14px twice — and `box-sizing: border-box` takes it to 0. Nothing to do
+     * with minimum widths, which is why it needed a rule of its own rather than a better cap.
+     */
+    @Test
+    fun `the cap covers a box's own padding rather than sitting inside it`() {
+        assertTrue(
+            wrap(MessageRenderStyle.ORIGINAL)
+                .contains("#plmail-message-root * { box-sizing: border-box !important; }"),
+            "a capped box still adds its padding outside the cap, and overflows by exactly that",
+        )
+    }
+
+    /**
+     * The rule the reported "some mails still render like this" turned on.
+     *
+     * A cell's horizontal padding is part of its table's minimum width, and — the same rule as a
+     * declared cell width — no `max-width` can shrink a table below its minimum. So a `<td
+     * style="padding: 0 180px">` pinned its table 360px wider than its text, and measured in
+     * Chromium at a 411px viewport it left 60px of that on the table: the message scrolled sideways
+     * with its text clipped at the right edge. Four nested `cellpadding="50"` tables were worth
+     * 112px the same way.
+     *
+     * Nothing that caps a *width* reaches this, so the padding is replaced outright. Asserted as
+     * "the padding is capped in the inline axis" rather than on the value, because the value is
+     * [MessageDocument]'s to tune and the axis is not: vertical padding cannot overflow sideways,
+     * and taking it with this rule would flatten every card in every newsletter for nothing.
+     */
+    @Test
+    fun `a cell's padding cannot pin its table wider than the pane`() {
+        val declaration = paddingCap().substringAfter("{")
+
+        assertTrue(
+            declaration.contains("padding-inline:"),
+            "horizontal padding is what overflows; taking the vertical with it costs and buys " +
+                "nothing",
+        )
+        assertFalse(
+            declaration.contains("padding-top") || declaration.contains("padding-block"),
+            "vertical padding cannot make a message scroll sideways: $declaration",
+        )
+    }
+
+    /**
+     * The cap reaches `cellpadding`, which is an attribute and not a style.
+     *
+     * Every `[style]` selector in the world goes past `<table cellpadding="50">`, and marketing
+     * mail still builds with it: measured, four nested tables declaring it were 112px over at a
+     * 411px viewport. The child combinators matter as much as the attribute — a descendant selector
+     * would reach into a nested table that declared no cellpadding of its own and give its cells an
+     * inset nobody asked for.
+     */
+    @Test
+    fun `the cap reaches padding declared as an attribute`() {
+        val selector = paddingCap().substringBefore("{")
+
+        assertTrue(selector.contains("table[cellpadding]"), "cellpadding is invisible to [style]")
+        assertTrue(
+            selector.contains("> * > tr >"),
+            "a descendant selector pads the cells of a nested table that never asked: $selector",
+        )
+    }
+
+    /**
+     * A box whose content is all inline is a label, and its padding is its whole design.
+     *
+     * This is the exclusion that makes the cap affordable. Without it the rule flattened the
+     * bulletproof button — `<td style="padding:14px 40px"><a>…</a></td>`, which is how most buttons
+     * in mail are built — from 141px wide with 40px of padding to 93px with 16px; a percentage form
+     * took it to 61px with 2px, which is not a button any more. A three-column receipt with 8px
+     * cells went the same way. With the exclusion both come through unchanged and only layout
+     * wrappers are capped.
+     *
+     * The inline elements are enumerated rather than the blocks, and that direction is the point:
+     * one missed here makes a label look like a wrapper and costs a tighter button, where one
+     * missed on a list of blocks would be a message that scrolls.
+     */
+    @Test
+    fun `a button keeps the padding that makes it a button`() {
+        val selector = paddingCap().substringBefore("{")
+
+        assertTrue(
+            selector.contains(":has(> :not(:is("),
+            "without this the cap flattens every button and receipt cell in every message",
+        )
+        listOf("a", "span", "strong", "br", "font").forEach {
+            assertTrue(
+                Regex("""\b$it\b""").containsMatchIn(selector.substringAfter(":has(")),
+                "$it is inline, and a box containing only inline content is a label not a wrapper",
+            )
+        }
+    }
+
+    /**
+     * `padding:0` is a reset, not a design.
+     *
+     * CSS has no `max-padding`, so this rule sets rather than caps — which means a box that asked
+     * for *less* is given more, and half of all mail asks for none at all. Measured: four nested
+     * wrapper cells declaring `padding:0` had the message's first word pushed from 20px in to 100px
+     * in before this exclusion, and back to 20px after. `cellpadding="0"` is on very nearly every
+     * wrapper table ever sent and is excluded the same way.
+     *
+     * The anchoring is the subtle part and is asserted here because it is invisible on reading: a
+     * plain `[style*="padding:0"]` would also match `padding:0 180px`, which is the exact
+     * declaration this whole rule exists for, and the fix would silently do nothing.
+     */
+    @Test
+    fun `a message that asked for no padding is not given any`() {
+        val selector = paddingCap().substringBefore("{")
+
+        assertTrue(selector.contains("""[cellpadding="0"]"""), "cellpadding=\"0\" is not excluded")
+        assertTrue(
+            selector.contains("""[style*="padding:0 " i]"""),
+            "the zero exclusion has to spare \"padding:0 180px\", or the rule excludes its own " +
+                "reason for existing: $selector",
+        )
+    }
+
+    /**
+     * A box's cap stays a pure length, and the padding cap must not tempt anyone to change that.
+     *
+     * The remaining gap is a box that declared a width wider than the pane sitting inside any
+     * horizontal inset: the cap is a length equal to the root's whole content width, so it cannot
+     * know about padding above it. The obvious repair is the percentage form — and measured in
+     * Chromium at a 411px viewport it is worse, not better. `<td style="padding:0 40px"><div
+     * style="width:600px">` is 36px over with the cap as written and **217px** over with `min(100%,
+     * …)`, because the percentage is indefinite while the table is being sized and the declared
+     * 600px goes back to setting the table's minimum.
+     *
+     * Pinned here rather than only in the docblock because the two rules now sit next to each other
+     * and look like the same kind of thing.
+     */
+    @Test
+    fun `padding is capped without the box cap becoming a percentage`() {
+        val blocks =
+            wrap(MessageRenderStyle.ORIGINAL).substringAfter("*:not(:is(").substringBefore("}")
+
+        assertTrue(blocks.contains("max-width: calc(100vw"))
+        assertFalse(
+            blocks.contains("min(100%"),
+            "a percentage cap fixes the list case and triples the padded-cell case: $blocks",
+        )
     }
 
     /**
