@@ -14,6 +14,7 @@
     <string name="show_original">Original anzeigen</string>
     <string name="show_adapted">Angepasst anzeigen</string>
     <string name="body_not_downloaded">Diese Nachricht wurde noch nicht heruntergeladen.</string>
+    <string name="body_is_empty">Diese Nachricht enthält keinen Text.</string>
     <string name="action_archive">Archivieren</string>
     <string name="action_trash">In den Papierkorb</string>
     <string name="action_star">Markieren</string>

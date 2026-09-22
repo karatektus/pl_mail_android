@@ -18,6 +18,7 @@
     <string name="show_original">Show original</string>
     <string name="show_adapted">Show adapted</string>
     <string name="body_not_downloaded">This message has not been downloaded yet.</string>
+    <string name="body_is_empty">This message has no text.</string>
     <string name="action_archive">Archive</string>
     <string name="action_trash">Trash</string>
     <string name="action_star">Star</string>

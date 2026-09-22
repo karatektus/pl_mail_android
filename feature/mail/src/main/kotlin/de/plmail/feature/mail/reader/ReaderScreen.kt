@@ -630,12 +630,36 @@ private fun Message(
         if (!message.isExpanded) return@Column
 
         if (body == null) {
+            // Two different facts, and telling them apart is the whole point of
+            // this branch. "Not downloaded" is a promise that something is
+            // coming; a message that genuinely has no text is finished, and
+            // saying the first about the second leaves the reader waiting for a
+            // body that will never arrive. Before this, neither was said: an
+            // empty body rendered as an empty card, which reads as a bug in the
+            // app rather than as a fact about the mail.
             Text(
-                text = stringResource(R.string.body_not_downloaded),
+                text =
+                    stringResource(
+                        if (message.isBodyFetched) R.string.body_is_empty
+                        else R.string.body_not_downloaded
+                    ),
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.inkMuted,
                 modifier = Modifier.padding(horizontal = spacing.medium, vertical = spacing.small),
             )
+
+            // Listed rather than returned past, because a message with no text
+            // is very often a message that *is* its attachment -- a scan, an
+            // invoice, a calendar file -- and the list is then the entire
+            // content. An undownloaded message has no attachments to show
+            // either way: they arrive with the body.
+            Attachments(
+                attachments = message.attachments,
+                busy = busyAttachments,
+                onOpen = onOpenAttachment,
+                onSave = onSaveAttachment,
+            )
+
             return@Column
         }
 

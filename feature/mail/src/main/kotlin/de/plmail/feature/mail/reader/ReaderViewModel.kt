@@ -41,8 +41,30 @@ data class ReaderMessage(
     /** Set when the user has asked to see a transformed message as it was sent. */
     val showOriginal: Boolean = false,
 ) {
+    /**
+     * The document to render, or null when there is nothing to render.
+     *
+     * Blank counts as nothing. A body of `""` is a real stored value — it is how the cache records
+     * "asked, and this message genuinely has none" — and passing it through produced `<pre></pre>`,
+     * which is a perfectly valid document that paints an empty card. Expanded, such a message
+     * looked exactly like a rendering fault, and it was one of the things that made a cache bug
+     * read as a broken WebView. Null here, and [isBodyFetched] tells the screen which sentence to
+     * put in its place.
+     */
     val body: String?
-        get() = html ?: text?.let { "<pre>$it</pre>" }
+        get() =
+            html?.takeIf { it.isNotBlank() }
+                ?: text?.takeIf { it.isNotBlank() }?.let { "<pre>$it</pre>" }
+
+    /**
+     * Whether a body was ever fetched for this message, as opposed to one that was and is empty.
+     *
+     * The two are different sentences on screen and the distinction only survives here: an
+     * unfetched message has no row in `email_bodies` at all, so both fields are null, while a
+     * fetched-and-empty one has a row holding the empty string.
+     */
+    val isBodyFetched: Boolean
+        get() = html != null || text != null
 
     /**
      * Whether a reply-all would reach anyone a plain reply would not.
