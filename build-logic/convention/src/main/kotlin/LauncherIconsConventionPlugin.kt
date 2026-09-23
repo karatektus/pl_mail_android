@@ -27,11 +27,16 @@ import org.gradle.kotlin.dsl.register
  * and three hundred pasted aliases whose only content is a table lookup, reviewed as walls of
  * coordinates nobody reads.
  *
- * So the repository holds the two things a person actually edits — `tools/logo-paints.json`, the
- * paint of every part of every motif in every paint, and one VectorDrawable template per motif in
- * `app/src/launcher/motif/` — and [GenerateLauncherIcons] turns them into everything else on every
- * build. The templates sit **outside** `res/` on purpose: in there aapt2 would try to compile them
- * as drawables, and the paint attributes are not Android's.
+ * So the repository holds two inputs — `tools/logo-paints.json`, the paint of every part of every
+ * motif in every paint, and one VectorDrawable template per motif in `app/src/launcher/motif/` —
+ * and [GenerateLauncherIcons] turns them into everything else on every build. The templates sit
+ * **outside** `res/` on purpose: in there aapt2 would try to compile them as drawables, and the
+ * paint attributes are not Android's.
+ *
+ * **The table is the server's, not ours to edit.** The web draws the same icons from the same
+ * recipes, and the two only agree while this file is a copy of what the server computes. Refresh it
+ * from a pl_mail checkout, never by hand: `php bin/console app:branding:export-paints >
+ * ../pl_mail_android/tools/logo-paints.json`.
  *
  * ## How it reaches the build
  *
