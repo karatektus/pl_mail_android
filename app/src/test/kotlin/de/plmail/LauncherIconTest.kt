@@ -19,8 +19,9 @@ import org.robolectric.annotation.Config
  * `PackageManager` owns the enabled state of a manifest component, so a fake in front of it would
  * be a test of the fake. Robolectric keeps a real component-enabled table on top of the merged
  * manifest, which is what makes the two claims this feature rests on testable at all: that
- * `DEFAULT` means whatever the manifest said, and that switching from one colourway to another
- * leaves exactly one launcher entry behind.
+ * `DEFAULT` means whatever the manifest said, and that switching from one icon to another leaves
+ * exactly one launcher entry behind. It resolves the launcher query `AppLauncherIcon` asks against
+ * that same table — manifest `enabled`, then any override — which is what the platform does.
  *
  * **The idempotence test is the one that matters most**, and it is worth saying why. This runs on
  * every appearance read — every foreground, every fifteen-minute sync — and on almost every one of
@@ -45,14 +46,22 @@ class LauncherIconTest {
 
     private val icon = AppLauncherIcon(context)
 
-    private fun setting(style: LogoStyle) =
+    private val ocean = icon("pl", "ocean")
+    private val ink = icon("pl", "ink")
+    private val ember = icon("pl", "ember")
+    private val horn = icon("blue-horn", "original")
+
+    private fun icon(motif: String, paint: String) =
+        LauncherIcon.all.single { it.motif == motif && it.paint == paint }
+
+    private fun setting(icon: LauncherIcon) =
         context.packageManager.getComponentEnabledSetting(
-            ComponentName(context.packageName, style.alias)
+            ComponentName(context.packageName, icon.alias)
         )
 
-    /** The colourways the system has been told something explicit about. */
+    /** The icons the system has been told something explicit about. */
     private fun overridden() =
-        LogoStyle.entries.filter { setting(it) != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT }
+        LauncherIcon.all.filter { setting(it) != PackageManager.COMPONENT_ENABLED_STATE_DEFAULT }
 
     @Test
     fun `a fresh install wears the default without anything having been written`() {
@@ -62,76 +71,78 @@ class LauncherIconTest {
         // be read as a flat "off" the way it is for the calendar alias, whose
         // manifest state is false.
         assertTrue(overridden().isEmpty())
-        assertEquals(LogoStyle.Default, icon.worn())
+        assertEquals(LauncherIcon.Default, icon.worn())
     }
 
     @Test
-    fun `wearing the colourway already worn writes nothing at all`() {
-        icon.wear(LogoStyle.Default)
+    fun `wearing the icon already worn writes nothing at all`() {
+        icon.wear(LauncherIcon.Default)
 
         // Still untouched, which is the strongest form this assertion can take:
         // a disable-and-re-enable would have left the default at ENABLED and the
         // rest at DISABLED, all of them indistinguishable from here by their
         // effect and every one of them a package-change broadcast.
         assertTrue("expected no component writes, got ${overridden()}", overridden().isEmpty())
-        assertEquals(LogoStyle.Default, icon.worn())
+        assertEquals(LauncherIcon.Default, icon.worn())
     }
 
     @Test
     fun `switching enables the new alias and disables the old one`() {
-        icon.wear(LogoStyle.OCEAN)
+        icon.wear(ocean)
 
-        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_ENABLED, setting(LogoStyle.OCEAN))
+        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_ENABLED, setting(ocean))
 
         // DISABLED and not DEFAULT, for the reason the calendar toggle gives:
-        // DEFAULT for the default colourway means enabled, so returning it there
+        // DEFAULT for the default icon means enabled, so returning it there
         // would leave two launcher entries showing.
-        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED, setting(LogoStyle.Default))
+        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED, setting(LauncherIcon.Default))
 
-        assertEquals(LogoStyle.OCEAN, icon.worn())
+        assertEquals(ocean, icon.worn())
     }
 
     @Test
-    fun `switching leaves the thirty untouched colourways untouched`() {
-        icon.wear(LogoStyle.OCEAN)
+    fun `switching leaves every untouched icon untouched`() {
+        icon.wear(ocean)
 
-        // Only what had to change did. The other thirty aliases were already off
-        // by the manifest, and writing DISABLED over them would be thirty binder
-        // calls and thirty broadcasts to say nothing -- on a switch that happens
-        // while somebody is looking at their home screen.
-        assertEquals(listOf(LogoStyle.Default, LogoStyle.OCEAN).sorted(), overridden().sorted())
+        // Only what had to change did. The other three hundred-odd aliases were
+        // already off by the manifest, and writing DISABLED over them would be a
+        // binder call and a broadcast each to say nothing -- on a switch that
+        // happens while somebody is looking at their home screen.
+        assertEquals(setOf(LauncherIcon.Default, ocean), overridden().toSet())
     }
 
     @Test
     fun `re-applying after a switch is still a no-op`() {
-        icon.wear(LogoStyle.OCEAN)
-        val before = LogoStyle.entries.associateWith(::setting)
+        icon.wear(ocean)
+        val before = LauncherIcon.all.associateWith(::setting)
 
-        icon.wear(LogoStyle.OCEAN)
+        icon.wear(ocean)
 
         // Nothing moved, and nothing was added: the second call did not walk the
-        // other thirty aliases writing DISABLED over a state they were already
-        // in, which is what `overridden` would have grown to show.
-        assertEquals(before, LogoStyle.entries.associateWith(::setting))
+        // other aliases writing DISABLED over a state they were already in,
+        // which is what `overridden` would have grown to show.
+        assertEquals(before, LauncherIcon.all.associateWith(::setting))
         assertEquals(2, overridden().size)
     }
 
     @Test
-    fun `it can be switched again, and back to the default`() {
-        icon.wear(LogoStyle.OCEAN)
-        icon.wear(LogoStyle.INK)
+    fun `it can be switched again, to another motif, and back to the default`() {
+        icon.wear(ocean)
+        icon.wear(horn)
 
-        assertEquals(LogoStyle.INK, icon.worn())
-        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED, setting(LogoStyle.OCEAN))
+        assertEquals(horn, icon.worn())
+        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED, setting(ocean))
 
-        icon.wear(LogoStyle.Default)
+        icon.wear(ink)
+        icon.wear(LauncherIcon.Default)
 
         // The way home. An explicit ENABLED rather than a return to DEFAULT --
         // the two mean the same thing for this one alias today and would stop
         // meaning it the moment the manifest's default moved.
-        assertEquals(LogoStyle.Default, icon.worn())
-        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_ENABLED, setting(LogoStyle.Default))
-        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED, setting(LogoStyle.INK))
+        assertEquals(LauncherIcon.Default, icon.worn())
+        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_ENABLED, setting(LauncherIcon.Default))
+        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED, setting(ink))
+        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED, setting(horn))
     }
 
     @Test
@@ -140,11 +151,11 @@ class LauncherIconTest {
         // single call -- so what is asserted is the invariant either side of
         // every transition this app can make: one entry, always. A `wear` that
         // disabled first would still pass every other test in this file.
-        LogoStyle.entries.fold(LogoStyle.Default) { previous, style ->
-            icon.wear(style)
+        LauncherIcon.all.fold(LauncherIcon.Default) { previous, next ->
+            icon.wear(next)
 
-            assertEquals("nothing on the home screen after $previous -> $style", style, icon.worn())
-            style
+            assertEquals("nothing on the home screen after $previous -> $next", next, icon.worn())
+            next
         }
     }
 
@@ -154,35 +165,35 @@ class LauncherIconTest {
         // dies between the enable and the disable. `worn` answers null rather
         // than picking one, so the next read re-applies instead of returning
         // early on a home screen showing plMail twice.
-        icon.wear(LogoStyle.OCEAN)
+        icon.wear(ocean)
         context.packageManager.setComponentEnabledSetting(
-            ComponentName(context.packageName, LogoStyle.EMBER.alias),
+            ComponentName(context.packageName, ember.alias),
             PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
             PackageManager.DONT_KILL_APP,
         )
 
         assertNull(icon.worn())
 
-        icon.wear(LogoStyle.OCEAN)
+        icon.wear(ocean)
 
-        assertEquals(LogoStyle.OCEAN, icon.worn())
-        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED, setting(LogoStyle.EMBER))
+        assertEquals(ocean, icon.worn())
+        assertEquals(PackageManager.COMPONENT_ENABLED_STATE_DISABLED, setting(ember))
     }
 
     @Test
-    fun `every colourway has the icon its alias promises`() {
+    fun `every icon has the drawable its alias promises`() {
         // The aliases are generated and so are the drawables, from one table --
         // but they are generated into different files, and an alias naming a
         // mipmap that is not there is a manifest that merges, an APK that
         // builds, and a launcher with nothing to draw. Resolved by name against
         // the *compiled* resources, which is the only place the two meet.
-        LogoStyle.entries.forEach { style ->
+        LauncherIcon.all.forEach { icon ->
             val name =
-                if (style == LogoStyle.Default) "ic_launcher"
-                else "ic_launcher_${style.wire.replace('-', '_')}"
+                if (icon == LauncherIcon.Default) "ic_launcher"
+                else "ic_launcher_${icon.motif}_${icon.paint}".replace('-', '_')
 
             assertNotEquals(
-                "no @mipmap/$name for ${style.wire}",
+                "no @mipmap/$name for ${icon.motif}/${icon.paint}",
                 0,
                 context.resources.getIdentifier(name, "mipmap", context.packageName),
             )

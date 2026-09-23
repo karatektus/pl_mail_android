@@ -42,5 +42,9 @@ gradlePlugin {
             id = "plmail.android.room"
             implementationClass = "AndroidRoomConventionPlugin"
         }
+        register("androidLauncherIcons") {
+            id = "plmail.android.launcher.icons"
+            implementationClass = "LauncherIconsConventionPlugin"
+        }
     }
 }

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  airmail: the themed-icon layer. One colour — the platform paints the silhouette in
+  whatever the wallpaper produced — so paper and accents are left out, and a filled
+  shape with a mark cut into it becomes an outline around the mark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.2"
+        android:scaleY="1.2"
+        android:translateX="25.2"
+        android:translateY="25.2">
+
+        <group>
+            <clip-path android:pathData="M9 10 H39 Q43 10 43 14 V34 Q43 38 39 38 H9 Q5 38 5 34 V14 Q5 10 9 10 Z M10.5,15.5 V32.5 H37.5 V15.5 Z" />
+            <path android:pathData="M21.213,-21.213 L23.335,-19.092 L-19.092,23.335 L-21.213,21.213 Z M27.577,-14.849 L29.698,-12.728 L-12.728,29.698 L-14.849,27.577 Z M33.941,-8.485 L36.062,-6.364 L-6.364,36.062 L-8.485,33.941 Z M40.305,-2.121 L42.426,0 L0,42.426 L-2.121,40.305 Z M46.669,4.243 L48.79,6.364 L6.364,48.79 L4.243,46.669 Z M53.033,10.607 L55.154,12.728 L12.728,55.154 L10.607,53.033 Z M59.397,16.971 L61.518,19.092 L19.092,61.518 L16.971,59.397 Z M65.761,23.335 L67.882,25.456 L25.456,67.882 L23.335,65.761 Z M24.395,-18.031 L26.517,-15.91 L-15.91,26.517 L-18.031,24.395 Z M30.759,-11.667 L32.88,-9.546 L-9.546,32.88 L-11.667,30.759 Z M37.123,-5.303 L39.244,-3.182 L-3.182,39.244 L-5.303,37.123 Z M43.487,1.061 L45.608,3.182 L3.182,45.608 L1.061,43.487 Z M49.851,7.425 L51.972,9.546 L9.546,51.972 L7.425,49.851 Z M56.215,13.789 L58.336,15.91 L15.91,58.336 L13.789,56.215 Z M62.579,20.153 L64.7,22.274 L22.274,64.7 L20.153,62.579 Z M68.943,26.517 L71.064,28.638 L28.638,71.064 L26.517,68.943 Z" android:fillColor="#000000" />
+        </group>
+        <path android:pathData="M10.5 15.5 H37.5 V32.5 H10.5 Z" />
+        <path android:pathData="M9 10 H39 Q43 10 43 14 V34 Q43 38 39 38 H9 Q5 38 5 34 V14 Q5 10 9 10 Z" android:strokeColor="#000000" android:strokeWidth="1.6" android:strokeLineJoin="round" />
+        <path android:pathData="M30.3,18.5 H34.2 A0.8,0.8 0 0,1 35,19.3 V24.2 A0.8,0.8 0 0,1 34.2,25 H30.3 A0.8,0.8 0 0,1 29.5,24.2 V19.3 A0.8,0.8 0 0,1 30.3,18.5 Z" android:fillColor="#000000" />
+        <path android:pathData="M14.5 24.5 H23.5" android:strokeColor="#000000" android:strokeWidth="2.6" android:strokeLineCap="round" />
+        <path android:pathData="M14.5 28.6 H20.5" android:strokeColor="#000000" android:strokeWidth="2.6" android:strokeLineCap="round" />
+
+    </group>
+</vector>

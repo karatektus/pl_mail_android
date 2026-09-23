@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GENERATED from the approved design (the icon concepts canvas) — a template, not a
+  resource. The launcher-icon task paints it once per paint in logo-paints.json:
+  every paint:fill / paint:stroke names a part (paper, line, cheek), and an element with
+  paint:if is left out when that part is null. Geometry is the pl mark's: a 48 grid,
+  scaled 1.2 and moved 25.2 onto the 108 canvas, inside the 66 dp safe circle.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:paint="urn:plmail:paint"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.2"
+        android:scaleY="1.2"
+        android:translateX="25.2"
+        android:translateY="25.2">
+
+        <path android:pathData="M10.5,11 H37.5 A4.5,4.5 0 0,1 42,15.5 V32.5 A4.5,4.5 0 0,1 37.5,37 H10.5 A4.5,4.5 0 0,1 6,32.5 V15.5 A4.5,4.5 0 0,1 10.5,11 Z" paint:fill="paper" paint:stroke="line" android:strokeWidth="5.5" android:strokeLineJoin="round" />
+        <path android:pathData="M10.5 15.5 L24 24 L37.5 15.5" paint:stroke="line" android:strokeWidth="5.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M10.7,30.4 A2.7,1.9 0 1,1 16.1,30.4 A2.7,1.9 0 1,1 10.7,30.4 Z" paint:fill="cheek" />
+        <path android:pathData="M31.9,30.4 A2.7,1.9 0 1,1 37.3,30.4 A2.7,1.9 0 1,1 31.9,30.4 Z" paint:fill="cheek" />
+        <path android:pathData="M17.4 27.6 L17.41 27.6" paint:stroke="line" android:strokeWidth="4.6" android:strokeLineCap="round" />
+        <path android:pathData="M30.6 27.6 L30.61 27.6" paint:stroke="line" android:strokeWidth="4.6" android:strokeLineCap="round" />
+        <path android:pathData="M20.8 29.8 Q24 33.2 27.2 29.8" paint:stroke="line" android:strokeWidth="3" android:strokeLineCap="round" />
+
+    </group>
+</vector>

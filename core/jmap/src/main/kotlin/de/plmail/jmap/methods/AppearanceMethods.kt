@@ -66,12 +66,16 @@ data class AppearanceGetResult(
  * distinction that does matter is in [AppearancePatch], where absent and null are two different
  * instructions.
  *
- * [logoStyle] is **read-only on the server** and is the one property here that has no counterpart
- * in [AppearancePatch]. It names one of the thirty-two colourways the logo mark is drawn in — the
- * server's own `LogoStyle`, default `berry` — and it is the only appearance value this app spends
- * outside the design system: `:app` follows it by switching which launcher alias is enabled. It is
- * loose like everything else here, and it has to be: a server newer than this build can name a
- * colourway that shipped after it, and that has to arrive intact and be decided on above.
+ * [logoStyle], [logoMotif] and [logoPaint] are **read-only on the server** and are the three
+ * properties here with no counterpart in [AppearancePatch]. Together they are the launcher icon the
+ * user picked in the browser: [logoMotif] is the icon — the pl mark, a horn, a love letter — and
+ * [logoPaint] how it is painted, its `original` design or one of the thirty-two colourways.
+ * [logoStyle] is older than both and keeps its meaning, the colourway the pl mark itself is drawn
+ * in (the server's own `LogoStyle`, default `berry`); a server that predates the motifs sends it
+ * and nothing else. They are the only appearance values this app spends outside the design system:
+ * `:app` follows them by switching which launcher alias is enabled. They are loose like everything
+ * else here, and they have to be: a server newer than this build can name a motif or a colourway
+ * that shipped after it, and that has to arrive intact and be decided on above.
  */
 @Serializable
 data class Appearance(
@@ -120,6 +124,10 @@ data class Appearance(
     val readingDensity: String? = null,
     /** The logo colourway the user chose on the web. Read-only; see the class docblock. */
     val logoStyle: String? = null,
+    /** The launcher icon's motif, `pl` or one of the others. Read-only; see the class docblock. */
+    val logoMotif: String? = null,
+    /** The motif's paint, `original` or a colourway. Read-only; see the class docblock. */
+    val logoPaint: String? = null,
 ) {
     /**
      * The same object with everything the server reported changed applied on top.
@@ -180,11 +188,14 @@ data class Appearance(
             listDensity = surfaceDensity("listDensity", listDensity),
             readingDensity = surfaceDensity("readingDensity", readingDensity),
             // Reported for completeness rather than because a write could
-            // change it: nothing may patch logoStyle, so the only way this key
-            // appears in `updated` is a server volunteering the value beside
-            // some other change. Believing it costs nothing and ignoring it
-            // would leave the client one round trip behind for no reason.
+            // change them: nothing may patch the three logo properties, so the
+            // only way one appears in `updated` is a server volunteering the
+            // value beside some other change. Believing it costs nothing and
+            // ignoring it would leave the client one round trip behind for no
+            // reason.
             logoStyle = string("logoStyle") ?: logoStyle,
+            logoMotif = string("logoMotif") ?: logoMotif,
+            logoPaint = string("logoPaint") ?: logoPaint,
         )
     }
 

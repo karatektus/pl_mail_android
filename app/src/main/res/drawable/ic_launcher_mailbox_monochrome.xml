@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  mailbox: the themed-icon layer. One colour — the platform paints the silhouette in
+  whatever the wallpaper produced — so paper and accents are left out, and a filled
+  shape with a mark cut into it becomes an outline around the mark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.2"
+        android:scaleY="1.2"
+        android:translateX="25.2"
+        android:translateY="25.2">
+
+        <path android:pathData="M22 36 V43.5" android:strokeColor="#000000" android:strokeWidth="5.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M8 36 V20.5 Q8 12.5 16 12.5 H32 Q40 12.5 40 20.5 V36 Z" android:strokeColor="#000000" android:strokeWidth="5.5" android:strokeLineJoin="round" />
+        <path android:pathData="M14.5 13.5 V35" android:strokeColor="#000000" android:strokeWidth="3" android:strokeLineCap="round" />
+        <path android:pathData="M31.5 29.5 V7" android:strokeColor="#000000" android:strokeWidth="3.4" android:strokeLineCap="round" />
+        <path android:pathData="M33.1,4.6 H41.4 A1.6,1.6 0 0,1 43,6.2 V11 A1.6,1.6 0 0,1 41.4,12.6 H33.1 A1.6,1.6 0 0,1 31.5,11 V6.2 A1.6,1.6 0 0,1 33.1,4.6 Z" android:fillColor="#000000" />
+
+    </group>
+</vector>

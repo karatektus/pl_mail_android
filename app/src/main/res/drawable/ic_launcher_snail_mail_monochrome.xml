@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  snail-mail: the themed-icon layer. One colour — the platform paints the silhouette in
+  whatever the wallpaper produced — so paper and accents are left out, and a filled
+  shape with a mark cut into it becomes an outline around the mark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.2"
+        android:scaleY="1.2"
+        android:translateX="25.2"
+        android:translateY="25.2">
+
+        <path android:pathData="M5.5 39 H31 Q38.5 39 38.5 31.5 V27.5" android:strokeColor="#000000" android:strokeWidth="5.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M37.2 27.2 L34.2 18.4" android:strokeColor="#000000" android:strokeWidth="3" android:strokeLineCap="round" />
+        <path android:pathData="M39.8 27.2 L43.2 19.2" android:strokeColor="#000000" android:strokeWidth="3" android:strokeLineCap="round" />
+        <path android:pathData="M31.4,17.6 A2.6,2.6 0 1,1 36.6,17.6 A2.6,2.6 0 1,1 31.4,17.6 Z" android:fillColor="#000000" />
+        <path android:pathData="M40.8,18.4 A2.6,2.6 0 1,1 46,18.4 A2.6,2.6 0 1,1 40.8,18.4 Z" android:fillColor="#000000" />
+        <group android:rotation="-7" android:pivotX="19.5" android:pivotY="26">
+            <path android:pathData="M10.5,16.5 H28.5 A3.5,3.5 0 0,1 32,20 V32 A3.5,3.5 0 0,1 28.5,35.5 H10.5 A3.5,3.5 0 0,1 7,32 V20 A3.5,3.5 0 0,1 10.5,16.5 Z" android:strokeColor="#000000" android:strokeWidth="5.5" android:strokeLineJoin="round" />
+            <path android:pathData="M10.5 20 L19.5 27 L28.5 20" android:strokeColor="#000000" android:strokeWidth="5.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        </group>
+
+    </group>
+</vector>

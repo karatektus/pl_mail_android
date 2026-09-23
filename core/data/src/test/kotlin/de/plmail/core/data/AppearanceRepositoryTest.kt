@@ -114,17 +114,25 @@ class AppearanceRepositoryTest {
 
     @Test
     fun `the logo colourway reads straight through from the server`() {
-        // The one property with no local half at all. It is read-only on the
-        // server -- the colourway is picked in the browser -- so there is
-        // nothing on this phone that could have an opinion to lay over it, and
+        // The three properties with no local half at all. They are read-only on
+        // the server -- the icon is picked in the browser -- so there is nothing
+        // on this phone that could have an opinion to lay over them, and
         // `resolve` is where that policy is visible rather than merely true.
         val settings =
             resolve(
                 local = StoredAppearance(theme = "nord"),
-                remote = RemoteAppearance(theme = "solar", logoStyle = "petrol-copper"),
+                remote =
+                    RemoteAppearance(
+                        theme = "solar",
+                        logoStyle = "petrol-copper",
+                        logoMotif = "blue-horn",
+                        logoPaint = "original",
+                    ),
             )
 
         assertEquals("petrol-copper", settings.logoStyle)
+        assertEquals("blue-horn", settings.logoMotif)
+        assertEquals("original", settings.logoPaint)
 
         // And the theme beside it still takes the local override, which is what
         // says the two are governed differently on purpose rather than by one of

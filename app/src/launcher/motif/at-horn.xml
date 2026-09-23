@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GENERATED from the approved design (the icon concepts canvas) — a template, not a
+  resource. The launcher-icon task paints it once per paint in logo-paints.json:
+  every paint:fill / paint:stroke names a part (horn, throat), and an element with
+  paint:if is left out when that part is null. Geometry is the pl mark's: a 48 grid,
+  scaled 1.2 and moved 25.2 onto the 108 canvas, inside the 66 dp safe circle.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:paint="urn:plmail:paint"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.2"
+        android:scaleY="1.2"
+        android:translateX="25.2"
+        android:translateY="25.2">
+
+        <path android:pathData="M16.1,21.5 A5.4,5.4 0 1,1 26.9,21.5 A5.4,5.4 0 1,1 16.1,21.5 Z" paint:stroke="horn" android:strokeWidth="5.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M26.9 16.1 V24.4 C26.9 27.6 28.6 29.2 31 29.2 C33.8 29.2 35.5 26.8 35.5 21.5 A14 14 0 1 0 21.5 35.5 H25" paint:stroke="horn" android:strokeWidth="5.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+        <path android:pathData="M23.50 38.25 L24.11 38.25 L24.73 38.26 L25.34 38.26 L25.96 38.28 L26.57 38.31 L27.19 38.34 L27.80 38.38 L28.41 38.44 L29.03 38.50 L29.64 38.58 L30.26 38.68 L30.87 38.79 L31.49 38.91 L32.10 39.05 L32.71 39.21 L33.33 39.38 L33.94 39.58 L34.56 39.79 L35.17 40.02 L35.79 40.27 L36.40 40.55 L37.01 40.84 L37.63 41.16 L38.24 41.50 L38.86 41.86 L39.47 42.25 L40.09 42.66 L40.70 43.10 L40.70 27.90 L40.09 28.34 L39.47 28.75 L38.86 29.14 L38.24 29.50 L37.63 29.84 L37.01 30.16 L36.40 30.45 L35.79 30.73 L35.17 30.98 L34.56 31.21 L33.94 31.42 L33.33 31.62 L32.71 31.79 L32.10 31.95 L31.49 32.09 L30.87 32.21 L30.26 32.32 L29.64 32.42 L29.03 32.50 L28.41 32.56 L27.80 32.62 L27.19 32.66 L26.57 32.69 L25.96 32.72 L25.34 32.74 L24.73 32.74 L24.11 32.75 L23.50 32.75 Z" paint:fill="horn" />
+        <group android:rotation="0" android:pivotX="40.7" android:pivotY="35.5">
+            <path android:pathData="M38.1,35.5 A2.6,8.1 0 1,1 43.3,35.5 A2.6,8.1 0 1,1 38.1,35.5 Z" paint:fill="horn" />
+        </group>
+        <group android:rotation="0" android:pivotX="40.7" android:pivotY="35.5">
+            <path android:pathData="M39,35.5 A1.7,6.7 0 1,1 42.4,35.5 A1.7,6.7 0 1,1 39,35.5 Z" paint:fill="throat" />
+        </group>
+
+    </group>
+</vector>

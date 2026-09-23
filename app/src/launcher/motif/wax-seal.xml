@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  GENERATED from the approved design (the icon concepts canvas) — a template, not a
+  resource. The launcher-icon task paints it once per paint in logo-paints.json:
+  every paint:fill / paint:stroke names a part (wax, ring, mark), and an element with
+  paint:if is left out when that part is null. Geometry is the pl mark's: a 48 grid,
+  scaled 1.2 and moved 25.2 onto the 108 canvas, inside the 66 dp safe circle.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" xmlns:paint="urn:plmail:paint"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.2"
+        android:scaleY="1.2"
+        android:translateX="25.2"
+        android:translateY="25.2">
+
+        <path android:pathData="M24.00 4.80 Q29.80 2.36 33.60 7.37 Q39.84 8.16 40.63 14.40 Q45.64 18.20 43.20 24.00 Q45.64 29.80 40.63 33.60 Q39.84 39.84 33.60 40.63 Q29.80 45.64 24.00 43.20 Q18.20 45.64 14.40 40.63 Q8.16 39.84 7.37 33.60 Q2.36 29.80 4.80 24.00 Q2.36 18.20 7.37 14.40 Q8.16 8.16 14.40 7.37 Q18.20 2.36 24.00 4.80 Z" paint:fill="wax" paint:stroke="wax" android:strokeWidth="1.5" android:strokeLineJoin="round" />
+        <path android:pathData="M9,24 A15,15 0 1,1 39,24 A15,15 0 1,1 9,24 Z" paint:stroke="ring" android:strokeWidth="1.8" />
+        <group android:translateX="24" android:translateY="24">
+            <group android:scaleX="0.56" android:scaleY="0.56">
+                <group android:translateX="-24" android:translateY="-24">
+                    <group android:translateX="-4.5" android:translateY="-0.5">
+                        <path android:pathData="M13,11 L13,42" paint:stroke="mark" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M13 11 Q13 7 17 7 L23 7 Q29 7 29 13" paint:stroke="mark" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M29,13 L29,22" paint:stroke="mark" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M29 22 Q29 26 23 26 L17 26 Q13 26 13 22" paint:stroke="mark" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M37,7 L37,26" paint:stroke="mark" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M37,26 L37,37" paint:stroke="mark" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M37 37 Q37 42 42 42 L44 42" paint:stroke="mark" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                    </group>
+                </group>
+            </group>
+        </group>
+
+    </group>
+</vector>

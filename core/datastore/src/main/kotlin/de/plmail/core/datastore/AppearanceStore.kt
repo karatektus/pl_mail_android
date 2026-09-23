@@ -115,6 +115,8 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
                     listDensity = stored[REMOTE_LIST_DENSITY],
                     readingDensity = stored[REMOTE_READING_DENSITY],
                     logoStyle = stored[REMOTE_LOGO_STYLE],
+                    logoMotif = stored[REMOTE_LOGO_MOTIF],
+                    logoPaint = stored[REMOTE_LOGO_PAINT],
                     state = stored[REMOTE_STATE],
                 )
             }
@@ -143,6 +145,8 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
             stored.put(REMOTE_LIST_DENSITY, remote.listDensity)
             stored.put(REMOTE_READING_DENSITY, remote.readingDensity)
             stored.put(REMOTE_LOGO_STYLE, remote.logoStyle)
+            stored.put(REMOTE_LOGO_MOTIF, remote.logoMotif)
+            stored.put(REMOTE_LOGO_PAINT, remote.logoPaint)
             stored.put(REMOTE_STATE, remote.state)
         }
     }
@@ -302,16 +306,19 @@ class AppearanceStore @Inject constructor(private val preferences: DataStore<Pre
         val REMOTE_READING_DENSITY = stringPreferencesKey("appearance_remote_reading_density")
 
         /**
-         * The logo colourway, and there is no local counterpart to it anywhere in this file.
+         * The launcher icon — colourway, motif and paint — and there is no local counterpart to any
+         * of the three anywhere in this file.
          *
          * Every other value here is one half of a pair — the server's copy and this device's
-         * override — because every other value is something the Appearance screen can change.
-         * `logoStyle` is read-only on the server and has no control on the phone at all: it is
-         * picked in the browser, arrives here, and is spent switching a launcher alias. A local key
-         * beside this one would be a key nothing could ever write, and its presence would invite
-         * somebody to add the setter that makes the launcher icon disagree with the web.
+         * override — because every other value is something the Appearance screen can change. These
+         * are read-only on the server and have no control on the phone at all: they are picked in
+         * the browser, arrive here, and are spent switching a launcher alias. A local key beside
+         * one would be a key nothing could ever write, and its presence would invite somebody to
+         * add the setter that makes the launcher icon disagree with the web.
          */
         val REMOTE_LOGO_STYLE = stringPreferencesKey("appearance_remote_logo_style")
+        val REMOTE_LOGO_MOTIF = stringPreferencesKey("appearance_remote_logo_motif")
+        val REMOTE_LOGO_PAINT = stringPreferencesKey("appearance_remote_logo_paint")
 
         val REMOTE_STATE = stringPreferencesKey("appearance_remote_state")
 
@@ -478,10 +485,19 @@ data class RemoteAppearance(
      *
      * Null covers both absences and they are not distinguished here: a server too old to publish
      * the property, and a server that has simply not been read yet. Resolving either to the product
-     * default is `:app`'s job — see `LogoStyle.fromWire` — for the same reason [theme] keeps
+     * default is `:app`'s job — see `LauncherIcon.resolve` — for the same reason [theme] keeps
      * `paper` verbatim rather than storing an approximation of it.
      */
     val logoStyle: String? = null,
+    /**
+     * The launcher icon's motif, raw — and absent on every server older than the motifs.
+     *
+     * Kept verbatim for the reason [logoStyle] is: a motif this build lacks has to reach `:app`'s
+     * resolver intact, because that is the one place allowed to decide what it degrades to.
+     */
+    val logoMotif: String? = null,
+    /** The motif's paint, raw: `original` or a colourway wire. See [logoMotif]. */
+    val logoPaint: String? = null,
     /** `Appearance/get`'s state, for the next write's `ifInState`. Null before the first read. */
     val state: String? = null,
 )

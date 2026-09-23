@@ -201,4 +201,6 @@ plmail-android-library = { id = "plmail.android.library" }
 plmail-android-compose = { id = "plmail.android.compose" }
 plmail-android-hilt = { id = "plmail.android.hilt" }
 plmail-android-room = { id = "plmail.android.room" }
+# The launcher icons, painted at build time from tools/logo-paints.json. :app only.
+plmail-android-launcher-icons = { id = "plmail.android.launcher.icons" }
 plmail-jvm-library = { id = "plmail.jvm.library" }

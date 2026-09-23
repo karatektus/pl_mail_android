@@ -4,6 +4,9 @@ plugins {
     alias(libs.plugins.plmail.android.application)
     alias(libs.plugins.plmail.android.compose)
     alias(libs.plugins.plmail.android.hilt)
+    // Every launcher icon, each motif in each paint, generated rather than committed. See
+    // LauncherIconsConventionPlugin in build-logic.
+    alias(libs.plugins.plmail.android.launcher.icons)
     alias(libs.plugins.roborazzi)
 }
 

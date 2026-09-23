@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  pl-stamp: the themed-icon layer. One colour — the platform paints the silhouette in
+  whatever the wallpaper produced — so paper and accents are left out, and a filled
+  shape with a mark cut into it becomes an outline around the mark.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="1.2"
+        android:scaleY="1.2"
+        android:translateX="25.2"
+        android:translateY="25.2">
+
+        <path android:pathData="M9.1 5 L9.15 5 A2.1 2.1 0 0 0 13.35 5 L13.4 5 A2.1 2.1 0 0 0 17.6 5 L17.65 5 A2.1 2.1 0 0 0 21.85 5 L21.9 5 A2.1 2.1 0 0 0 26.1 5 L26.15 5 A2.1 2.1 0 0 0 30.35 5 L30.4 5 A2.1 2.1 0 0 0 34.6 5 L34.65 5 A2.1 2.1 0 0 0 38.85 5 L38.9 5 A2.1 2.1 0 0 0 41 7.1 L41 7.122 A2.1 2.1 0 0 0 41 11.322 L41 11.344 A2.1 2.1 0 0 0 41 15.544 L41 15.567 A2.1 2.1 0 0 0 41 19.767 L41 19.789 A2.1 2.1 0 0 0 41 23.989 L41 24.011 A2.1 2.1 0 0 0 41 28.211 L41 28.233 A2.1 2.1 0 0 0 41 32.433 L41 32.456 A2.1 2.1 0 0 0 41 36.656 L41 36.678 A2.1 2.1 0 0 0 41 40.878 L41 40.9 A2.1 2.1 0 0 0 38.9 43 L38.85 43 A2.1 2.1 0 0 0 34.65 43 L34.6 43 A2.1 2.1 0 0 0 30.4 43 L30.35 43 A2.1 2.1 0 0 0 26.15 43 L26.1 43 A2.1 2.1 0 0 0 21.9 43 L21.85 43 A2.1 2.1 0 0 0 17.65 43 L17.6 43 A2.1 2.1 0 0 0 13.4 43 L13.35 43 A2.1 2.1 0 0 0 9.15 43 L9.1 43 A2.1 2.1 0 0 0 7 40.9 L7 40.878 A2.1 2.1 0 0 0 7 36.678 L7 36.656 A2.1 2.1 0 0 0 7 32.456 L7 32.433 A2.1 2.1 0 0 0 7 28.233 L7 28.211 A2.1 2.1 0 0 0 7 24.011 L7 23.989 A2.1 2.1 0 0 0 7 19.789 L7 19.767 A2.1 2.1 0 0 0 7 15.567 L7 15.544 A2.1 2.1 0 0 0 7 11.344 L7 11.322 A2.1 2.1 0 0 0 7 7.122 L7 7.1 A2.1 2.1 0 0 0 9.1 5 Z" android:strokeColor="#000000" android:strokeWidth="2.2" android:strokeLineJoin="round" />
+        <path android:pathData="M13,9.5 H35 A1.5,1.5 0 0,1 36.5,11 V37 A1.5,1.5 0 0,1 35,38.5 H13 A1.5,1.5 0 0,1 11.5,37 V11 A1.5,1.5 0 0,1 13,9.5 Z" />
+        <group android:translateX="24" android:translateY="24">
+            <group android:scaleX="0.56" android:scaleY="0.56">
+                <group android:translateX="-24" android:translateY="-24">
+                    <group android:translateX="-4.5" android:translateY="-0.5">
+                        <path android:pathData="M13,11 L13,42" android:strokeColor="#000000" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M13 11 Q13 7 17 7 L23 7 Q29 7 29 13" android:strokeColor="#000000" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M29,13 L29,22" android:strokeColor="#000000" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M29 22 Q29 26 23 26 L17 26 Q13 26 13 22" android:strokeColor="#000000" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M37,7 L37,26" android:strokeColor="#000000" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M37,26 L37,37" android:strokeColor="#000000" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                        <path android:pathData="M37 37 Q37 42 42 42 L44 42" android:strokeColor="#000000" android:strokeWidth="6.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+                    </group>
+                </group>
+            </group>
+        </group>
+
+    </group>
+</vector>

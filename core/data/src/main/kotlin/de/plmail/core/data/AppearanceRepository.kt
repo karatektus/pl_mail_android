@@ -56,6 +56,13 @@ data class AppearanceSettings(
      * change at all.
      */
     val logoStyle: String? = null,
+    /**
+     * The launcher icon's motif and paint, read through from the server like [logoStyle] and for
+     * the same reasons. Absent on a server older than the motifs, which `:app` reads as the pl mark
+     * in [logoStyle].
+     */
+    val logoMotif: String? = null,
+    val logoPaint: String? = null,
 )
 
 /**
@@ -243,6 +250,8 @@ constructor(private val store: AppearanceStore, private val clients: AccountClie
                 listDensity = listDensity,
                 readingDensity = readingDensity,
                 logoStyle = logoStyle,
+                logoMotif = logoMotif,
+                logoPaint = logoPaint,
                 state = state.takeIf { it.isNotBlank() },
             )
     }
@@ -283,11 +292,14 @@ internal fun resolve(local: StoredAppearance, remote: RemoteAppearance): Appeara
         sidebarDensity = local.sidebarDensity.orRemote(remote.sidebarDensity),
         listDensity = local.listDensity.orRemote(remote.listDensity),
         readingDensity = local.readingDensity.orRemote(remote.readingDensity),
-        // No `local.` half, and that is the whole of the policy for it: the
-        // colourway is chosen in the browser and read here. A `StoredAppearance`
-        // field would have to be written by something, and the only thing that
-        // could write it is a phone-side picker -- which would be this app
-        // deciding what the account's logo is, from the one surface that has
-        // never been allowed to decide anything about the account's appearance.
+        // No `local.` half, and that is the whole of the policy for the three
+        // logo values: the icon is chosen in the browser and read here. A
+        // `StoredAppearance` field would have to be written by something, and
+        // the only thing that could write it is a phone-side picker -- which
+        // would be this app deciding what the account's logo is, from the one
+        // surface that has never been allowed to decide anything about the
+        // account's appearance.
         logoStyle = remote.logoStyle,
+        logoMotif = remote.logoMotif,
+        logoPaint = remote.logoPaint,
     )

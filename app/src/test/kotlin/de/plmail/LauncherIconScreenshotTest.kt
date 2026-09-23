@@ -44,10 +44,15 @@ import org.robolectric.annotation.GraphicsMode
  *
  * ## The colourways, and why four of thirty-two
  *
- * The mail icon now follows the logo colourway the user picked on the web, which means thirty-one
- * more generated foregrounds — every one of them the same seven strokes with different paint.
- * Thirty -two baselines would be thirty-two PNGs to re-approve every time the mark moves, for a
- * generator that gets all of them identically right or identically wrong.
+ * The mail icon follows the logo colourway the user picked on the web, which means thirty-one more
+ * foregrounds of the mark — every one of them the same seven strokes with different paint, and
+ * every one of them generated at build time from `app/src/launcher/motif/pl.xml`. Thirty-two
+ * baselines would be thirty-two PNGs to re-approve every time the mark moves, for a generator that
+ * gets all of them identically right or identically wrong.
+ *
+ * These four predate the build-time generator — they were recorded from the committed files it
+ * replaced — and they still pass unchanged. That is the proof the replacement paints the mark
+ * exactly as the old one did, pixel for pixel.
  *
  * So four, chosen to be different **in kind** rather than merely different in hue, because the ways
  * this can go wrong are structural:
@@ -63,6 +68,19 @@ import org.robolectric.annotation.GraphicsMode
  * - `ink` is near-black, a single very dark colour on the off-white tile. It is the contrast case:
  *   it is what proves the fixed light background is the right one to have painted for, and it is
  *   the colourway a dark-variant mistake would have made invisible.
+ *
+ * ## The other motifs, and why three of two hundred and ninety-seven
+ *
+ * Each of the other nine motifs comes in thirty-three paints, and the generator does exactly three
+ * things to a template beyond copying a colour in. One capture for each, because each is a
+ * different way for a painted icon to come out wrong while its XML looks fine:
+ *
+ * - `blue-horn` in `berry` paints a **glyph with a ramp**: an inline gradient on every horn part,
+ *   running across the motif's own 48 grid. Wrong axis, and the sweep sits in one corner.
+ * - `at-horn` in `ocean` paints the **tile with a ramp**, a generated 108×108 vector under the
+ *   glyph rather than a colour.
+ * - `snail-mail` in `red-flick` draws its **conditional part**: the seal at the flap exists in some
+ *   paints and not in others, and this is one where it does.
  */
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -86,25 +104,55 @@ class LauncherIconScreenshotTest {
     /** Flat: one colour, seven strokes. The control. See the class docblock. */
     @Test
     fun `mail in product blue`() {
-        capture("icon-mail-product-blue", R.drawable.ic_launcher_product_blue_foreground)
+        capture("icon-mail-product-blue", R.drawable.ic_launcher_pl_product_blue_foreground)
     }
 
     /** Duotone, and the split falls between the two letters. Catches a reversed list. */
     @Test
     fun `mail in petrol copper`() {
-        capture("icon-mail-petrol-copper", R.drawable.ic_launcher_petrol_copper_foreground)
+        capture("icon-mail-petrol-copper", R.drawable.ic_launcher_pl_petrol_copper_foreground)
     }
 
     /** Seven distinct colours in a sweep. Catches an off-by-one in the substitution. */
     @Test
     fun `mail in aurora`() {
-        capture("icon-mail-aurora", R.drawable.ic_launcher_aurora_foreground)
+        capture("icon-mail-aurora", R.drawable.ic_launcher_pl_aurora_foreground)
     }
 
     /** Near-ink on off-white: the contrast case, and the one a dark variant would have lost. */
     @Test
     fun `mail in ink`() {
-        capture("icon-mail-ink", R.drawable.ic_launcher_ink_foreground)
+        capture("icon-mail-ink", R.drawable.ic_launcher_pl_ink_foreground)
+    }
+
+    /** A glyph painted with a ramp. See the class docblock. */
+    @Test
+    fun `blue horn in berry`() {
+        capture(
+            "icon-blue-horn-berry",
+            R.drawable.ic_launcher_blue_horn_berry_foreground,
+            colour = R.color.ic_launcher_blue_horn_berry_background,
+        )
+    }
+
+    /** The tile painted with a ramp, under a solid glyph. */
+    @Test
+    fun `at horn in ocean`() {
+        capture(
+            "icon-at-horn-ocean",
+            R.drawable.ic_launcher_at_horn_ocean_foreground,
+            tile = R.drawable.ic_launcher_at_horn_ocean_background,
+        )
+    }
+
+    /** The conditional part, drawn: the seal at the flap. */
+    @Test
+    fun `snail mail in red flick`() {
+        capture(
+            "icon-snail-mail-red-flick",
+            R.drawable.ic_launcher_snail_mail_red_flick_foreground,
+            colour = R.color.ic_launcher_snail_mail_red_flick_background,
+        )
     }
 
     /**
@@ -122,12 +170,25 @@ class LauncherIconScreenshotTest {
         )
     }
 
-    private fun capture(name: String, foreground: Int, background: Color? = null) {
+    /**
+     * The icon on its tile, masked twice.
+     *
+     * The tile is [background] when given, otherwise the colour resource [colour] — the adaptive
+     * icon's background layer — with the drawable [tile] over it when the background is a ramp
+     * rather than a colour.
+     */
+    private fun capture(
+        name: String,
+        foreground: Int,
+        background: Color? = null,
+        colour: Int = R.color.ic_launcher_background,
+        tile: Int? = null,
+    ) {
         compose.setContent {
             Surface(color = Color(0xFF9E9E9E)) {
                 Row {
-                    Icon(foreground, background, CircleShape)
-                    Icon(foreground, background, RoundedCornerShape(percent = 25))
+                    Icon(foreground, background, colour, tile, CircleShape)
+                    Icon(foreground, background, colour, tile, RoundedCornerShape(percent = 25))
                 }
             }
         }
@@ -136,7 +197,7 @@ class LauncherIconScreenshotTest {
     }
 
     @Composable
-    private fun Icon(foreground: Int, background: Color?, mask: Shape) {
+    private fun Icon(foreground: Int, background: Color?, colour: Int, tile: Int?, mask: Shape) {
         // 108dp of canvas showing 72dp of icon is the platform's own ratio, and
         // it is what makes the safe circle mean anything: a mask crops to the
         // middle two thirds.
@@ -145,8 +206,16 @@ class LauncherIconScreenshotTest {
                 Modifier.padding(8.dp)
                     .size(108.dp)
                     .clip(mask)
-                    .background(background ?: colorResource(R.color.ic_launcher_background))
+                    .background(background ?: colorResource(colour))
         ) {
+            if (tile != null) {
+                Image(
+                    painter = painterResource(tile),
+                    contentDescription = null,
+                    modifier = Modifier.size(108.dp),
+                )
+            }
+
             Image(
                 painter = painterResource(foreground),
                 contentDescription = null,

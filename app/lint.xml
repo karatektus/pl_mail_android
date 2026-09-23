@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  One exception, and it is lint not being able to see a reference rather than
+  a resource being unused.
+
+  The themed-icon layer of every motif but the pl mark,
+  res/drawable/ic_launcher_<motif>_monochrome.xml, is referenced only from the
+  adaptive icons build-logic's LauncherIconsConventionPlugin generates at build
+  time, one per motif and paint. Lint analyses committed resources and not
+  generated ones, so from where it stands nothing uses them. aapt2 does see
+  the references — it links the generated mipmaps against these files and fails
+  the build if one is missing — and so does the resource shrinker, which keeps
+  them in the release APK; LauncherIconTest resolves every generated mipmap by
+  name against the compiled resources on top of that.
+
+  Scoped by message to exactly those drawables, so that a resource which really
+  is unused is still an error, including the calendar's monochrome layer, whose
+  reference is committed and which lint can see.
+-->
+<lint>
+    <issue id="UnusedResources">
+        <ignore regexp="R\.drawable\.ic_launcher_(?!calendar_)[a-z0-9_]+_monochrome\b" />
+    </issue>
+</lint>
