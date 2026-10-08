@@ -14,6 +14,7 @@ import java.time.Clock
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
+import java.time.ZoneId
 import java.time.temporal.WeekFields
 import java.util.Locale
 import javax.inject.Inject
@@ -172,6 +173,14 @@ constructor(
      */
     private var refreshed: CalendarWindow? = null
 
+    /**
+     * The zone the device was in when [refreshed] was asked for.
+     *
+     * The cache holds events on the device's clock, so a window that was current in Berlin is not
+     * current in Lisbon — and without this the screen would consider it asked and never ask again.
+     */
+    private var refreshedZone: ZoneId? = null
+
     private var refreshJob: Job? = null
 
     /** Whether the stored choice has been read. Until it has, nothing is written back. */
@@ -284,7 +293,7 @@ constructor(
      * window already on screen.
      */
     fun refreshIfNeeded() {
-        if (refreshed == place.value.window(firstDayOfWeek)) return
+        if (refreshed == place.value.window(firstDayOfWeek) && refreshedZone == clock.zone) return
 
         refresh()
     }
@@ -317,6 +326,7 @@ constructor(
             // the pull gesture is what a user who wants another attempt has, and
             // the banner is what tells them to use it.
             refreshed = window
+            refreshedZone = clock.zone
             status.update {
                 when (outcome) {
                     is CalendarRefresh.Refreshed ->

@@ -7,9 +7,12 @@ import de.plmail.jmap.client.HttpRequest
 import de.plmail.jmap.protocol.CalendarEventId
 import de.plmail.jmap.testing.RecordingTransport
 import java.io.IOException
+import java.time.Clock
 import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.ZoneId
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -551,6 +554,42 @@ class CalendarRepositoryTest {
         assertEquals("2026-08-06T10:00:00", row.startLocal)
         assertEquals("2026-08-06T10:30:00", row.endLocal)
         assertEquals("UTC", row.zoneId)
+    }
+
+    /**
+     * A phone that changed zone re-places its events, though nothing changed on the server.
+     *
+     * The rows are on the device's clock, and the cheap path — ask what changed, hear "nothing",
+     * keep the cache — cannot notice a flight. Without the zone in that gate an 08:00 UTC meeting
+     * went on standing at 10:00 in Lisbon for as long as the process lived.
+     */
+    @Test
+    fun `a device that changed zone re-reads a window the server says is unchanged`() = runTest {
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        oneOff(
+                            id = "20001",
+                            title = "Kennenlernen",
+                            start = "2026-08-06T08:00:00",
+                            duration = "PT30M",
+                            timeZone = "UTC",
+                        )
+                    )
+            )
+        val clock = TravellingClock(testClock)
+        val repository = calendarStack(database, calendarTransport(server), clock = clock)
+        val eventKey = StoreKey.objectKey(testAccountKey, "20001")
+
+        repository.refresh(week)
+        clock.zone = ZoneId.of("Europe/Lisbon")
+        repository.refresh(week)
+
+        assertEquals(
+            "2026-08-06T09:00:00",
+            database.calendarEvents().occurrencesOf(eventKey).single().startLocal,
+        )
     }
 
     /** The day is the reader's too: 23:30 UTC on the sixth is the seventh in Berlin. */
@@ -1700,4 +1739,19 @@ class CalendarRepositoryTest {
 
             calendarTransport(server).send(request)
         }
+}
+
+/** A clock whose zone can be changed under a repository that is holding it, as a phone's can. */
+private class TravellingClock(private val time: Clock) : Clock() {
+    private var current: ZoneId = time.zone
+
+    override fun getZone(): ZoneId = current
+
+    fun setZone(zone: ZoneId) {
+        current = zone
+    }
+
+    override fun withZone(zone: ZoneId): Clock = time.withZone(zone)
+
+    override fun instant(): Instant = time.instant()
 }

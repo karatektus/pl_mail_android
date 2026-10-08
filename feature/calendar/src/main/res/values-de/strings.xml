@@ -46,7 +46,7 @@
     <string name="calendar_hours">Std.</string>
     <string name="calendar_minutes">Min.</string>
     <string name="calendar_floating">Keine Zeitzone. Wird so angezeigt, wie er eingetragen wurde.</string>
-    <string name="calendar_zone">In deiner Zeit angezeigt. Eingetragen in %1$s.</string>
+    <string name="calendar_zone">%1$s in %2$s. Oben in deiner Zeit angezeigt.</string>
     <string name="calendar_repeat">Wiederholung</string>
     <string name="calendar_repeats">Wiederholt sich</string>
 

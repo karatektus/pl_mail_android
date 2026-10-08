@@ -305,6 +305,15 @@ constructor(
     @Volatile private var lastRefreshed: CalendarWindow? = null
 
     /**
+     * The zone [lastRefreshed] was placed in.
+     *
+     * Occurrence rows are on the device's clock as of the refresh that wrote them, so "nothing
+     * changed on the server" only means "your copy is current" while the device is still in the
+     * zone the copy was written for. A delta cannot notice a flight.
+     */
+    @Volatile private var lastRefreshedZone: ZoneId? = null
+
+    /**
      * The zone every query window is converted out of.
      *
      * The device's, from the injected [Clock], because a window is "the days this person is looking
@@ -473,7 +482,15 @@ constructor(
         // delta there would leave the month blank forever. Requiring that this
         // exact window was fetched is what makes "nothing changed" mean "your
         // copy is current" rather than "you have no copy".
-        if (lastRefreshed == window && unchangedSince(client, session, accountId, accountKey)) {
+        //
+        // And on the zone, for the same reason turned sideways: the rows are on
+        // the device's clock, so a copy written in another zone is not current
+        // however little the server has changed.
+        if (
+            lastRefreshed == window &&
+                lastRefreshedZone == deviceZone &&
+                unchangedSince(client, session, accountId, accountKey)
+        ) {
             return CalendarRefresh.Refreshed(
                 events = 0,
                 occurrences = 0,
@@ -578,6 +595,7 @@ constructor(
         fetched.eventState?.let { database.accounts().setCalendarEventState(accountKey, it) }
 
         lastRefreshed = window
+        lastRefreshedZone = deviceZone
 
         return CalendarRefresh.Refreshed(
             events = eventRows.size,

@@ -10,6 +10,8 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.time.LocalDateTime
 
@@ -158,7 +160,13 @@ fun CalendarScreen(onBack: () -> Unit, viewModel: CalendarViewModel = hiltViewMo
                     },
                 )
             }
-        CalendarPage.BOARD ->
+        CalendarPage.BOARD -> {
+            // Coming back to the app is when the phone may be somewhere else:
+            // a zone changes in Settings or on landing, and both happen with
+            // this screen in the background. Asks only if the window or the
+            // zone is not the one already asked about.
+            LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { viewModel.refreshIfNeeded() }
+
             CalendarBoard(
                 state = state,
                 onBack = onBack,
@@ -174,6 +182,7 @@ fun CalendarScreen(onBack: () -> Unit, viewModel: CalendarViewModel = hiltViewMo
                 onNew = { openEditor(EditorRequest.New) },
                 onCreateAt = { at -> openEditor(EditorRequest.NewAt(at.toString())) },
             )
+        }
     }
 }
 

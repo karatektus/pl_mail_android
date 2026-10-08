@@ -35,6 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.plmail.core.data.toEventClock
 import de.plmail.core.database.AgendaRow
 import de.plmail.core.database.CalendarEntity
 import de.plmail.core.designsystem.PaneTone
@@ -234,9 +235,13 @@ internal fun EventDetailScreen(
  * A **floating** event — no zone at all — is drawn exactly as it is stored, in wall-clock time, and
  * that is the point of storing it that way: it means the same clock time wherever the reader is, so
  * resolving it into the device's zone is precisely the bug that makes a birthday move when somebody
- * travels. An event whose zone is not the device's says which zone it is in rather than being
- * converted, because a conversion the phone did and the web did not is two surfaces of one product
- * disagreeing about the same meeting.
+ * travels.
+ *
+ * An event **written in another zone** is an instant, and is drawn on the reader's clock, as the
+ * web draws it — the cache has already put it there. Underneath, it says what the time is where it
+ * was written: "08:00 – 08:30 in UTC". Both, because they answer two questions — when do I have to
+ * be there, and what did the invitation say — and the second is the one somebody checks a meeting
+ * against.
  */
 @Composable
 private fun Times(row: AgendaRow) {
@@ -290,9 +295,31 @@ private fun Times(row: AgendaRow) {
             when {
                 zone == null -> Caption(stringResource(R.string.calendar_floating))
                 zone != ZoneId.systemDefault().id ->
-                    Caption(stringResource(R.string.calendar_zone, zone))
+                    Caption(
+                        stringResource(R.string.calendar_zone, row.timesWhereWritten(zone), zone)
+                    )
             }
         }
+    }
+}
+
+/**
+ * The occurrence's times on the clock of the zone it was written in: "08:00 – 08:30".
+ *
+ * Converted back from the row, which holds the device's clock. The date is left out: it is the
+ * reader's day that the screen is headed by, and a meeting that falls on a different date where it
+ * was written is rare enough that a second date here would be noise on every other event.
+ */
+@Composable
+private fun AgendaRow.timesWhereWritten(zone: String): String {
+    val device = ZoneId.systemDefault()
+    val start = startLocal.toLocalDateTimeOrNull()?.toEventClock(zone, device)?.format(CLOCK)
+    val end = endLocal.toLocalDateTimeOrNull()?.toEventClock(zone, device)?.format(CLOCK)
+
+    return when {
+        start == null -> ""
+        end == null -> start
+        else -> stringResource(R.string.calendar_time_range, start, end)
     }
 }
 

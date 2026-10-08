@@ -130,11 +130,11 @@ abstract class DataModule {
          * nobody can predict, which is the shape of flake that gets a whole assertion deleted.
          *
          * The **zone** is load-bearing as well: `CalendarEvent/query` windows go on the wire in
-         * UTC, so every window is converted out of this clock's zone. `systemDefaultZone` rather
-         * than `systemUTC` for that reason, and a test in Europe/Berlin is a phone in
-         * Europe/Berlin.
+         * UTC, so every window is converted out of this clock's zone. The device's rather than UTC
+         * for that reason, and a test in Europe/Berlin is a phone in Europe/Berlin. [DeviceClock]
+         * rather than `systemDefaultZone`, which would freeze the zone the process started in.
          */
-        @Provides @Singleton fun clock(): Clock = Clock.systemDefaultZone()
+        @Provides @Singleton fun clock(): Clock = DeviceClock
 
         /** `DevicePairingController` truncates at 100; sending more would be silently cut. */
         private const val MAX_DEVICE_NAME = 100
