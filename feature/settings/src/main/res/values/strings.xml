@@ -360,12 +360,9 @@
     <string name="swipe_read">Mark read or unread</string>
     <string name="swipe_snooze">Snooze</string>
     <string name="swipe_move">Move to…</string>
-    <string name="swipe_directions">Directions</string>
+    <string name="swipe_action">Action</string>
     <string name="swipe_confirm">Ask before acting</string>
-    <string name="swipe_confirm_never">Never</string>
-    <string name="swipe_confirm_trash">Trash only</string>
-    <string name="swipe_confirm_always">Always</string>
-    <string name="swipe_confirm_never_body">A swipe acts at once. Every action can be undone from the bar that appears.</string>
-    <string name="swipe_confirm_trash_body">Moving mail to the trash asks first. Everything else acts at once and can be undone.</string>
-    <string name="swipe_confirm_always_body">Archive, trash and mark read all ask first. Snooze and move open their own list, which is the question.</string>
+    <string name="swipe_confirm_on_body">A dialog asks first, every time.</string>
+    <string name="swipe_confirm_off_body">Acts at once. It can be undone from the bar that appears.</string>
+    <string name="swipe_confirm_not_needed">Nothing to ask: this direction does nothing.</string>
 </resources>

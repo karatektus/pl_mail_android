@@ -44,7 +44,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.SwipeAction
 import de.plmail.core.data.SwipeActions
 import de.plmail.core.data.SwipeActionsRepository
-import de.plmail.core.data.SwipeConfirm
+import de.plmail.core.data.canBeConfirmed
 import de.plmail.core.designsystem.PlMailTheme
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
@@ -78,8 +78,12 @@ class SwipeSettingsViewModel @Inject constructor(private val swipes: SwipeAction
         viewModelScope.launch { swipes.setToStart(action) }
     }
 
-    fun setConfirm(confirm: SwipeConfirm) {
-        viewModelScope.launch { swipes.setConfirm(confirm) }
+    fun setConfirmToEnd(asks: Boolean) {
+        viewModelScope.launch { swipes.setConfirmToEnd(asks) }
+    }
+
+    fun setConfirmToStart(asks: Boolean) {
+        viewModelScope.launch { swipes.setConfirmToStart(asks) }
     }
 
     private companion object {
@@ -135,83 +139,75 @@ fun SwipeScreen(onBack: () -> Unit, viewModel: SwipeSettingsViewModel = hiltView
                     ),
             verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.large),
         ) {
-            Directions(actions, onToEnd = viewModel::setToEnd, onToStart = viewModel::setToStart)
-            Confirmation(actions.confirm, onChoose = viewModel::setConfirm)
+            Direction(
+                title = stringResource(R.string.swipe_to_end),
+                chosen = actions.toEnd,
+                asks = actions.confirmToEnd,
+                onChoose = viewModel::setToEnd,
+                onAsk = viewModel::setConfirmToEnd,
+            )
+            Direction(
+                title = stringResource(R.string.swipe_to_start),
+                chosen = actions.toStart,
+                asks = actions.confirmToStart,
+                onChoose = viewModel::setToStart,
+                onAsk = viewModel::setConfirmToStart,
+            )
+
+            Text(
+                text = stringResource(R.string.swipe_body),
+                style = MaterialTheme.typography.bodySmall,
+                color = PlMailTheme.colors.inkMuted,
+            )
         }
     }
 }
 
 /**
- * The two directions, each with its own menu.
+ * One direction: what it does, and whether it asks first.
  *
- * Menus rather than the row of options the confirmation below uses: there are six answers, and six
- * across a phone is "Mark read…" six times over. Named "right" and "left" for the way the thumb
- * moves, which is how anybody describes a swipe.
+ * A menu for the action rather than a row of options: there are six answers, and six across a phone
+ * is "Mark read…" six times over. Named "right" and "left" for the way the thumb moves, which is
+ * how anybody describes a swipe.
+ *
+ * The switch belongs to the direction and not to the screen, because the two directions are not the
+ * same gesture to the person making it — the side they archive with all day is not the side they
+ * want a question on. It is offered for every action, snooze and move included: the list those open
+ * is not a question to somebody who wants to be asked. Only "nothing" has nothing to ask, and there
+ * the switch stays where it is and says why instead of vanishing — a control that comes and goes
+ * with a menu above it reads as the screen being broken.
  */
 @Composable
-private fun Directions(
-    actions: SwipeActions,
-    onToEnd: (SwipeAction) -> Unit,
-    onToStart: (SwipeAction) -> Unit,
+private fun Direction(
+    title: String,
+    chosen: SwipeAction,
+    asks: Boolean,
+    onChoose: (SwipeAction) -> Unit,
+    onAsk: (Boolean) -> Unit,
 ) {
-    Section(stringResource(R.string.swipe_directions)) {
+    Section(title) {
         SwipeChoice(
-            title = stringResource(R.string.swipe_to_end),
-            chosen = actions.toEnd,
-            onChoose = onToEnd,
-        )
-        SwipeChoice(
-            title = stringResource(R.string.swipe_to_start),
-            chosen = actions.toStart,
-            onChoose = onToStart,
-        )
-
-        Text(
-            text = stringResource(R.string.swipe_body),
-            style = MaterialTheme.typography.bodySmall,
-            color = PlMailTheme.colors.inkMuted,
-        )
-    }
-}
-
-/**
- * Whether a swipe asks first.
- *
- * The sentence underneath changes with the choice, because the three options are one word each and
- * the thing worth knowing about each is what it costs: "never" relies on the undo, "always" puts a
- * dialog between the thumb and every archive.
- */
-@Composable
-private fun Confirmation(chosen: SwipeConfirm, onChoose: (SwipeConfirm) -> Unit) {
-    Section(stringResource(R.string.swipe_confirm)) {
-        Choices(
-            options = SwipeConfirm.entries,
+            title = stringResource(R.string.swipe_action),
             chosen = chosen,
-            label = { stringResource(it.label()) },
             onChoose = onChoose,
         )
 
-        Text(
-            text = stringResource(chosen.body()),
-            style = MaterialTheme.typography.bodySmall,
-            color = PlMailTheme.colors.inkMuted,
+        Toggle(
+            title = stringResource(R.string.swipe_confirm),
+            body =
+                stringResource(
+                    when {
+                        !chosen.canBeConfirmed -> R.string.swipe_confirm_not_needed
+                        asks -> R.string.swipe_confirm_on_body
+                        else -> R.string.swipe_confirm_off_body
+                    }
+                ),
+            isOn = asks && chosen.canBeConfirmed,
+            onChange = onAsk,
+            isEnabled = chosen.canBeConfirmed,
         )
     }
 }
-
-private fun SwipeConfirm.label(): Int =
-    when (this) {
-        SwipeConfirm.NEVER -> R.string.swipe_confirm_never
-        SwipeConfirm.TRASH -> R.string.swipe_confirm_trash
-        SwipeConfirm.ALWAYS -> R.string.swipe_confirm_always
-    }
-
-private fun SwipeConfirm.body(): Int =
-    when (this) {
-        SwipeConfirm.NEVER -> R.string.swipe_confirm_never_body
-        SwipeConfirm.TRASH -> R.string.swipe_confirm_trash_body
-        SwipeConfirm.ALWAYS -> R.string.swipe_confirm_always_body
-    }
 
 @Composable
 private fun SwipeChoice(title: String, chosen: SwipeAction, onChoose: (SwipeAction) -> Unit) {

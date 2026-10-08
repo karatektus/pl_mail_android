@@ -2,6 +2,7 @@ package de.plmail.core.datastore
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import javax.inject.Inject
@@ -30,7 +31,9 @@ class SwipePrefsStore @Inject constructor(private val preferences: DataStore<Pre
                 StoredSwipes(
                     toEnd = stored[TO_END],
                     toStart = stored[TO_START],
-                    confirm = stored[CONFIRM],
+                    confirmToEnd = stored[CONFIRM_TO_END],
+                    confirmToStart = stored[CONFIRM_TO_START],
+                    legacyConfirm = stored[LEGACY_CONFIRM],
                 )
             }
             // The file behind this also holds the credential and the push state,
@@ -45,12 +48,24 @@ class SwipePrefsStore @Inject constructor(private val preferences: DataStore<Pre
         preferences.edit { it[TO_START] = wire }
     }
 
-    suspend fun setConfirm(wire: String) {
-        preferences.edit { it[CONFIRM] = wire }
+    suspend fun setConfirmToEnd(asks: Boolean) {
+        preferences.edit { it[CONFIRM_TO_END] = asks }
+    }
+
+    suspend fun setConfirmToStart(asks: Boolean) {
+        preferences.edit { it[CONFIRM_TO_START] = asks }
     }
 
     private companion object {
-        val CONFIRM = stringPreferencesKey("swipe_confirm")
+        val CONFIRM_TO_END = booleanPreferencesKey("swipe_confirm_to_end")
+        val CONFIRM_TO_START = booleanPreferencesKey("swipe_confirm_to_start")
+
+        /**
+         * 0.0.27's single answer for both directions: `never`, `trash` or `always`. Still read,
+         * never written — it stands in for a direction nobody has set since, so the one release
+         * that offered it does not lose what was chosen in it.
+         */
+        val LEGACY_CONFIRM = stringPreferencesKey("swipe_confirm")
         val TO_END = stringPreferencesKey("swipe_to_end")
         val TO_START = stringPreferencesKey("swipe_to_start")
     }
@@ -60,5 +75,7 @@ class SwipePrefsStore @Inject constructor(private val preferences: DataStore<Pre
 data class StoredSwipes(
     val toEnd: String? = null,
     val toStart: String? = null,
-    val confirm: String? = null,
+    val confirmToEnd: Boolean? = null,
+    val confirmToStart: Boolean? = null,
+    val legacyConfirm: String? = null,
 )

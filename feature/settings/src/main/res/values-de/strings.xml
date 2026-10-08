@@ -217,12 +217,9 @@
     <string name="swipe_read">Als gelesen oder ungelesen markieren</string>
     <string name="swipe_snooze">Zurückstellen</string>
     <string name="swipe_move">Verschieben nach …</string>
-    <string name="swipe_directions">Richtungen</string>
+    <string name="swipe_action">Aktion</string>
     <string name="swipe_confirm">Vor dem Ausführen fragen</string>
-    <string name="swipe_confirm_never">Nie</string>
-    <string name="swipe_confirm_trash">Nur Papierkorb</string>
-    <string name="swipe_confirm_always">Immer</string>
-    <string name="swipe_confirm_never_body">Eine Wischgeste wirkt sofort. Jede Aktion lässt sich über die eingeblendete Leiste rückgängig machen.</string>
-    <string name="swipe_confirm_trash_body">Vor dem Verschieben in den Papierkorb wird gefragt. Alles andere wirkt sofort und lässt sich rückgängig machen.</string>
-    <string name="swipe_confirm_always_body">Archivieren, Papierkorb und Als-gelesen-Markieren fragen zuerst. Zurückstellen und Verschieben öffnen ihre eigene Liste, und die ist die Frage.</string>
+    <string name="swipe_confirm_on_body">Ein Dialog fragt jedes Mal zuerst.</string>
+    <string name="swipe_confirm_off_body">Wirkt sofort. Lässt sich über die eingeblendete Leiste rückgängig machen.</string>
+    <string name="swipe_confirm_not_needed">Nichts zu fragen: Diese Richtung tut nichts.</string>
 </resources>

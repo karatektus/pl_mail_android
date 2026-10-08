@@ -1,5 +1,6 @@
 package de.plmail.core.data
 
+import de.plmail.core.datastore.StoredSwipes
 import de.plmail.core.datastore.SwipePrefsStore
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,36 +29,15 @@ enum class SwipeAction(val wire: String) {
 }
 
 /**
- * Whether a swipe asks before it acts.
+ * Whether a swipe that would do this is something there is a question to ask about.
  *
- * Three answers because "ask" is two different wishes. Somebody who archives by accident while
- * scrolling wants to be asked every time; somebody who trusts the undo for everything but a
- * deletion wants to be asked about that one. [NEVER] is what the row has always done, and is safe
- * for the reason it always was: every one of these actions leaves a snackbar with the way back.
- *
- * Snoozing and moving are never asked about. Each opens a list of times or of places, and choosing
- * from it — or dismissing it — is already the confirmation.
+ * Everything but [SwipeAction.NONE]. Snoozing and moving were left out at first, on the theory that
+ * the list each one opens is already the confirmation — and that is the app deciding for somebody
+ * what counts as being asked. A list of times that appeared because a thumb slipped is still a
+ * thing that appeared; whoever switches the question on for that direction wants it first.
  */
-enum class SwipeConfirm(val wire: String) {
-    NEVER("never"),
-    TRASH("trash"),
-    ALWAYS("always");
-
-    /** Whether a swipe that would do [action] has to be confirmed first. */
-    fun asksBefore(action: SwipeAction): Boolean =
-        when (this) {
-            NEVER -> false
-            TRASH -> action == SwipeAction.TRASH
-            ALWAYS ->
-                action == SwipeAction.ARCHIVE ||
-                    action == SwipeAction.TRASH ||
-                    action == SwipeAction.READ
-        }
-
-    companion object {
-        fun fromWire(wire: String?): SwipeConfirm? = entries.firstOrNull { it.wire == wire }
-    }
-}
+val SwipeAction.canBeConfirmed: Boolean
+    get() = this != SwipeAction.NONE
 
 /**
  * What each direction does.
@@ -69,8 +49,24 @@ enum class SwipeConfirm(val wire: String) {
 data class SwipeActions(
     val toEnd: SwipeAction = SwipeAction.ARCHIVE,
     val toStart: SwipeAction = SwipeAction.TRASH,
-    val confirm: SwipeConfirm = SwipeConfirm.NEVER,
-)
+    /**
+     * Whether each direction asks before it acts. Off is what the row has always done, and is safe
+     * for the reason it always was: every one of these actions leaves a snackbar with the way back.
+     *
+     * Per direction rather than one answer for both, because the two are not the same gesture to
+     * the person making it: the side they archive with all day is not the side they want a question
+     * on, and the side that deletes may well be.
+     */
+    val confirmToEnd: Boolean = false,
+    val confirmToStart: Boolean = false,
+) {
+    /** Whether a swipe towards the end has to be confirmed before it does anything. */
+    val asksToEnd: Boolean
+        get() = confirmToEnd && toEnd.canBeConfirmed
+
+    val asksToStart: Boolean
+        get() = confirmToStart && toStart.canBeConfirmed
+}
 
 /** The user's swipe choices, with the vocabulary this module owns put back on them. */
 @Singleton
@@ -81,20 +77,40 @@ class SwipeActionsRepository @Inject constructor(private val store: SwipePrefsSt
      * [SwipeAction.NONE]: it was written by a newer build, and a gesture that silently stops
      * working after a downgrade is worse than one that goes back to what it always did.
      */
-    val actions: Flow<SwipeActions> =
-        store.prefs.map { stored ->
-            val defaults = SwipeActions()
-
-            SwipeActions(
-                toEnd = SwipeAction.fromWire(stored.toEnd) ?: defaults.toEnd,
-                toStart = SwipeAction.fromWire(stored.toStart) ?: defaults.toStart,
-                confirm = SwipeConfirm.fromWire(stored.confirm) ?: defaults.confirm,
-            )
-        }
+    val actions: Flow<SwipeActions> = store.prefs.map { it.asActions() }
 
     suspend fun setToEnd(action: SwipeAction) = store.setToEnd(action.wire)
 
     suspend fun setToStart(action: SwipeAction) = store.setToStart(action.wire)
 
-    suspend fun setConfirm(confirm: SwipeConfirm) = store.setConfirm(confirm.wire)
+    suspend fun setConfirmToEnd(asks: Boolean) = store.setConfirmToEnd(asks)
+
+    suspend fun setConfirmToStart(asks: Boolean) = store.setConfirmToStart(asks)
 }
+
+/** What was stored, with this module's vocabulary and defaults put back on it. */
+internal fun StoredSwipes.asActions(): SwipeActions {
+    val defaults = SwipeActions()
+    val toEnd = SwipeAction.fromWire(toEnd) ?: defaults.toEnd
+    val toStart = SwipeAction.fromWire(toStart) ?: defaults.toStart
+
+    return SwipeActions(
+        toEnd = toEnd,
+        toStart = toStart,
+        confirmToEnd = confirmToEnd ?: legacyConfirm.asksAbout(toEnd),
+        confirmToStart = confirmToStart ?: legacyConfirm.asksAbout(toStart),
+    )
+}
+
+/**
+ * 0.0.27's one setting for both directions, read as an answer for one of them.
+ *
+ * `always` asked about everything and `trash` only about the direction that deletes; anything else,
+ * including nothing stored, is the default.
+ */
+private fun String?.asksAbout(action: SwipeAction): Boolean =
+    when (this) {
+        "always" -> true
+        "trash" -> action == SwipeAction.TRASH
+        else -> false
+    }

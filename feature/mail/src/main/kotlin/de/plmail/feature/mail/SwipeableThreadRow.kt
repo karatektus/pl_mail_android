@@ -131,17 +131,18 @@ fun SwipeableThreadRow(
         // row that is about to disappear anyway; one that does not, puts the
         // row back.
         LaunchedEffect(state.currentValue) {
-            val swiped =
+            val towardsEnd =
                 when (state.currentValue) {
-                    SwipeToDismissBoxValue.StartToEnd -> swipes.toEnd
-                    SwipeToDismissBoxValue.EndToStart -> swipes.toStart
+                    SwipeToDismissBoxValue.StartToEnd -> true
+                    SwipeToDismissBoxValue.EndToStart -> false
                     SwipeToDismissBoxValue.Settled -> return@LaunchedEffect
                 }
+            val swiped = if (towardsEnd) swipes.toEnd else swipes.toStart
 
             // Held open under the question, so what is being asked about is
             // still showing behind it: the row stays aside over its icon until
             // the answer comes.
-            if (swipes.confirm.asksBefore(swiped)) {
+            if (if (towardsEnd) swipes.asksToEnd else swipes.asksToStart) {
                 pending = swiped
 
                 return@LaunchedEffect
@@ -245,6 +246,8 @@ private fun SwipeConfirmation(
 private fun SwipeAction.question(isUnread: Boolean): Int =
     when (this) {
         SwipeAction.TRASH -> R.string.swipe_confirm_trash
+        SwipeAction.SNOOZE -> R.string.swipe_confirm_snooze
+        SwipeAction.MOVE -> R.string.swipe_confirm_move
         SwipeAction.READ ->
             if (isUnread) R.string.swipe_confirm_read else R.string.swipe_confirm_unread
         else -> R.string.swipe_confirm_archive

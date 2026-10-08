@@ -839,7 +839,14 @@ internal fun <T> Choices(
 }
 
 @Composable
-private fun Toggle(title: String, body: String, isOn: Boolean, onChange: (Boolean) -> Unit) {
+internal fun Toggle(
+    title: String,
+    body: String,
+    isOn: Boolean,
+    onChange: (Boolean) -> Unit,
+    /** False where the switch has nothing to decide just now. Its body should say why. */
+    isEnabled: Boolean = true,
+) {
     val theme = PlMailTheme.values
 
     Row(
@@ -863,6 +870,7 @@ private fun Toggle(title: String, body: String, isOn: Boolean, onChange: (Boolea
         Switch(
             checked = isOn,
             onCheckedChange = onChange,
+            enabled = isEnabled,
             // The title again, on the switch itself. Without it TalkBack
             // announces the row as "Keep panes solid" and then, as a separate
             // stop, "off, switch" -- and somebody who reached the control by
