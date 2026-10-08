@@ -119,7 +119,10 @@ object MessageDocument {
         remoteImages: RemoteImages,
     ): String {
         val isBlocking = remoteImages == RemoteImages.BLOCKED
-        val content = if (isBlocking) BlockedImages.mark(body) else body
+        // Before anything else reads the markup: a message sized by the
+        // viewport's height cannot be drawn in a view sized by the message.
+        val fitted = ViewportUnits.drop(body)
+        val content = if (isBlocking) BlockedImages.mark(fitted) else fitted
 
         return """
         <!doctype html>
