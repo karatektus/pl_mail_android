@@ -2,7 +2,6 @@ package de.plmail.feature.calendar
 
 import de.plmail.core.database.AgendaRow
 import java.time.LocalDateTime
-import java.time.ZoneId
 
 /**
  * The occurrences that draw one row — one meeting, however many rows the cache holds it in.
@@ -181,24 +180,20 @@ private fun AgendaRow.signature(): List<Any?> =
 /**
  * When this occurrence starts, as a value two copies can be compared on.
  *
- * The instant where a zone is published, and the bare wall clock where none is. Both are correct
- * and they are deliberately not interchangeable: an all-day event and a floating one have no
- * instant at all — that is the whole point of storing them as a wall clock — so resolving them
- * against the device would make the same birthday compare unequal to itself the day somebody
- * travels.
- *
- * A zoned occurrence and a floating one therefore never merge, which is right: they are two
- * different claims about when the meeting is.
+ * The cache has already put a zoned occurrence on the device's clock, so two copies of one meeting
+ * written in different zones carry the same wall clock here and compare equal as they are. What
+ * still has to be kept apart is zoned from floating: an all-day event and a floating one have no
+ * instant at all — that is the whole point of storing them as a wall clock — so they are two
+ * different claims about when the meeting is, and never merge with a zoned copy.
  */
-internal fun AgendaRow.startKey(): String = instantKey(startLocal, zoneId)
+internal fun AgendaRow.startKey(): String = clockKey(startLocal, zoneId)
 
-internal fun AgendaRow.endKey(): String = instantKey(endLocal, zoneId)
+internal fun AgendaRow.endKey(): String = clockKey(endLocal, zoneId)
 
-private fun instantKey(local: String?, zone: String?): String {
+private fun clockKey(local: String?, zone: String?): String {
     val at = local.toLocalDateTimeOrNull() ?: return "?${local.orEmpty()}"
-    val id = zone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: return "floating/$at"
 
-    return at.atZone(id).toInstant().toString()
+    return if (zone == null) "floating/$at" else "zoned/$at"
 }
 
 /** The wire's word for an event that has been called off. */

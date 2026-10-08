@@ -257,7 +257,31 @@ class EventFormTest {
             calendarKey = "https://nas.local/13#c1",
         )
 
-    private fun event(start: String, duration: String, allDay: Boolean = false) =
+    /**
+     * The form opens on the clock the agenda drew the event on.
+     *
+     * 08:00 UTC is 10:00 on a phone in Berlin, and a form that said 08:00 under a row that said
+     * 10:00 would be two answers to one question.
+     */
+    @Test
+    fun `opens an event written in another zone on the device's clock`() {
+        val berlin = Clock.fixed(Instant.parse("2026-08-06T14:07:00Z"), ZoneId.of("Europe/Berlin"))
+        val form =
+            EventFormState.of(
+                event(start = "2026-08-06T08:00:00", duration = "PT30M", zone = "UTC"),
+                berlin,
+            )
+
+        assertEquals(LocalTime.of(10, 0), form.startTime)
+        assertEquals(LocalTime.of(10, 30), form.endTime)
+    }
+
+    private fun event(
+        start: String,
+        duration: String,
+        allDay: Boolean = false,
+        zone: String? = null,
+    ) =
         CalendarEventEntity(
             uid = "https://nas.local/13#42",
             accountKey = "https://nas.local/13",
@@ -267,6 +291,7 @@ class EventFormTest {
             title = "Standup",
             start = start,
             duration = duration,
+            timeZone = zone,
             isAllDay = allDay,
         )
 

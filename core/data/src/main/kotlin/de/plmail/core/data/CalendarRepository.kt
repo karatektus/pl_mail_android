@@ -874,6 +874,10 @@ constructor(
                 )
         val client = clients.current() ?: return CalendarWriteResult.NoCalendarAccount
 
+        // The form is filled in on the device's clock and the server reads a
+        // zone-less start in the calendar's, so the two are reconciled here.
+        val stored = draft.onEventClock(calendar.timeZone)
+
         return write {
             val session = client.session()
             val accountId =
@@ -885,7 +889,9 @@ constructor(
                     CalendarEventSet(
                         accountId = accountId,
                         create =
-                            mapOf(CREATION_ID to draft.toNewEvent(CalendarId(calendar.calendarId))),
+                            mapOf(
+                                CREATION_ID to stored.toNewEvent(CalendarId(calendar.calendarId))
+                            ),
                     )
                 )
 
@@ -904,7 +910,7 @@ constructor(
 
             val eventKey = StoreKey.objectKey(calendar.accountKey, created.id.value)
             val row =
-                draft.toEntity(
+                stored.toEntity(
                     uid = eventKey,
                     accountKey = calendar.accountKey,
                     eventId = created.id.value,
@@ -935,7 +941,7 @@ constructor(
                 // its occurrences land is the server's answer, and the refresh
                 // below is how that is asked.
                 if (!created.isRecurring) {
-                    database.calendarEvents().upsertOccurrences(row.placeFromItself())
+                    database.calendarEvents().upsertOccurrences(row.placeFromItself(zone))
                 }
             }
 
@@ -963,17 +969,24 @@ constructor(
                     "notFound",
                     "That event is not on this device.",
                 )
+        // Back onto the clock the event is kept in — the form showed the
+        // device's, see `EventFormState.of`. The zone itself is not rewritten:
+        // an invitation written in UTC stays one after a corrected title.
+        val stored = draft.onEventClock(existing.timeZone)
         val client = clients.current() ?: return CalendarWriteResult.NoCalendarAccount
 
         val previous = database.calendarEvents().occurrencesOf(eventKey)
         val updated =
-            draft.toEntity(
+            stored.toEntity(
                 uid = existing.uid,
                 accountKey = existing.accountKey,
                 eventId = existing.eventId,
                 calendarKey = existing.calendarKey,
                 calendarId = existing.calendarId,
-                calendarZone = database.calendars().byUid(existing.calendarKey)?.timeZone,
+                // The zone the event already has, not the calendar's: an update
+                // sends no `timeZone`, so the server keeps the one it holds, and
+                // the row has to be read in the zone `stored` was converted to.
+                calendarZone = existing.timeZone,
                 eventUid = existing.eventUid,
                 isRecurring = existing.isRecurring,
                 sequence = existing.sequence,
@@ -997,7 +1010,7 @@ constructor(
             // is for.
             if (!existing.isRecurring) {
                 database.calendarEvents().clearOccurrencesOf(eventKey)
-                database.calendarEvents().upsertOccurrences(updated.placeFromItself())
+                database.calendarEvents().upsertOccurrences(updated.placeFromItself(zone))
             }
         }
 
@@ -1011,7 +1024,7 @@ constructor(
                 request.add(
                     CalendarEventSet(
                         accountId = accountId,
-                        update = mapOf(CalendarEventId(existing.eventId) to draft.toPatch()),
+                        update = mapOf(CalendarEventId(existing.eventId) to stored.toPatch()),
                     )
                 )
 
@@ -1163,9 +1176,10 @@ constructor(
      * the occurrence id — and an occurrence whose series did not come back is dropped rather than
      * orphaned, because nothing joins to a series row that is not there.
      *
-     * The day an occurrence lands on is its own wall clock, never the device offset the window was
-     * converted by. An all-day event dated the eighth belongs to the eighth in every zone, which is
-     * the whole reason all-day events exist.
+     * The day an occurrence lands on is the reader's: an event that names a zone is an instant, and
+     * is placed where that instant falls on the device's clock — see [toDeviceClock]. An all-day or
+     * floating event has no instant and keeps its own wall clock, so one dated the eighth belongs
+     * to the eighth in every zone, which is the whole reason all-day events exist.
      */
     private fun place(
         occurrence: CalendarEvent,
@@ -1177,10 +1191,19 @@ constructor(
     ): List<CalendarOccurrenceEntity> {
         if (series == null) return emptyList()
 
-        val start = occurrence.start?.asLocalDateTime() ?: return emptyList()
+        val own = occurrence.start?.asLocalDateTime() ?: return emptyList()
         val calendarKey = StoreKey.objectKey(accountKey, series.calendarId?.value.orEmpty())
 
-        return daysSpanned(start, occurrence.duration)
+        // The clock the reader is on, for an event that names a zone. The row
+        // used to keep the event's own wall clock, and an invitation written in
+        // UTC was drawn at 08:00 on a phone in Berlin while the web said 10:00.
+        // The end is converted on its own rather than added to the converted
+        // start, so a meeting across a DST change keeps its real length.
+        val eventZone = occurrence.timeZone.takeUnless { occurrence.showWithoutTime }
+        val start = own.toDeviceClock(eventZone, zone)
+        val end = own.plusWireDuration(occurrence.duration)?.toDeviceClock(eventZone, zone)
+
+        return daysSpanned(start, end)
             .filter { it in window }
             .map { day ->
                 CalendarOccurrenceEntity(
@@ -1194,7 +1217,7 @@ constructor(
                     calendarKey = calendarKey,
                     date = day.toString(),
                     startLocal = start.toWire(),
-                    endLocal = start.plusWireDuration(occurrence.duration)?.toWire(),
+                    endLocal = end?.toWire(),
                     // The event's own zone, or none. **Never the calendar's**, and
                     // that changed: the fallback used to be `?: calendarZone`,
                     // which read as harmless and made a real state unreachable.
@@ -1218,7 +1241,7 @@ constructor(
                     // event and omits it only where `showWithoutTime` is set. So
                     // the fallback never stood in for an ordinary event's zone;
                     // the only thing it ever answered for was a floating one.
-                    zoneId = occurrence.timeZone.takeUnless { occurrence.showWithoutTime },
+                    zoneId = eventZone,
                     isAllDay = occurrence.showWithoutTime,
                     // Only when this occurrence's title is not the series'. Storing
                     // it unconditionally would work until a rename on the web left
@@ -1228,6 +1251,16 @@ constructor(
                 )
             }
     }
+
+    /**
+     * This draft with its start moved from the device's clock onto [eventZone]'s.
+     *
+     * Only where the draft does not choose a zone itself, and never for an all-day event, which has
+     * dates and no instant.
+     */
+    private fun EventDraft.onEventClock(eventZone: String?): EventDraft =
+        if (isAllDay || timeZone != null) this
+        else copy(start = start.toEventClock(eventZone, zone))
 
     private fun query(
         accountId: AccountId,
@@ -1352,6 +1385,33 @@ private fun String.asLocalDateTime(): LocalDateTime? = runCatching {
     .getOrNull()
 
 /**
+ * An event's own wall clock, as the clock of the device reading it.
+ *
+ * An event that names a zone is an instant — "08:00 in UTC" — and every surface has to draw that
+ * instant on the reader's clock, which is what the web does with the user's zone. Without
+ * [eventZone] there is nothing to convert: an all-day or floating event means the same wall clock
+ * everywhere and is handed back untouched. A zone name this JVM does not know is treated the same
+ * way, because a time that may be off by an offset is better than an event that is not drawn.
+ */
+fun LocalDateTime.toDeviceClock(eventZone: String?, device: ZoneId): LocalDateTime {
+    val zone = eventZone.asZoneOrNull() ?: return this
+
+    return atZone(zone).withZoneSameInstant(device).toLocalDateTime()
+}
+
+/**
+ * The inverse of [toDeviceClock]: what the reader typed, as the wall clock the event is kept in.
+ */
+fun LocalDateTime.toEventClock(eventZone: String?, device: ZoneId): LocalDateTime {
+    val zone = eventZone.asZoneOrNull() ?: return this
+
+    return atZone(device).withZoneSameInstant(zone).toLocalDateTime()
+}
+
+private fun String?.asZoneOrNull(): ZoneId? =
+    this?.let { runCatching { ZoneId.of(it) }.getOrNull() }
+
+/**
  * ISO 8601, and quietly null when it is a shape `Duration` cannot hold.
  *
  * `Duration.parse` takes `PT15M` and `P1D` but not `P1M` — a month is not a fixed number of
@@ -1369,8 +1429,8 @@ private fun LocalDateTime.plusWireDuration(iso: String?): LocalDateTime? = iso?.
  * An end landing exactly on midnight belongs to the day before it: a `P1D` all-day event starting
  * at `2026-08-08T00:00:00` ends at `2026-08-09T00:00:00` and is on one day, not two.
  */
-private fun daysSpanned(start: LocalDateTime, duration: String?): List<LocalDate> {
-    val end = start.plusWireDuration(duration) ?: start
+private fun daysSpanned(start: LocalDateTime, ending: LocalDateTime?): List<LocalDate> {
+    val end = ending ?: start
     val last =
         if (end > start && end.toLocalTime() == LocalTime.MIDNIGHT) end.toLocalDate().minusDays(1)
         else end.toLocalDate()
@@ -1534,10 +1594,13 @@ private fun CalendarEventEntity.leads(other: CalendarEventEntity): Boolean {
  * server has said is *not* recurring — for one that is, where the occurrences land is a question
  * only the server can answer.
  */
-private fun CalendarEventEntity.placeFromItself(): List<CalendarOccurrenceEntity> {
-    val at = start?.asLocalDateTime() ?: return emptyList()
+private fun CalendarEventEntity.placeFromItself(device: ZoneId): List<CalendarOccurrenceEntity> {
+    val own = start?.asLocalDateTime() ?: return emptyList()
+    val eventZone = timeZone.takeUnless { isAllDay }
+    val at = own.toDeviceClock(eventZone, device)
+    val end = own.plusWireDuration(duration)?.toDeviceClock(eventZone, device)
 
-    return daysSpanned(at, duration).map { day ->
+    return daysSpanned(at, end).map { day ->
         CalendarOccurrenceEntity(
             uid = StoreKey.occurrence(uid, day.toString(), at.toWire()),
             eventKey = uid,
@@ -1545,10 +1608,10 @@ private fun CalendarEventEntity.placeFromItself(): List<CalendarOccurrenceEntity
             calendarKey = calendarKey,
             date = day.toString(),
             startLocal = at.toWire(),
-            endLocal = at.plusWireDuration(duration)?.toWire(),
+            endLocal = end?.toWire(),
             // See the same line in `place`: an all-day occurrence is
             // deliberately zone-less.
-            zoneId = timeZone.takeUnless { isAllDay },
+            zoneId = eventZone,
             isAllDay = isAllDay,
         )
     }

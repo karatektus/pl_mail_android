@@ -70,7 +70,7 @@
       shown exactly as it was written rather than converted.
     -->
     <string name="calendar_floating">No time zone. Shown at the time it was written.</string>
-    <string name="calendar_zone">Time zone: %1$s</string>
+    <string name="calendar_zone">Shown in your time. Written in %1$s.</string>
     <string name="calendar_repeat">Repeat</string>
     <string name="calendar_repeats">Repeats</string>
 

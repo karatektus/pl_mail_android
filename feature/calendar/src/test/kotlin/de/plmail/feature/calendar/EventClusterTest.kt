@@ -168,21 +168,13 @@ class EventClusterTest {
      *
      * The server compares timestamps rather than zoned values for exactly this reason: one copy
      * extracted with the organiser's zone and one mirrored with the calendar's must not read as a
-     * disagreement about when the meeting is.
+     * disagreement about when the meeting is. The cache has put both on the device's clock by the
+     * time they are rows, so they arrive here with the same times and different zone names.
      */
     @Test
     fun `the same instant written in two zones still merges`() {
         val clusters =
-            clusterRows(
-                listOf(
-                    work(zone = "Europe/Berlin"),
-                    personal(
-                        start = "2026-08-06T08:00:00",
-                        end = "2026-08-06T08:30:00",
-                        zone = "Europe/London",
-                    ),
-                )
-            )
+            clusterRows(listOf(work(zone = "Europe/Berlin"), personal(zone = "Europe/London")))
 
         assertEquals(1, clusters.size)
     }

@@ -17,7 +17,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -511,6 +513,129 @@ class CalendarRepositoryTest {
 
         assertTrue(result is CalendarWriteResult.Applied, "got $result")
         assertEquals("10867", updatedId)
+    }
+
+    /**
+     * An event written in another zone is drawn on the reader's clock, like the web draws it.
+     *
+     * Seen on a phone on 2026-10-08: an invitation stored as 08:00 UTC stood at 10:00 in the
+     * browser and at 08:00 in the app, because the row kept the event's own wall clock and nothing
+     * downstream converted it. The zone the event was written in stays on the row, for the detail
+     * screen to name.
+     */
+    @Test
+    fun `an event written in another zone lands on the device's clock`() = runTest {
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        oneOff(
+                            id = "20001",
+                            title = "Kennenlernen",
+                            start = "2026-08-06T08:00:00",
+                            duration = "PT30M",
+                            timeZone = "UTC",
+                        )
+                    )
+            )
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        val row =
+            database
+                .calendarEvents()
+                .occurrencesOf(StoreKey.objectKey(testAccountKey, "20001"))
+                .single()
+
+        assertEquals("2026-08-06T10:00:00", row.startLocal)
+        assertEquals("2026-08-06T10:30:00", row.endLocal)
+        assertEquals("UTC", row.zoneId)
+    }
+
+    /** The day is the reader's too: 23:30 UTC on the sixth is the seventh in Berlin. */
+    @Test
+    fun `an event late in another zone lands on the device's day`() = runTest {
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        oneOff(
+                            id = "20002",
+                            title = "Spät",
+                            start = "2026-08-06T23:30:00",
+                            duration = "PT30M",
+                            timeZone = "UTC",
+                        )
+                    )
+            )
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        val row =
+            database
+                .calendarEvents()
+                .occurrencesOf(StoreKey.objectKey(testAccountKey, "20002"))
+                .single()
+
+        assertEquals("2026-08-07", row.date)
+        assertEquals("2026-08-07T01:30:00", row.startLocal)
+    }
+
+    /**
+     * An edit goes back onto the clock the event is kept in, and leaves its zone alone.
+     *
+     * The form shows the device's clock, so the 10:00 the user sees for an 08:00 UTC event has to
+     * reach the server as 08:00 again — sent as typed, a corrected title would move the meeting by
+     * the phone's offset.
+     */
+    @Test
+    fun `an edit is sent on the event's own clock`() = runTest {
+        val server =
+            FakeCalendarServer(
+                events =
+                    mutableListOf(
+                        oneOff(
+                            id = "20001",
+                            title = "Kennenlernen",
+                            start = "2026-08-06T08:00:00",
+                            duration = "PT30M",
+                            timeZone = "UTC",
+                        )
+                    )
+            )
+        val repository = calendarStack(database, calendarTransport(server))
+        val eventKey = StoreKey.objectKey(testAccountKey, "20001")
+
+        repository.refresh(week)
+
+        var patch: JsonObject? = null
+
+        server.onSet = { arguments ->
+            val id = arguments["update"]!!.jsonObject.keys.single()
+
+            patch = arguments["update"]!!.jsonObject[id]!!.jsonObject
+
+            updated(id)
+        }
+
+        repository.update(
+            eventKey = eventKey,
+            draft =
+                EventDraft(
+                    title = "Kennenlernen",
+                    start = LocalDateTime.of(2026, 8, 6, 11, 0),
+                    duration = Duration.ofMinutes(30),
+                ),
+        )
+
+        assertEquals("2026-08-06T09:00:00", patch!!["start"]!!.jsonPrimitive.content)
+        assertNull(patch["timeZone"], "the zone is the event's own and is not rewritten")
+        assertEquals(
+            "2026-08-06T11:00:00",
+            database.calendarEvents().occurrencesOf(eventKey).single().startLocal,
+        )
     }
 
     /**

@@ -473,6 +473,10 @@ data class CalendarEventEntity(
  * happen at the same clock time wherever the reader is, so resolving it to an instant at sync time
  * and storing that is precisely the bug that makes a birthday move when the user travels — and a
  * day view places occurrences by local time anyway, which is why [startLocal] is also the sort key.
+ *
+ * The wall clock is the **device's** for an event that names a zone: [date], [startLocal] and
+ * [endLocal] are where that instant falls for the reader, as of the refresh that wrote the row. A
+ * phone that changes zone is therefore right again after its next refresh, not before.
  */
 @Entity(
     tableName = "calendar_occurrences",
@@ -486,13 +490,17 @@ data class CalendarOccurrenceEntity(
     val calendarKey: String,
     /** ISO local date, `2026-08-07`. Sorts correctly as a string, which is why it is one. */
     val date: String,
-    /** LocalDateTime, as the wire spells it. The occurrence's own start, after any override. */
+    /**
+     * LocalDateTime, as the wire spells it. The occurrence's start after any override, on the
+     * device's clock when the event has a zone and on its own when it has none.
+     */
     val startLocal: String? = null,
     /** [startLocal] plus the occurrence's duration, or null when the duration was unreadable. */
     val endLocal: String? = null,
     /**
-     * The zone [startLocal] is read in — the event's, else the calendar's — or null for an event
-     * that resolves against the device.
+     * The zone the event was written in, or null for an all-day or floating one. **Not** the zone
+     * [startLocal] is in — that is the device's — but what the detail screen names, and what says
+     * whether there was an instant to convert at all.
      */
     val zoneId: String? = null,
     val isAllDay: Boolean = false,

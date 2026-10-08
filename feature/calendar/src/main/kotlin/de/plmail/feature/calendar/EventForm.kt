@@ -1,6 +1,7 @@
 package de.plmail.feature.calendar
 
 import de.plmail.core.data.EventDraft
+import de.plmail.core.data.toDeviceClock
 import de.plmail.core.database.CalendarEventEntity
 import de.plmail.jmap.calendar.RecurrenceRule
 import java.time.Clock
@@ -86,10 +87,11 @@ data class EventFormState(
      * the title — or, worse, cleared entirely, because null on that property means "stop
      * recurring".
      *
-     * The time zone is deliberately left null, which means the calendar's own. That is what the web
-     * does, and it is the only answer this editor can honestly give: it offers no zone control, so
-     * sending the *device's* zone would be recording a decision the user never made — and would
-     * make the same event read differently on the two surfaces the first time somebody travels.
+     * The time zone is deliberately left null, which means the calendar's own on a create and the
+     * event's existing one on an update. That is what the web does, and it is the only answer this
+     * editor can honestly give: it offers no zone control, so sending the *device's* zone would be
+     * recording a decision the user never made. The times are the device's clock all the same — the
+     * repository moves them onto the zone the event is kept in.
      */
     fun toDraft(untitled: String, isCreating: Boolean): EventDraft =
         EventDraft(
@@ -152,8 +154,16 @@ data class EventFormState(
          */
         fun of(event: CalendarEventEntity, clock: Clock): EventFormState {
             val fallback = forNewEvent(clock)
-            val start = event.start.toLocalDateTimeOrNull() ?: fallback.start
-            val end = start.plusWireDuration(event.duration) ?: start.plusHours(1)
+            // On the device's clock, which is the one the agenda drew the event
+            // on — a form that opened at the event's own 08:00 UTC under a row
+            // saying 10:00 would be asking the user which of the two is true.
+            // The repository converts back on the way out.
+            val zone = event.timeZone.takeUnless { event.isAllDay }
+            val own = event.start.toLocalDateTimeOrNull()
+            val start = own?.toDeviceClock(zone, clock.zone) ?: fallback.start
+            val end =
+                own?.plusWireDuration(event.duration)?.toDeviceClock(zone, clock.zone)
+                    ?: start.plusHours(1)
 
             return EventFormState(
                 title = event.title,
