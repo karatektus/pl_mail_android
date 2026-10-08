@@ -41,11 +41,12 @@ Each one should let someone decide in a minute, without opening the client:
 
 ## Open
 
-One, filed 2026-10-08 and **built the same day, not yet merged**. The seven before it were built on
+One, filed 2026-10-08 and **built and merged the same day** (plMail `3fae4495`); it stays here until
+it has been seen working against a deployed server. The seven before it were built on
 2026-08-06 — each in its own worktree branch, all merged into plMail `main` in one push (`cbd27e0`)
 — and are under "Landed" below.
 
-### "Move to" over JMAP — built on plMail branch `feat/jmap-move-to`, awaiting merge
+### "Move to" over JMAP — merged into plMail `main` (`3fae4495`), not yet seen on a deployed server
 
 - **What the client wanted.** File a conversation the way the web's "Move to" does (plMail
   `464df704`): the target label on, the label of the list being looked at off, as one action.
@@ -56,7 +57,7 @@ One, filed 2026-10-08 and **built the same day, not yet merged**. The seven befo
   rather than a property. The client names the target and the view; `MoveToService::plan()` decides
   what comes off, and the move runs through the same service the browser's button calls. Authorised
   by the user on 2026-10-08 and worked on a branch of the primary checkout rather than a worktree,
-  because the test container mounts that checkout; `main` was not moved.
+  because the test container mounts that checkout; fast-forwarded into `main` once green.
 - **What was verified.** Over HTTP against the test stack on 8001, running the branch: a
   conversation moved from the Inbox to a tag came back with the tag and Archive on and the Inbox
   off, and the same call the other way round put it back exactly. 23 cases in
@@ -66,7 +67,7 @@ One, filed 2026-10-08 and **built the same day, not yet merged**. The seven befo
   property by name (`"moveTo" is not a settable Thread property.`) is remembered for the life of
   the process and gets the old patch instead; a move in or out of the bin against such a server is
   refused out loud, since the patch cannot say it. Labels are now offered from Trash and Spam.
-- **What is left.** Merge the branch and get it onto a server. Until then every install is "a
+- **What is left.** Seeing it on a real server. An install that has not pulled `3fae4495` yet is "a
   server too old", and behaves exactly as 0.0.26 did outside the bin.
 - **Not asked for.** The web's Undo restores each message's remembered labels
   (`StatusUndoService`); the phone's undo is the same move the other way round. Exact for one
