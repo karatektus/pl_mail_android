@@ -2,6 +2,7 @@ package de.plmail.feature.compose
 
 import androidx.compose.runtime.saveable.SaverScope
 import de.plmail.core.data.ComposeDraft
+import java.text.DecimalFormatSymbols
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -194,7 +195,11 @@ class ComposeInputTest {
     fun `an attachment shows a size a person can read`() {
         assertEquals("512 B", 512L.asFileSize())
         assertEquals("2 KB", 2_048L.asFileSize())
-        assertEquals("1.5 MB", (1_536L * 1_024).asFileSize())
+        // The decimal mark is the reader's: "1.5 MB" in English and "1,5 MB"
+        // in German, and the suite runs on machines set to either.
+        val mark = DecimalFormatSymbols.getInstance().decimalSeparator
+
+        assertEquals("1${mark}5 MB", (1_536L * 1_024).asFileSize())
     }
 
     @Test

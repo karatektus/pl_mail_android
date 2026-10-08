@@ -1,8 +1,12 @@
 package de.plmail.core.ui
 
+import java.time.DayOfWeek
 import java.time.LocalDate
+import java.time.Month
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.time.format.TextStyle
+import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -18,6 +22,18 @@ class RowFormattingTest {
     private val zone = ZoneId.of("UTC")
     private val today = LocalDate.of(2026, 7, 31)
 
+    /**
+     * The weekday and month as the machine running the suite abbreviates them.
+     *
+     * The list writes dates in the reader's language, so "Mon" is "Mo." on a German machine and
+     * both are right. What these tests pin is the *shape* — a weekday, or a day and a month — and
+     * spelling the expectation in English made them fail on exactly the locale the app is mostly
+     * used in.
+     */
+    private fun DayOfWeek.short(): String = getDisplayName(TextStyle.SHORT, Locale.getDefault())
+
+    private fun Month.short(): String = getDisplayName(TextStyle.SHORT, Locale.getDefault())
+
     private fun at(year: Int, month: Int, day: Int, hour: Int = 9, minute: Int = 5): Long =
         ZonedDateTime.of(year, month, day, hour, minute, 0, 0, zone).toInstant().toEpochMilli()
 
@@ -28,7 +44,7 @@ class RowFormattingTest {
 
     @Test
     fun `earlier this week shows a weekday`() {
-        assertEquals("Mon", at(2026, 7, 27).asListDate(zone, today))
+        assertEquals(DayOfWeek.MONDAY.short(), at(2026, 7, 27).asListDate(zone, today))
     }
 
     /**
@@ -39,12 +55,12 @@ class RowFormattingTest {
      */
     @Test
     fun `exactly a week ago shows a date rather than the same weekday as today`() {
-        assertEquals("24 Jul", at(2026, 7, 24).asListDate(zone, today))
+        assertEquals("24 ${Month.JULY.short()}", at(2026, 7, 24).asListDate(zone, today))
     }
 
     @Test
     fun `earlier this year shows day and month`() {
-        assertEquals("3 Mar", at(2026, 3, 3).asListDate(zone, today))
+        assertEquals("3 ${Month.MARCH.short()}", at(2026, 3, 3).asListDate(zone, today))
     }
 
     @Test
