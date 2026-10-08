@@ -73,6 +73,7 @@ import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailCategory
 import de.plmail.core.data.MailView
+import de.plmail.core.data.SwipeActions
 import de.plmail.core.data.rowLabels
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PaneTone
@@ -160,6 +161,7 @@ fun MailScreen(
     // Whether a row should carry its account's mark: only where the list is
     // actually a merge, or every row would wear the same one.
     val isMerged by viewModel.isMerged.collectAsStateWithLifecycle()
+    val swipes by viewModel.swipes.collectAsStateWithLifecycle()
     // Which rows keep their New badge. Held by the ViewModel rather than read
     // off each row, because drawing the row is what retires the marker -- see
     // `MailViewModel.badgedNew`.
@@ -419,6 +421,8 @@ fun MailScreen(
                     arrivals = arrivals,
                     isMerged = isMerged,
                     badgedNew = badgedNew,
+                    swipes = swipes,
+                    onMove = { thread -> viewModel.openMoveSheet(view, listOf(thread.target())) },
                     onOpenCategory = { onNavigate(MailView.Category(it)) },
                     onShown = viewModel::threadsShown,
                     onThreadSelected = { thread ->
@@ -559,6 +563,9 @@ internal fun ThreadList(
     onThreadSelected: (ThreadEntity) -> Unit,
     onToggleSelected: (String) -> Unit,
     onAction: (ThreadEntity, MailAction) -> Unit,
+    /** What a swipe does in each direction. Defaulted to what a row always did. */
+    swipes: SwipeActions = SwipeActions(),
+    onMove: (ThreadEntity) -> Unit = {},
 ) {
     // The bundles survive an empty list, and that case is the whole reason this
     // is a condition rather than an early return on `itemCount`. An empty
@@ -688,6 +695,8 @@ internal fun ThreadList(
                         },
                         onLongClick = { onToggleSelected(thread.uid) },
                         onAction = { action -> onAction(thread, action) },
+                        onMove = { onMove(thread) },
+                        swipes = swipes,
                     )
 
                     // Between rows, never after the last one. Indented past the

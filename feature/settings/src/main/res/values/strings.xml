@@ -350,4 +350,22 @@
 
     <!-- Names the scope, because every row's switch is otherwise identical. -->
     <string name="notifications_scope_a11y">Notify me about %1$s</string>
+    <string name="swipe_title">Swipe actions</string>
+    <string name="swipe_to_end">Swipe right</string>
+    <string name="swipe_to_start">Swipe left</string>
+    <string name="swipe_body">Applies to rows in the mail list, on this device only. Every action is also in the bar that appears when you long-press a row.</string>
+    <string name="swipe_none">Nothing</string>
+    <string name="swipe_archive">Archive</string>
+    <string name="swipe_trash">Move to trash</string>
+    <string name="swipe_read">Mark read or unread</string>
+    <string name="swipe_snooze">Snooze</string>
+    <string name="swipe_move">Move to…</string>
+    <string name="swipe_directions">Directions</string>
+    <string name="swipe_confirm">Ask before acting</string>
+    <string name="swipe_confirm_never">Never</string>
+    <string name="swipe_confirm_trash">Trash only</string>
+    <string name="swipe_confirm_always">Always</string>
+    <string name="swipe_confirm_never_body">A swipe acts at once. Every action can be undone from the bar that appears.</string>
+    <string name="swipe_confirm_trash_body">Moving mail to the trash asks first. Everything else acts at once and can be undone.</string>
+    <string name="swipe_confirm_always_body">Archive, trash and mark read all ask first. Snooze and move open their own list, which is the question.</string>
 </resources>

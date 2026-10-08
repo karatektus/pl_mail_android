@@ -47,6 +47,7 @@ import de.plmail.feature.settings.DiagnosticsScreen
 import de.plmail.feature.settings.NotificationsScreen
 import de.plmail.feature.settings.PushLogScreen
 import de.plmail.feature.settings.PushScreen
+import de.plmail.feature.settings.SwipeScreen
 import de.plmail.notifications.NotificationRequest
 import de.plmail.notifications.RequestNotificationPermission
 import de.plmail.notifications.notificationRequest
@@ -222,6 +223,7 @@ private fun PlMailApp(
     // above it is reading a column of timestamps.
     var isReadingPushLog by rememberSaveable { mutableStateOf(false) }
     var isAdjustingAppearance by rememberSaveable { mutableStateOf(false) }
+    var isSettingGestures by rememberSaveable { mutableStateOf(false) }
     var isManagingAccounts by rememberSaveable { mutableStateOf(false) }
     var isCalendaring by rememberSaveable { mutableStateOf(false) }
     var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
@@ -342,6 +344,7 @@ private fun PlMailApp(
                             isManagingAccounts -> Screen.ACCOUNTS
                             isCalendaring -> Screen.CALENDAR
                             isAdjustingAppearance -> Screen.APPEARANCE
+                            isSettingGestures -> Screen.GESTURES
                             isReadingPushLog -> Screen.PUSH_LOG
                             isChoosingPush -> Screen.PUSH
                             isChoosingNotifications -> Screen.NOTIFICATIONS
@@ -361,6 +364,7 @@ private fun PlMailApp(
                             Screen.ACCOUNTS -> isManagingAccounts = false
                             Screen.CALENDAR -> isCalendaring = false
                             Screen.APPEARANCE -> isAdjustingAppearance = false
+                            Screen.GESTURES -> isSettingGestures = false
                             // The log closes back onto the push screen it was
                             // opened from, rather than all the way to mail:
                             // somebody who just compared a log against their
@@ -384,6 +388,8 @@ private fun PlMailApp(
                         CalendarScreen(onBack = { isCalendaring = false })
                     } else if (screen == Screen.APPEARANCE) {
                         AppearanceScreen(onBack = { isAdjustingAppearance = false })
+                    } else if (screen == Screen.GESTURES) {
+                        SwipeScreen(onBack = { isSettingGestures = false })
                     } else if (screen == Screen.PUSH_LOG) {
                         PushLogScreen(onBack = { isReadingPushLog = false })
                     } else if (screen == Screen.PUSH) {
@@ -417,6 +423,7 @@ private fun PlMailApp(
                             onNotifications = { isChoosingNotifications = true },
                             onDiagnostics = { isDiagnosing = true },
                             onAppearance = { isAdjustingAppearance = true },
+                            onGestures = { isSettingGestures = true },
                             onAccounts = { isManagingAccounts = true },
                             // Null hides the drawer entry outright, which is
                             // what an instance publishing no calendars
@@ -513,5 +520,6 @@ private enum class Screen {
     NOTIFICATIONS,
     PUSH_LOG,
     APPEARANCE,
+    GESTURES,
     ACCOUNTS,
 }

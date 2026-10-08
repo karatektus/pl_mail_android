@@ -207,4 +207,22 @@
     <string name="notifications_no_labels">Auf dieses Gerät wurden noch keine Labels synchronisiert.</string>
 
     <string name="notifications_scope_a11y">Über %1$s benachrichtigen</string>
+    <string name="swipe_title">Wischgesten</string>
+    <string name="swipe_to_end">Nach rechts wischen</string>
+    <string name="swipe_to_start">Nach links wischen</string>
+    <string name="swipe_body">Gilt für Zeilen in der E-Mail-Liste, nur auf diesem Gerät. Jede Aktion gibt es auch in der Leiste, die beim langen Drücken auf eine Zeile erscheint.</string>
+    <string name="swipe_none">Nichts</string>
+    <string name="swipe_archive">Archivieren</string>
+    <string name="swipe_trash">In den Papierkorb</string>
+    <string name="swipe_read">Als gelesen oder ungelesen markieren</string>
+    <string name="swipe_snooze">Zurückstellen</string>
+    <string name="swipe_move">Verschieben nach …</string>
+    <string name="swipe_directions">Richtungen</string>
+    <string name="swipe_confirm">Vor dem Ausführen fragen</string>
+    <string name="swipe_confirm_never">Nie</string>
+    <string name="swipe_confirm_trash">Nur Papierkorb</string>
+    <string name="swipe_confirm_always">Immer</string>
+    <string name="swipe_confirm_never_body">Eine Wischgeste wirkt sofort. Jede Aktion lässt sich über die eingeblendete Leiste rückgängig machen.</string>
+    <string name="swipe_confirm_trash_body">Vor dem Verschieben in den Papierkorb wird gefragt. Alles andere wirkt sofort und lässt sich rückgängig machen.</string>
+    <string name="swipe_confirm_always_body">Archivieren, Papierkorb und Als-gelesen-Markieren fragen zuerst. Zurückstellen und Verschieben öffnen ihre eigene Liste, und die ist die Frage.</string>
 </resources>

@@ -186,6 +186,13 @@ fun MailPane(
                             onLabel = {
                                 viewModel.openLabelSheet(listOf(ActionTarget(account, thread)))
                             },
+                            onOpenLabel = { label ->
+                                // The reader first, or on a phone the list
+                                // changes underneath a pane that is still
+                                // covering it.
+                                closeReader()
+                                onNavigate(MailView.Labelled(label))
+                            },
                             onMove = {
                                 viewModel.openMoveSheet(view, listOf(ActionTarget(account, thread)))
                             },
@@ -233,6 +240,7 @@ fun MailPane(
     moveSheet?.let { sheet ->
         MoveSheet(
             destinations = sheet.destinations,
+            recent = sheet.recent,
             targets = sheet.targets,
             onPick = { action ->
                 viewModel.closeMoveSheet()

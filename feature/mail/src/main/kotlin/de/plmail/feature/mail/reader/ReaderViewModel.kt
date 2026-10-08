@@ -10,20 +10,28 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.data.ActionOutcome
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.BlobStore
+import de.plmail.core.data.LabelRepository
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
 import de.plmail.core.data.MessageLoader
 import de.plmail.core.database.AttachmentEntity
 import de.plmail.core.database.EmailEntity
+import de.plmail.core.database.StoreKey
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -132,6 +140,11 @@ enum class FailedAt {
     SOURCE,
 }
 
+private data class OpenedThread(val accountKey: String, val threadId: String)
+
+/** Long enough to outlive a rotation, short enough not to observe a reader nobody is looking at. */
+private const val STOP_TIMEOUT_MILLIS = 5_000L
+
 /**
  * One conversation, opened.
  *
@@ -146,6 +159,7 @@ constructor(
     private val actions: MailActions,
     private val loader: MessageLoader,
     private val blobs: BlobStore,
+    labels: LabelRepository,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -161,8 +175,57 @@ constructor(
     private val _open = MutableSharedFlow<OpenableFile>(extraBufferCapacity = 4)
     val open: SharedFlow<OpenableFile> = _open.asSharedFlow()
 
+    /** Which conversation is open, as the key the cache files it under. */
+    private val opened = MutableStateFlow<OpenedThread?>(null)
+
+    /**
+     * The heading's facts, live — see [ReaderHeaderState] for why this is not part of [state].
+     *
+     * Three sources because the heading says three kinds of thing: the thread row knows the star,
+     * the snooze and which labels it wears; the label list turns those keys into names and colours;
+     * and the account list says whether naming the account would tell anybody anything.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val header: StateFlow<ReaderHeaderState> =
+        opened
+            .flatMapLatest { target ->
+                if (target == null) flowOf(ReaderHeaderState())
+                else
+                    combine(
+                        mail.observeThread(StoreKey.objectKey(target.accountKey, target.threadId)),
+                        labels.observeLabels(),
+                        mail.observeAccounts(),
+                    ) { thread, known, accounts ->
+                        val carried =
+                            thread
+                                ?.labelKeys
+                                .orEmpty()
+                                .split(",")
+                                .filter { it.isNotBlank() }
+                                .toSet()
+
+                        ReaderHeaderState(
+                            isStarred = thread?.isFlagged == true,
+                            labels = known.filter { it.key in carried && !it.isSystem },
+                            snoozedUntil = thread?.snoozedUntil,
+                            messageCount = thread?.messageCount ?: 0,
+                            accountName =
+                                accounts
+                                    .takeIf { it.size > 1 }
+                                    ?.firstOrNull { it.uid == target.accountKey }
+                                    ?.name,
+                        )
+                    }
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = ReaderHeaderState(),
+            )
+
     fun open(accountKey: String, threadId: String, subject: String?) {
         _state.update { ReaderUiState(subject = subject, isLoading = true) }
+        opened.value = OpenedThread(accountKey, threadId)
 
         viewModelScope.launch {
             // What is cached, drawn first: a conversation opened twice must not

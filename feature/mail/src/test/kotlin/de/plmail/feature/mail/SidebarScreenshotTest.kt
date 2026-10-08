@@ -345,6 +345,7 @@ class SidebarScreenshotTest {
             onNotifications = {},
             onDiagnostics = {},
             onAppearance = {},
+            onGestures = {},
             onAccounts = {},
             modifier = Modifier.fillMaxWidth(),
         )

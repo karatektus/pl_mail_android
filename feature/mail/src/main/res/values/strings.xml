@@ -143,6 +143,23 @@
         <item quantity="one">1 conversation put back</item>
         <item quantity="other">%1$d conversations put back</item>
     </plurals>
+    <string name="action_unstar">Remove star</string>
+    <string name="reader_label_open">Show this label\'s mail</string>
+    <string name="reader_label_remove">Remove label</string>
+    <string name="reader_snooze_change">Change the time</string>
+    <string name="reader_snoozed_until">Snoozed until %1$s</string>
+    <plurals name="reader_message_count">
+        <item quantity="one">1 message</item>
+        <item quantity="other">%1$d messages</item>
+    </plurals>
+    <string name="move_filter">Filter labels</string>
+    <string name="move_no_match">No label matches.</string>
+    <string name="swipe_confirm_archive">Archive this conversation?</string>
+    <string name="swipe_confirm_trash">Move this conversation to the trash?</string>
+    <string name="swipe_confirm_read">Mark this conversation as read?</string>
+    <string name="swipe_confirm_unread">Mark this conversation as unread?</string>
+    <string name="swipe_confirm_cancel">Cancel</string>
+    <string name="gestures">Swipe actions</string>
     <string name="move_to">Move to</string>
     <plurals name="moved_to">
         <item quantity="one">1 conversation moved to %2$s</item>

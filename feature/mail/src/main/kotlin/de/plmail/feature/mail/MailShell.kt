@@ -49,6 +49,7 @@ fun MailShell(
     onNotifications: () -> Unit,
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
+    onGestures: () -> Unit,
     onAccounts: () -> Unit,
     /** Null where this install has no calendar. See [LabelSidebar]. */
     onCalendar: (() -> Unit)?,
@@ -136,6 +137,10 @@ fun MailShell(
                 onAppearance = {
                     scope.launch { drawer.close() }
                     onAppearance()
+                },
+                onGestures = {
+                    scope.launch { drawer.close() }
+                    onGestures()
                 },
                 onAccounts = {
                     scope.launch { drawer.close() }

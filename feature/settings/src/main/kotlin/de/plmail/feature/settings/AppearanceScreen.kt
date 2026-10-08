@@ -793,7 +793,7 @@ private fun PaneAlpha(appearance: PlMailAppearance, onChange: (Float) -> Unit) {
  * the state it reported would be the one the user could not then leave.
  */
 @Composable
-private fun <T> Choices(
+internal fun <T> Choices(
     options: List<T>,
     chosen: T?,
     label: @Composable (T) -> String,

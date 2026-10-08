@@ -69,6 +69,7 @@ class SidebarReachabilityTest {
                         onNotifications = {},
                         onDiagnostics = {},
                         onAppearance = {},
+                        onGestures = {},
                         onAccounts = {},
                         modifier = Modifier,
                     )
@@ -117,6 +118,7 @@ class SidebarReachabilityTest {
                         onNotifications = {},
                         onDiagnostics = {},
                         onAppearance = {},
+                        onGestures = {},
                         onAccounts = {},
                         modifier = Modifier,
                     )

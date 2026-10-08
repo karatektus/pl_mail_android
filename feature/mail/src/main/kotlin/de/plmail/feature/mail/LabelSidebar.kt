@@ -42,6 +42,7 @@ import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Report
 import androidx.compose.material.icons.outlined.Star
 import androidx.compose.material.icons.outlined.StarOutline
+import androidx.compose.material.icons.outlined.Swipe
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -154,6 +155,7 @@ fun LabelSidebar(
     onNotifications: () -> Unit,
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
+    onGestures: () -> Unit,
     onAccounts: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -179,6 +181,7 @@ fun LabelSidebar(
             onNotifications = onNotifications,
             onDiagnostics = onDiagnostics,
             onAppearance = onAppearance,
+            onGestures = onGestures,
             onAccounts = onAccounts,
             modifier = modifier,
         )
@@ -202,6 +205,7 @@ private fun SidebarContent(
     onNotifications: () -> Unit,
     onDiagnostics: () -> Unit,
     onAppearance: () -> Unit,
+    onGestures: () -> Unit,
     onAccounts: () -> Unit,
     modifier: Modifier,
 ) {
@@ -355,6 +359,15 @@ private fun SidebarContent(
                 onClick = onAppearance,
                 icon = Icons.Outlined.Palette,
                 text = stringResource(R.string.appearance),
+            )
+
+            // Under appearance and not inside it: what a swipe does is how the
+            // app behaves, and it was looked for here before it was found there.
+            SidebarRow(
+                selected = false,
+                onClick = onGestures,
+                icon = Icons.Outlined.Swipe,
+                text = stringResource(R.string.gestures),
             )
 
             // Directly above push, and that pairing is the point. The two answer

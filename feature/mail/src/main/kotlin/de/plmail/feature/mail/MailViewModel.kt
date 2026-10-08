@@ -20,7 +20,10 @@ import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
 import de.plmail.core.data.MailView
 import de.plmail.core.data.Outbox
+import de.plmail.core.data.RecentMoves
 import de.plmail.core.data.ShownThreads
+import de.plmail.core.data.SwipeActions
+import de.plmail.core.data.SwipeActionsRepository
 import de.plmail.core.data.UndoableAction
 import de.plmail.core.data.isStartDestination
 import de.plmail.core.database.ThreadEntity
@@ -33,6 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
@@ -78,7 +82,12 @@ data class OfflineState(
 data class LabelSheetState(val targets: List<ActionTarget>, val selection: LabelSelection)
 
 /** The "Move to" sheet, once it is known where these conversations can go. */
-data class MoveSheetState(val targets: List<ActionTarget>, val destinations: List<MoveDestination>)
+data class MoveSheetState(
+    val targets: List<ActionTarget>,
+    val destinations: List<MoveDestination>,
+    /** Label keys mail was last moved to, newest first. */
+    val recent: List<String> = emptyList(),
+)
 
 @HiltViewModel
 class MailViewModel
@@ -91,6 +100,8 @@ constructor(
     private val deltaSync: DeltaSync,
     private val digest: CategoryDigest,
     private val shownThreads: ShownThreads,
+    private val recentMoves: RecentMoves,
+    swipeActions: SwipeActionsRepository,
     connectivity: Connectivity,
     outbox: Outbox,
     accounts: AccountsRepository,
@@ -175,7 +186,18 @@ constructor(
         if (targets.isEmpty()) return
         clearSelection()
 
-        viewModelScope.launch { announcements.announce(actions.apply(action, targets)) }
+        viewModelScope.launch {
+            // Remembered for the top of the sheet next time. Only a label the
+            // user made: the Inbox is always the first row anyway.
+            (action as? MailAction.MoveTo)
+                ?.target
+                ?.takeIf { !it.isSystem }
+                ?.let {
+                    recentMoves.record(it)
+                }
+
+            announcements.announce(actions.apply(action, targets))
+        }
     }
 
     fun undo(undoable: UndoableAction) {
@@ -262,6 +284,14 @@ constructor(
         _labelSheet.update { null }
     }
 
+    /** What a swipe on a row does, in each direction. The user's, from Appearance. */
+    val swipes: StateFlow<SwipeActions> =
+        swipeActions.actions.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = SwipeActions(),
+        )
+
     private val _moveSheet = MutableStateFlow<MoveSheetState?>(null)
     val moveSheet: StateFlow<MoveSheetState?> = _moveSheet.asStateFlow()
 
@@ -279,8 +309,10 @@ constructor(
             val known = labels.value
             val applied = labelRepository.appliedTo(known, targets)
 
+            val recent = recentMoves.keys.first()
+
             _moveSheet.update {
-                MoveSheetState(targets, moveDestinations(view, known, targets, applied))
+                MoveSheetState(targets, moveDestinations(view, known, targets, applied), recent)
             }
         }
     }

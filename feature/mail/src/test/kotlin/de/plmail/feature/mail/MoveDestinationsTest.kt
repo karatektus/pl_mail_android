@@ -84,11 +84,19 @@ class MoveDestinationsTest {
         )
     }
 
-    /** Out of the bin is the restore that already exists, and the bin is not offered to itself. */
+    /**
+     * Out of the bin: the Inbox is the restore every server has, the labels leave the bin behind,
+     * and the bin is not offered to itself.
+     */
     @Test
-    fun `from the bin only the inbox and spam are offered`() {
+    fun `from the bin a label leaves the bin, and the inbox is the existing restore`() {
         assertEquals(
-            listOf(MoveDestination.Inbox(MailAction.MoveToInbox), MoveDestination.Spam),
+            listOf(
+                MoveDestination.Inbox(MailAction.MoveToInbox),
+                MoveDestination.To(receipts, MailAction.MoveTo(receipts, leaving = trash)),
+                MoveDestination.To(work, MailAction.MoveTo(work, leaving = trash)),
+                MoveDestination.Spam,
+            ),
             from(MailView.Labelled(trash)),
         )
     }
@@ -116,6 +124,29 @@ class MoveDestinationsTest {
             )
 
         assertEquals(emptyList(), offered.labelKeys())
+    }
+
+    /**
+     * Recent labels lead the user's own, and everything found by position stays where it is.
+     *
+     * A key whose label is no longer on offer — deleted, or already on the conversation — is
+     * skipped rather than leaving a gap.
+     */
+    @Test
+    fun `the labels last moved to lead the list`() {
+        val offered = from(MailView.Labelled(sent)).recentFirst(listOf("gone", "work"))
+
+        assertEquals(listOf("work", "receipts"), offered.labelKeys())
+        assertEquals(MoveDestination.Trash, offered.last())
+    }
+
+    @Test
+    fun `a filter keeps the rows whose name contains it`() {
+        val offered = from(MailView.Labelled(sent))
+        val named = { row: MoveDestination -> (row as? MoveDestination.To)?.label?.name ?: "bin" }
+
+        assertEquals(listOf("receipts"), offered.matching(" REC ", named).labelKeys())
+        assertEquals(offered, offered.matching("  ", named))
     }
 
     private fun from(view: MailView, selection: LabelSelection = LabelSelection()) =

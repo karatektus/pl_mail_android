@@ -57,13 +57,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.content.FileProvider
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
 import de.plmail.core.database.AttachmentEntity
 import de.plmail.core.designsystem.PlMailAvatar
@@ -117,9 +116,12 @@ fun ReaderScreen(
     onLabel: () -> Unit = {},
     /** Opens the "Move to" sheet, hosted beside it. */
     onMove: () -> Unit = {},
+    /** Goes to a label's own list, from a chip under the subject. */
+    onOpenLabel: (Label) -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val header by viewModel.header.collectAsStateWithLifecycle()
 
     // The *app's* scheme, never the system's. `isSystemInDarkTheme()` was here
     // and it is wrong in both directions once there are six themes: Nord on a
@@ -239,10 +241,16 @@ fun ReaderScreen(
                 // Here it wraps to whatever it needs and scrolls away with the
                 // conversation it names.
                 item(key = SUBJECT_KEY) {
-                    ReaderSubject(
+                    ReaderHeader(
                         subject =
                             state.subject?.takeIf { it.isNotBlank() }
-                                ?: stringResource(UiR.string.no_subject)
+                                ?: stringResource(UiR.string.no_subject),
+                        state = header,
+                        onStar = { onAction(MailAction.Star(flagged = it)) },
+                        onOpenLabel = onOpenLabel,
+                        onRemoveLabel = { onAction(MailAction.SetLabel(it, applied = false)) },
+                        onAddLabel = onLabel,
+                        onSnooze = { onAction(MailAction.Snooze(it?.toEpochMilli())) },
                     )
                 }
 
@@ -267,29 +275,6 @@ fun ReaderScreen(
             }
         }
     }
-}
-
-/**
- * The conversation's subject, as the heading of the page.
- *
- * Unbounded on purpose. The whole reason it left the bar is that a subject is not a label to be
- * truncated: "Re: Ihre Anfrage vom 3. Oktober – Rückfrage zu Position 4" cut off after "Re: Ihre
- * Anf…" names nothing, and the reader is the one screen whose job is to show the thing in full.
- */
-@Composable
-private fun ReaderSubject(subject: String) {
-    val spacing = PlMailTheme.spacing
-
-    Text(
-        text = subject,
-        style = MaterialTheme.typography.titleLarge,
-        color = PlMailTheme.colors.ink,
-        modifier =
-            Modifier.fillMaxWidth()
-                .padding(horizontal = spacing.gutter)
-                .padding(top = spacing.small, bottom = spacing.medium)
-                .semantics { heading() },
-    )
 }
 
 /** The subject row's key in the reader's list, which no message uid can collide with. */
@@ -475,7 +460,7 @@ private fun ReaderBar(
                 actionIconContentColor = PlMailTheme.colors.inkSoft,
             ),
         // No title: the subject is the first thing on the page -- see
-        // [ReaderSubject] -- and the bar is the actions' alone.
+        // [ReaderHeader] -- and the bar is the actions' alone.
         title = {},
         navigationIcon = {
             onBack?.let { back ->
@@ -514,13 +499,8 @@ private fun ReaderBar(
             }
 
             DropdownMenu(expanded = isMenuOpen, onDismissRequest = { isMenuOpen = false }) {
-                DropdownMenuItem(
-                    text = { Text(stringResource(R.string.action_star)) },
-                    onClick = {
-                        isMenuOpen = false
-                        onAction(MailAction.Star(flagged = true))
-                    },
-                )
+                // No "Star" here: it is a button beside the subject now, where it
+                // can show whether the conversation already is one.
                 // Marking unread rather than read: the reader has just marked
                 // every message it showed as read, so "mark read" here is a
                 // control that never does anything.
