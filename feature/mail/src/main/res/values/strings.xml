@@ -143,6 +143,11 @@
         <item quantity="one">1 conversation put back</item>
         <item quantity="other">%1$d conversations put back</item>
     </plurals>
+    <string name="move_to">Move to</string>
+    <plurals name="moved_to">
+        <item quantity="one">1 conversation moved to %2$s</item>
+        <item quantity="other">%1$d conversations moved to %2$s</item>
+    </plurals>
     <plurals name="labelled">
         <item quantity="one">Label added to 1 conversation</item>
         <item quantity="other">Label added to %1$d conversations</item>

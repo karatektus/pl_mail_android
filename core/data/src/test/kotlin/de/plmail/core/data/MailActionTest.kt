@@ -37,6 +37,34 @@ class MailActionTest {
         assertEquals(MailAction.MoveToInbox, MailAction.MarkSpam.inverse)
     }
 
+    /**
+     * A move is undone by the same move the other way round, the Inbox included.
+     *
+     * Null is the Inbox on either side, which is what makes this symmetrical: filing mail from the
+     * inbox under Receipts is undone by moving it from Receipts to the inbox, with no third action
+     * needed to say so.
+     */
+    @Test
+    fun `a move is undone by moving back`() {
+        val receipts =
+            Label(
+                key = "receipts",
+                name = "Receipts",
+                path = "Receipts",
+                role = null,
+                color = null,
+                unreadThreads = 0,
+                totalThreads = 0,
+                mayRename = true,
+                mayDelete = true,
+                bindings = emptyList(),
+            )
+        val filed = MailAction.MoveTo(target = receipts, leaving = null)
+
+        assertEquals(MailAction.MoveTo(target = null, leaving = receipts), filed.inverse)
+        assertEquals(filed, filed.inverse.inverse)
+    }
+
     @Test
     fun `the toggles invert their own value`() {
         assertEquals(MailAction.Star(false), MailAction.Star(true).inverse)

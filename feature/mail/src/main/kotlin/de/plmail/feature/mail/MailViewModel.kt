@@ -77,6 +77,9 @@ data class OfflineState(
 /** The "Label as" sheet, once its ticks have been resolved. */
 data class LabelSheetState(val targets: List<ActionTarget>, val selection: LabelSelection)
 
+/** The "Move to" sheet, once it is known where these conversations can go. */
+data class MoveSheetState(val targets: List<ActionTarget>, val destinations: List<MoveDestination>)
+
 @HiltViewModel
 class MailViewModel
 @Inject
@@ -257,6 +260,33 @@ constructor(
 
     fun closeLabelSheet() {
         _labelSheet.update { null }
+    }
+
+    private val _moveSheet = MutableStateFlow<MoveSheetState?>(null)
+    val moveSheet: StateFlow<MoveSheetState?> = _moveSheet.asStateFlow()
+
+    /**
+     * Opens "Move to" over a set of conversations, from the list [view] is showing.
+     *
+     * The view is what decides which label comes off, so it is taken from the caller — the pane
+     * that is on screen — rather than read back here, and the rows are resolved before the sheet is
+     * shown for the reason the label sheet's ticks are.
+     */
+    fun openMoveSheet(view: MailView, targets: List<ActionTarget>) {
+        if (targets.isEmpty()) return
+
+        viewModelScope.launch {
+            val known = labels.value
+            val applied = labelRepository.appliedTo(known, targets)
+
+            _moveSheet.update {
+                MoveSheetState(targets, moveDestinations(view, known, targets, applied))
+            }
+        }
+    }
+
+    fun closeMoveSheet() {
+        _moveSheet.update { null }
     }
 
     private val shown = MutableStateFlow(MailView.START)

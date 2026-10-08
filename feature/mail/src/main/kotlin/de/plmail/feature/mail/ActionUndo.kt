@@ -143,6 +143,13 @@ private fun describe(outcome: ActionOutcome): String {
                 pluralStringResource(R.plurals.labelled, count, count)
             action is MailAction.SetLabel ->
                 pluralStringResource(R.plurals.unlabelled, count, count)
+            action is MailAction.MoveTo ->
+                pluralStringResource(
+                    R.plurals.moved_to,
+                    count,
+                    count,
+                    action.target?.displayName() ?: stringResource(R.string.role_inbox),
+                )
             action is MailAction.Snooze && action.until != null ->
                 pluralStringResource(R.plurals.snoozed, count, count)
             action is MailAction.Snooze -> pluralStringResource(R.plurals.unsnoozed, count, count)

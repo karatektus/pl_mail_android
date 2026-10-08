@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.automirrored.outlined.Forward
 import androidx.compose.material.icons.automirrored.outlined.Reply
 import androidx.compose.material.icons.filled.MoreVert
@@ -56,6 +57,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.content.FileProvider
@@ -112,6 +115,8 @@ fun ReaderScreen(
     onAction: (MailAction) -> Unit = {},
     /** Opens the "Label as" sheet, which is hosted a level up for the same reason. */
     onLabel: () -> Unit = {},
+    /** Opens the "Move to" sheet, hosted beside it. */
+    onMove: () -> Unit = {},
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -204,13 +209,11 @@ fun ReaderScreen(
             modifier = Modifier.fillMaxSize(),
             topBar = {
                 ReaderBar(
-                    subject =
-                        state.subject?.takeIf { it.isNotBlank() }
-                            ?: stringResource(UiR.string.no_subject),
                     isSnoozed = state.snoozedUntil != null,
                     onBack = onBack,
                     onAction = onAction,
                     onLabel = onLabel,
+                    onMove = onMove,
                 )
             },
             snackbarHost = { SnackbarHost(snackbars) },
@@ -229,6 +232,20 @@ fun ReaderScreen(
             },
         ) { insets ->
             LazyColumn(modifier = Modifier.fillMaxSize().padding(insets)) {
+                // The subject, on the page rather than in the bar. In the bar it
+                // had one line between the back arrow and the actions, which on
+                // a phone is about twenty characters of a subject that is
+                // usually longer -- and it took the room the actions wanted.
+                // Here it wraps to whatever it needs and scrolls away with the
+                // conversation it names.
+                item(key = SUBJECT_KEY) {
+                    ReaderSubject(
+                        subject =
+                            state.subject?.takeIf { it.isNotBlank() }
+                                ?: stringResource(UiR.string.no_subject)
+                    )
+                }
+
                 items(items = state.messages, key = { it.email.uid }) { message ->
                     Message(
                         message = message,
@@ -251,6 +268,32 @@ fun ReaderScreen(
         }
     }
 }
+
+/**
+ * The conversation's subject, as the heading of the page.
+ *
+ * Unbounded on purpose. The whole reason it left the bar is that a subject is not a label to be
+ * truncated: "Re: Ihre Anfrage vom 3. Oktober – Rückfrage zu Position 4" cut off after "Re: Ihre
+ * Anf…" names nothing, and the reader is the one screen whose job is to show the thing in full.
+ */
+@Composable
+private fun ReaderSubject(subject: String) {
+    val spacing = PlMailTheme.spacing
+
+    Text(
+        text = subject,
+        style = MaterialTheme.typography.titleLarge,
+        color = PlMailTheme.colors.ink,
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(horizontal = spacing.gutter)
+                .padding(top = spacing.small, bottom = spacing.medium)
+                .semantics { heading() },
+    )
+}
+
+/** The subject row's key in the reader's list, which no message uid can collide with. */
+private const val SUBJECT_KEY = "reader:subject"
 
 /**
  * Reply, reply-all and forward, always on screen.
@@ -398,11 +441,11 @@ internal fun ReaderActionBar(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReaderBar(
-    subject: String,
     isSnoozed: Boolean,
     onBack: (() -> Unit)?,
     onAction: (MailAction) -> Unit,
     onLabel: () -> Unit,
+    onMove: () -> Unit,
 ) {
     var isMenuOpen by remember { mutableStateOf(false) }
     var isSnoozeOpen by remember { mutableStateOf(false) }
@@ -431,7 +474,9 @@ private fun ReaderBar(
                 navigationIconContentColor = PlMailTheme.colors.inkSoft,
                 actionIconContentColor = PlMailTheme.colors.inkSoft,
             ),
-        title = { Text(text = subject, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        // No title: the subject is the first thing on the page -- see
+        // [ReaderSubject] -- and the bar is the actions' alone.
+        title = {},
         navigationIcon = {
             onBack?.let { back ->
                 IconButton(onClick = back) {
@@ -453,6 +498,12 @@ private fun ReaderBar(
                 Icon(
                     imageVector = Icons.Outlined.Delete,
                     contentDescription = stringResource(R.string.action_trash),
+                )
+            }
+            IconButton(onClick = onMove) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Outlined.DriveFileMove,
+                    contentDescription = stringResource(R.string.move_to),
                 )
             }
             IconButton(onClick = { isMenuOpen = true }) {

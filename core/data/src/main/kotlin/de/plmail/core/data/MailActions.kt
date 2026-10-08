@@ -259,6 +259,41 @@ constructor(
                         }
                     }
 
+                    // Both halves in one write, for the reason they are one
+                    // patch: a conversation that gained the target and is still
+                    // in the list it was moved out of has not moved.
+                    is MailAction.MoveTo -> {
+                        val joining = moveBinding(action.target, target.accountKey)
+                        val left =
+                            moveBinding(action.leaving, target.accountKey).takeIf { it != joining }
+
+                        database.emails().inThread(target.accountKey, target.threadId).let {
+                            messages ->
+                            database
+                                .emails()
+                                .upsert(
+                                    messages.map { message ->
+                                        val joined =
+                                            joining?.let { message.withBinding(it, true) }
+                                                ?: message
+
+                                        left?.let { joined.withBinding(it, false) } ?: joined
+                                    }
+                                )
+                        }
+
+                        val leaving = action.leaving
+
+                        if (leaving == null || leaving.isInbox) clearFromInbox(threadUid)
+                        else database.feed().clearThread(leaving.feedId, threadUid)
+
+                        if (action.target.let { it == null || it.isInbox }) {
+                            restoreToInbox(target, threadUid)
+                        }
+
+                        mail.refreshLabelsOf(target.accountKey, target.threadId)
+                    }
+
                     is MailAction.Snooze -> {
                         database.threads().setSnoozedUntil(threadUid, action.until)
 
@@ -563,6 +598,46 @@ constructor(
                 }
             }
 
+            is MailAction.MoveTo -> {
+                // No inbox binding is a move this account cannot express, like
+                // Archive's; a label it does not bind is a refusal with a name.
+                val joining =
+                    moveBinding(action.target, accountKey)
+                        ?: if (action.target == null || action.target.isInbox) return null
+                        else
+                            error(
+                                "\"${action.target.name}\" is not one of this account's labels, " +
+                                    "so mail here cannot be moved to it."
+                            )
+                val leaving = action.leaving
+
+                if (leaving == null || leaving.isInbox) {
+                    // Leaving the inbox for a label is archiving with a label
+                    // attached, so it is built the way Archive is: on an account
+                    // with no All Mail the Archive binding goes on as well,
+                    // which is what the web's move does there.
+                    val inbox = inbox(accountKey) ?: return null
+                    val archive =
+                        if (onlyInInbox(accountKey, inbox)) binding(accountKey, "archive") else null
+
+                    EmailPatch.build {
+                        addMailbox(joining)
+                        archive?.let { addMailbox(it) }
+                        if (inbox != joining) removeMailbox(inbox)
+                    }
+                } else {
+                    // A label this account does not bind has nothing to take
+                    // off here, which is not a refusal: the conversation still
+                    // gains the target.
+                    val left = leaving.bindings.bindingIn(accountKey).takeIf { it != joining }
+
+                    EmailPatch.build {
+                        addMailbox(joining)
+                        left?.let { removeMailbox(it) }
+                    }
+                }
+            }
+
             // Handled by sendSnooze, which speaks Thread/set.
             is MailAction.Snooze -> null
 
@@ -570,6 +645,11 @@ constructor(
         }
 
     private suspend fun inbox(accountKey: String): MailboxId? = binding(accountKey, "inbox")
+
+    /** One side of a move in one account: the label's binding, or the inbox's for null. */
+    private suspend fun moveBinding(label: Label?, accountKey: String): MailboxId? =
+        if (label == null || label.isInbox) inbox(accountKey)
+        else label.bindings.bindingIn(accountKey)
 
     /**
      * Whether this account's messages sit in the Inbox and nowhere else.

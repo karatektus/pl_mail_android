@@ -85,6 +85,7 @@ fun MailPane(
     val announcement by viewModel.announcement.collectAsStateWithLifecycle()
     val labels by viewModel.labels.collectAsStateWithLifecycle()
     val labelSheet by viewModel.labelSheet.collectAsStateWithLifecycle()
+    val moveSheet by viewModel.moveSheet.collectAsStateWithLifecycle()
     val snackbars = remember { SnackbarHostState() }
 
     UndoSnackbar(
@@ -119,6 +120,15 @@ fun MailPane(
     // would swallow the gesture that should leave the screen.
     BackHandler(enabled = navigator.canNavigateBack()) {
         scope.launch { navigator.navigateBack() }
+    }
+
+    val closeReader = {
+        close(navigator, scope) {
+            selectedAccount = null
+            selectedThread = null
+            selectedSubject = null
+            selectedUid = null
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -171,16 +181,13 @@ fun MailPane(
                                 // anything. Starring and labelling do not, and
                                 // closing on those would be a screen that vanishes
                                 // when somebody stars a message.
-                                if (action.leavesTheList)
-                                    close(navigator, scope) {
-                                        selectedAccount = null
-                                        selectedThread = null
-                                        selectedSubject = null
-                                        selectedUid = null
-                                    }
+                                if (action.leavesTheList) closeReader()
                             },
                             onLabel = {
                                 viewModel.openLabelSheet(listOf(ActionTarget(account, thread)))
+                            },
+                            onMove = {
+                                viewModel.openMoveSheet(view, listOf(ActionTarget(account, thread)))
                             },
                             // Only where there is a list to go back *to*. On a
                             // tablet both panes are on screen and an arrow that
@@ -222,6 +229,28 @@ fun MailPane(
             onDismiss = viewModel::closeLabelSheet,
         )
     }
+
+    moveSheet?.let { sheet ->
+        MoveSheet(
+            destinations = sheet.destinations,
+            targets = sheet.targets,
+            onPick = { action ->
+                viewModel.closeMoveSheet()
+                viewModel.apply(action, sheet.targets)
+
+                // The same rule as an action taken in the reader itself: a
+                // conversation moved out of the list it was opened from is no
+                // longer something the reader is a view of.
+                val isOpen =
+                    sheet.targets.any {
+                        it.accountKey == selectedAccount && it.threadId == selectedThread
+                    }
+
+                if (isOpen && action.leavesTheList) closeReader()
+            },
+            onDismiss = viewModel::closeMoveSheet,
+        )
+    }
 }
 
 /**
@@ -246,6 +275,8 @@ private val MailAction.leavesTheList: Boolean
         this == MailAction.Archive ||
             this == MailAction.Trash ||
             this == MailAction.MarkSpam ||
+            this is MailAction.MoveTo ||
+            this == MailAction.MoveToInbox ||
             (this is MailAction.Snooze && until != null)
 
 /**

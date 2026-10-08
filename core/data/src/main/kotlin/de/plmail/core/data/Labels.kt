@@ -61,6 +61,10 @@ data class Label(
     val isSystem: Boolean
         get() = role != null
 
+    /** Whether this is the Inbox, which a move treats as a place rather than as a tag. */
+    val isInbox: Boolean
+        get() = role == "inbox"
+
     /** The feed id for browsing this label. Stable, because it keys the persisted feed table. */
     val feedId: String
         get() = labelFeedId(key)

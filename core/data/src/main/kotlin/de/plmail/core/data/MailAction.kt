@@ -63,6 +63,26 @@ sealed interface MailAction {
     }
 
     /**
+     * "Move to": [target] on and [leaving] off, as one change.
+     *
+     * The web's action of the same name (`MoveToService`), and defined the same way — by where the
+     * person is standing. From the inbox it is "label and archive"; from a label it swaps that
+     * label for another; every other label the conversation wears is left alone.
+     *
+     * **Null is the Inbox, on either side.** The inbox is a list the app reaches as a category tab
+     * as often as a label row, so there is frequently no [Label] to hand for it, and each account's
+     * own inbox binding is resolved by role when the patch is built. That also makes the inverse
+     * exact and symmetrical: the way back from a move is the same move the other way round.
+     *
+     * Trash and Spam are never a [target]. Each is its own action with its own path on the server,
+     * and the picker sends [Trash] and [MarkSpam] for those rows.
+     */
+    data class MoveTo(val target: Label?, val leaving: Label?) : MailAction {
+        override val inverse: MailAction
+            get() = MoveTo(target = leaving, leaving = target)
+    }
+
+    /**
      * Putting a conversation away until a time, or bringing it back.
      *
      * `Thread/set` rather than `Email/set`, and a move rather than a flag: the server takes the

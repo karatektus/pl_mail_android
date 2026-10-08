@@ -214,6 +214,72 @@ class OutboxTest {
         assertEquals(null, drained.single().emailId)
     }
 
+    /**
+     * A move comes back out of the queue as the same move, both sides re-resolved by key.
+     *
+     * Null on either side is the Inbox and is stored as no key at all, which is what lets it
+     * survive: there is no inbox [Label] to go stale, only a role each account resolves for itself.
+     */
+    @Test
+    fun `a queued move is rebuilt with both of its sides`() = runTest {
+        val receipts = label("receipts")
+        val work = label("work")
+        val outbox = outbox(labels = mapOf("receipts" to receipts, "work" to work))
+
+        outbox.enqueue(MailAction.MoveTo(target = receipts, leaving = null), targets, at = 1)
+        outbox.enqueue(MailAction.MoveTo(target = work, leaving = receipts), targets, at = 2)
+
+        val attempted = mutableListOf<MailAction>()
+
+        outbox.drain { action, _ -> attempted += action }
+
+        assertEquals(
+            listOf<MailAction>(
+                MailAction.MoveTo(target = receipts, leaving = null),
+                MailAction.MoveTo(target = work, leaving = receipts),
+            ),
+            attempted,
+        )
+    }
+
+    /**
+     * A side that named a label which has gone is not read as the Inbox.
+     *
+     * The two are both "no label found", and confusing them would turn a move out of a deleted
+     * label into an archive of mail that was never in the inbox to begin with.
+     */
+    @Test
+    fun `a queued move out of a label that no longer exists is dropped`() = runTest {
+        val receipts = label("receipts")
+        val outbox = outbox(labels = mapOf("receipts" to receipts))
+
+        outbox.enqueue(
+            MailAction.MoveTo(target = receipts, leaving = label("gone")),
+            targets,
+            at = 1,
+        )
+
+        val attempted = mutableListOf<MailAction>()
+        val result = outbox.drain { action, _ -> attempted += action }
+
+        assertEquals(1, result.sent)
+        assertTrue(attempted.isEmpty(), "nothing should have been sent")
+    }
+
+    private fun label(key: String) =
+        Label(
+            key = key,
+            name = key,
+            path = key,
+            role = null,
+            color = null,
+            unreadThreads = 0,
+            totalThreads = 0,
+            mayRename = true,
+            mayDelete = true,
+            bindings = emptyList(),
+        )
+
     @Test
     fun `a queue written by a build that is no longer installed clears rather than crashes`() =
         runTest {

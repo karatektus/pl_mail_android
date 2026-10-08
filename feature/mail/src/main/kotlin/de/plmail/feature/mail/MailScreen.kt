@@ -281,6 +281,7 @@ fun MailScreen(
                         viewModel.apply(action, threads.targetsFor(selection))
                     },
                     onLabel = { viewModel.openLabelSheet(threads.targetsFor(selection)) },
+                    onMove = { viewModel.openMoveSheet(view, threads.targetsFor(selection)) },
                     onSnooze = { at ->
                         viewModel.apply(
                             MailAction.Snooze(at?.toEpochMilli()),
@@ -900,6 +901,7 @@ private fun SelectionBar(
     onClear: () -> Unit,
     onAction: (MailAction) -> Unit,
     onLabel: () -> Unit,
+    onMove: () -> Unit,
     onSnooze: (Instant?) -> Unit,
     isSnoozed: Boolean,
 ) {
@@ -983,6 +985,13 @@ private fun SelectionBar(
                     onClick = {
                         isMenuOpen = false
                         onAction(MailAction.MarkSpam)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.move_to)) },
+                    onClick = {
+                        isMenuOpen = false
+                        onMove()
                     },
                 )
                 DropdownMenuItem(

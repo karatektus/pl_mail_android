@@ -33,6 +33,11 @@ internal data class PendingMutation(
     val labelKey: String? = null,
     val applied: Boolean = false,
     val until: Long? = null,
+    /**
+     * [Kind.MOVE]'s other side, with [labelKey] as the target. Null is the Inbox on both, which is
+     * resolved by role per account and so needs no key.
+     */
+    val leavingKey: String? = null,
 ) {
     @Serializable
     enum class Kind {
@@ -44,6 +49,7 @@ internal data class PendingMutation(
         SPAM,
         LABEL,
         SNOOZE,
+        MOVE,
     }
 
     /**
@@ -260,6 +266,14 @@ private fun MailAction.asPending(
             )
         is MailAction.Snooze ->
             PendingMutation(PendingMutation.Kind.SNOOZE, stored, at, until = until)
+        is MailAction.MoveTo ->
+            PendingMutation(
+                PendingMutation.Kind.MOVE,
+                stored,
+                at,
+                labelKey = target?.key,
+                leavingKey = leaving?.key,
+            )
     }
 }
 
@@ -274,4 +288,16 @@ private fun PendingMutation.asAction(known: Map<String, Label>): MailAction? =
         PendingMutation.Kind.MARK_READ -> MailAction.MarkRead(flag)
         PendingMutation.Kind.SNOOZE -> MailAction.Snooze(until)
         PendingMutation.Kind.LABEL -> known[labelKey]?.let { MailAction.SetLabel(it, applied) }
+        // A side that named a label which is gone cannot be replayed, and is
+        // not quietly read as the Inbox: null means the Inbox only where no key
+        // was stored.
+        PendingMutation.Kind.MOVE ->
+            if (labelKey.isUnknownIn(known) || leavingKey.isUnknownIn(known)) null
+            else
+                MailAction.MoveTo(
+                    target = labelKey?.let { known[it] },
+                    leaving = leavingKey?.let { known[it] },
+                )
     }
+
+private fun String?.isUnknownIn(known: Map<String, Label>): Boolean = this != null && this !in known

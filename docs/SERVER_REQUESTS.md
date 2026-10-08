@@ -41,10 +41,39 @@ Each one should let someone decide in a minute, without opening the client:
 
 ## Open
 
-Nothing, for the first time. All seven asks below were built on 2026-08-06 — each in its own
-worktree branch, all merged into plMail `main` in one push (`cbd27e0`) — and every wire behaviour
-described under "Landed" was verified over HTTP against a live stack built from that merge, not
-read out of the PHP. The entries moved to "Landed" below, with what a client author needs.
+One, filed 2026-10-08. The seven before it were built on 2026-08-06 — each in its own worktree
+branch, all merged into plMail `main` in one push (`cbd27e0`) — and are under "Landed" below.
+
+### "Move to" over JMAP — the phone composes it, and is a second implementation of `MoveToService`
+
+- **What the client wants to do.** File a conversation the way the web's "Move to" does (plMail
+  `464df704`): the target label on, the label of the list being looked at off, as one action with
+  one undo.
+- **What it can do today.** The web's move is a web route (`BulkStatusController`,
+  `ThreadStatusController`) and has no JMAP method, so the app sends one `Email/set` patch per
+  account — `mailboxIds/<target>: true`, `mailboxIds/<leaving>: null` — built by
+  `MailActions.patchFor`. That is a plain attach and detach through `EmailPatchApplier`, where
+  `MoveToService::moveWithinAccount` calls `archive()`, `restore()` and `move()` because each
+  carries provider behaviour. Three places the two can disagree:
+  - *Leaving the Inbox for a tag.* The server archives; the phone detaches Inbox and, on an account
+    with no All Mail, attaches Archive as its own Archive action does. The same result where the
+    target is a tag. Where the target is a real folder on a plain IMAP account the server leaves
+    Archive out and the phone cannot tell, so it adds it.
+  - *Only the messages that carry the leaving label lose it* on the server. The phone patches every
+    message of the conversation alike, which is the same for a detach and is not the same for the
+    Archive it adds: a sent reply in an inbox thread gains Archive here.
+  - *Out of Trash or Spam under a label* is restore-then-archive on the server, and detaching Trash
+    as though it were a tag is what `MoveToService` says not to do. **The phone does not offer it**:
+    from the bin the picker has the Inbox (the existing restore) and nothing else of the user's.
+- **What was checked.** Read, not probed: `MoveToService`, `EmailPatchApplier`. Nothing here was
+  run against a live Gmail, Exchange or plain IMAP account.
+- **The smallest server change that would unblock it.** A JMAP surface that takes a target mailbox
+  and the view being left and calls `MoveToService` — a `Thread/set` extension property beside
+  `snoozedUntil` would fit, since a conversation is the unit of both. Its undo would want
+  `StatusUndoService`'s remembered labels rather than the phone's inverse move.
+- **Whether a workaround exists.** It is the workaround, shipped at the user's request on
+  2026-10-08. The cost of being wrong is mail on a plain IMAP account landing in Archive as well as
+  in the folder it was moved to.
 
 ---
 

@@ -103,6 +103,11 @@
         <item quantity="one">1 Unterhaltung wiederhergestellt</item>
         <item quantity="other">%1$d Unterhaltungen wiederhergestellt</item>
     </plurals>
+    <string name="move_to">Verschieben nach</string>
+    <plurals name="moved_to">
+        <item quantity="one">1 Unterhaltung nach %2$s verschoben</item>
+        <item quantity="other">%1$d Unterhaltungen nach %2$s verschoben</item>
+    </plurals>
     <plurals name="labelled">
         <item quantity="one">Label zu 1 Unterhaltung hinzugefügt</item>
         <item quantity="other">Label zu %1$d Unterhaltungen hinzugefügt</item>
