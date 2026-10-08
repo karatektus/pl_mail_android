@@ -158,8 +158,14 @@
     <string name="swipe_confirm_trash">Move this conversation to the trash?</string>
     <string name="swipe_confirm_read">Mark this conversation as read?</string>
     <string name="swipe_confirm_unread">Mark this conversation as unread?</string>
+    <string name="swipe_confirm_snooze">Snooze this conversation?</string>
+    <string name="swipe_confirm_move">Move this conversation?</string>
     <string name="swipe_confirm_cancel">Cancel</string>
     <string name="gestures">Swipe actions</string>
+    <plurals name="label_new_applies">
+        <item quantity="one">The new label is added to this conversation.</item>
+        <item quantity="other">The new label is added to the %1$d selected conversations.</item>
+    </plurals>
     <string name="move_to">Move to</string>
     <plurals name="moved_to">
         <item quantity="one">1 conversation moved to %2$s</item>

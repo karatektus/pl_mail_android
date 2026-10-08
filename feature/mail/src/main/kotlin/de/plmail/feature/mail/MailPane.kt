@@ -56,6 +56,8 @@ fun MailPane(
     onOpenSidebar: (() -> Unit)?,
     onEditLabel: (Label) -> Unit,
     onCreateLabel: () -> Unit,
+    /** "New label" from the label sheet: a label to make *and* put on these conversations. */
+    onCreateLabelFor: (List<ActionTarget>) -> Unit,
     /** Passed through to the list, which is where a new-mail bundle is tapped. See [MailScreen]. */
     onNavigate: (MailView) -> Unit,
     onSearch: () -> Unit,
@@ -231,7 +233,7 @@ fun MailPane(
             },
             onCreate = {
                 viewModel.closeLabelSheet()
-                onCreateLabel()
+                onCreateLabelFor(sheet.targets)
             },
             onDismiss = viewModel::closeLabelSheet,
         )

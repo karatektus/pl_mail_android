@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.window.core.layout.WindowSizeClass
+import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.MailView
 import de.plmail.core.data.isStartDestination
 import de.plmail.core.designsystem.PlMailTheme
@@ -75,6 +76,12 @@ fun MailShell(
     var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
     var editing by rememberSaveable(stateSaver = LabelEditorSaver) { mutableStateOf(null) }
 
+    // The mail a new label is being made *for*, when the dialog was opened from
+    // "Label as". Not saved: after a process death the dialog comes back as a
+    // plain "new label", which makes the label and applies nothing — the lesser
+    // surprise next to applying it to a selection nobody can see any more.
+    var labelling by remember { mutableStateOf(emptyList<ActionTarget>()) }
+
     // Not saved across a process death, and deliberately: rearranging the drawer
     // is something somebody does once and finishes, so coming back to a phone
     // that has been in a pocket and finding every row wearing a star -- and no
@@ -117,6 +124,7 @@ fun MailShell(
                 onEditingChange = { rearranging = it },
                 onImportantChange = viewModel::setImportant,
                 onCreate = {
+                    labelling = emptyList()
                     editing = LabelEditorRequest.New
                     scope.launch { drawer.close() }
                 },
@@ -164,7 +172,14 @@ fun MailShell(
                 // opens something already open is a control that does nothing.
                 onOpenSidebar = if (isWide) null else ({ scope.launch { drawer.open() } }),
                 onEditLabel = { editing = LabelEditorRequest.Edit(it.key) },
-                onCreateLabel = { editing = LabelEditorRequest.New },
+                onCreateLabel = {
+                    labelling = emptyList()
+                    editing = LabelEditorRequest.New
+                },
+                onCreateLabelFor = { targets ->
+                    labelling = targets
+                    editing = LabelEditorRequest.New
+                },
                 // The same state a sidebar tap writes, which is the whole point:
                 // a new-mail bundle is a way of *going somewhere*, so it has to
                 // move the one thing that knows where the app is.
@@ -231,7 +246,11 @@ fun MailShell(
         LabelEditor(
             request = request,
             labels = labels,
-            onDismiss = { editing = null },
+            applyTo = labelling,
+            onDismiss = {
+                editing = null
+                labelling = emptyList()
+            },
             onDeleted = { deleted ->
                 // Back to where the app opens rather than to a label that no
                 // longer exists -- otherwise the list keeps paging a mailbox the

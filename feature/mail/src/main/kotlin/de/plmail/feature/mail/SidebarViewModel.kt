@@ -3,9 +3,13 @@ package de.plmail.feature.mail
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import de.plmail.core.data.ActionOutcome
+import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.CategoryDigest
 import de.plmail.core.data.Label
 import de.plmail.core.data.LabelRepository
+import de.plmail.core.data.MailAction
+import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailCategory
 import de.plmail.core.data.MailRepository
 import de.plmail.core.data.SidebarSections
@@ -16,6 +20,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -129,12 +134,53 @@ data class LabelEditorState(
  * be ticked onto a conversation before it existed, and there would be nothing to send.
  */
 @HiltViewModel
-class LabelEditorViewModel @Inject constructor(private val labels: LabelRepository) : ViewModel() {
+class LabelEditorViewModel
+@Inject
+constructor(private val labels: LabelRepository, private val actions: MailActions) : ViewModel() {
 
     private val _state = MutableStateFlow(LabelEditorState())
     val state: StateFlow<LabelEditorState> = _state.asStateFlow()
 
-    fun create(name: String, color: String?) = work { labels.create(name.trim(), color) }
+    /**
+     * Creates a label — and, when the dialog was opened from "Label as", puts it on the mail that
+     * was being labelled.
+     *
+     * Somebody who taps "New label" under a list of labels they were choosing from is still
+     * labelling that mail; a dialog that made the label and went back to the list having applied
+     * nothing left them to open the sheet again and find the thing they had just made.
+     *
+     * Created in the account the mail is in rather than in the primary one, because a label is
+     * applied through its binding and a label made somewhere else has none there. A selection
+     * across two accounts gets it in both, one account at a time, and each account's mail gets the
+     * label that account made — which is one label wherever the server collapses them, and two
+     * correctly-applied ones where it does not.
+     *
+     * A refusal to apply is reported in the dialog like any other failure, though the label then
+     * exists: the user asked for two things and should hear that one of them did not happen.
+     */
+    fun create(name: String, color: String?, applyTo: List<ActionTarget> = emptyList()) = work {
+        if (applyTo.isEmpty()) {
+            labels.create(name.trim(), color)
+
+            return@work
+        }
+
+        applyTo
+            .groupBy { it.accountKey }
+            .forEach { (accountKey, targets) ->
+                val created = labels.createIn(accountKey, name.trim(), color)
+                val label =
+                    labels.observeLabels().first().firstOrNull { label ->
+                        label.bindings.any {
+                            it.accountKey == accountKey && it.mailboxId == created.value
+                        }
+                    } ?: error("The label was created but has not reached this device yet.")
+
+                val outcome = actions.apply(MailAction.SetLabel(label, applied = true), targets)
+
+                if (outcome is ActionOutcome.Rejected) error(outcome.reason)
+            }
+    }
 
     /**
      * Rename and recolour in one patch.

@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -34,6 +35,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.Label
 import de.plmail.core.designsystem.PlMailLabelColor
 import de.plmail.core.designsystem.PlMailTheme
@@ -74,6 +76,11 @@ fun LabelEditor(
     labels: List<Label>,
     onDismiss: () -> Unit,
     onDeleted: (Label) -> Unit,
+    /**
+     * Mail a newly created label goes straight onto, when the dialog was opened from "Label as".
+     * Empty everywhere else. See [LabelEditorViewModel.create].
+     */
+    applyTo: List<ActionTarget> = emptyList(),
     viewModel: LabelEditorViewModel = hiltViewModel(),
 ) {
     val existing =
@@ -161,6 +168,21 @@ fun LabelEditor(
 
                 ColorPicker(selected = color, onSelect = { color = it })
 
+                // Said before the button is pressed, because it is the one
+                // thing this dialog does that its fields do not show.
+                if (existing == null && applyTo.isNotEmpty()) {
+                    Text(
+                        text =
+                            pluralStringResource(
+                                R.plurals.label_new_applies,
+                                applyTo.size,
+                                applyTo.size,
+                            ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PlMailTheme.colors.inkMuted,
+                    )
+                }
+
                 state.error?.let {
                     Text(text = it, color = PlMailTheme.colors.danger)
                 }
@@ -192,7 +214,7 @@ fun LabelEditor(
                 enabled =
                     (!namable || (name.isNotBlank() && !name.contains('/'))) && !state.isWorking,
                 onClick = {
-                    if (existing == null) viewModel.create(name, color?.wire)
+                    if (existing == null) viewModel.create(name, color?.wire, applyTo)
                     else viewModel.save(existing, name, color?.wire)
                 },
             ) {

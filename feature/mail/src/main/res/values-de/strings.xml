@@ -118,8 +118,14 @@
     <string name="swipe_confirm_trash">Diese Unterhaltung in den Papierkorb verschieben?</string>
     <string name="swipe_confirm_read">Diese Unterhaltung als gelesen markieren?</string>
     <string name="swipe_confirm_unread">Diese Unterhaltung als ungelesen markieren?</string>
+    <string name="swipe_confirm_snooze">Diese Unterhaltung zurückstellen?</string>
+    <string name="swipe_confirm_move">Diese Unterhaltung verschieben?</string>
     <string name="swipe_confirm_cancel">Abbrechen</string>
     <string name="gestures">Wischgesten</string>
+    <plurals name="label_new_applies">
+        <item quantity="one">Das neue Label wird dieser Unterhaltung hinzugefügt.</item>
+        <item quantity="other">Das neue Label wird den %1$d ausgewählten Unterhaltungen hinzugefügt.</item>
+    </plurals>
     <string name="move_to">Verschieben nach</string>
     <plurals name="moved_to">
         <item quantity="one">1 Unterhaltung nach %2$s verschoben</item>
