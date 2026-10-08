@@ -135,6 +135,40 @@ class WriteMethodsTest {
         assertEquals("2026-08-01T07:00:00Z", patch?.get("snoozedUntil")?.jsonPrimitive?.content)
     }
 
+    /**
+     * The view is sent as an explicit null when there is none, never left out by accident: the
+     * server reads both the same way, and a key that is always present is one a reader of the wire
+     * log does not have to wonder about.
+     */
+    @Test
+    fun `a move names the target and the view it leaves`() {
+        val update = mapOf(ThreadId("3") to ThreadPatch.moveTo(MailboxId("17"), MailboxId("42")))
+        val move =
+            argumentsOf(ThreadSet(account, update))["update"]
+                ?.jsonObject
+                ?.get("3")
+                ?.jsonObject
+                ?.get("moveTo")
+                ?.jsonObject
+
+        assertEquals("17", move?.get("mailboxId")?.jsonPrimitive?.content)
+        assertEquals("42", move?.get("fromMailboxId")?.jsonPrimitive?.content)
+
+        val nowhere = ThreadPatch.moveTo(MailboxId("17"), from = null).toJson()
+
+        assertEquals(JsonNull, nowhere["moveTo"]?.jsonObject?.get("fromMailboxId"))
+    }
+
+    /** Only the one sentence an old server says. A malformed move is a refusal, not a fallback. */
+    @Test
+    fun `an old server's refusal of moveTo is told apart from a refused move`() {
+        val old = SetError("invalidProperties", "\"moveTo\" is not a settable Thread property.")
+        val refused = SetError("invalidProperties", "Mail cannot be moved to \"Sent\".")
+
+        assertEquals(true, old.isUnsupportedMove)
+        assertEquals(false, refused.isUnsupportedMove)
+    }
+
     @Test
     fun `unsnooze nulls the property`() {
         val arguments = argumentsOf(ThreadSet.unsnooze(account, ThreadId("3")))

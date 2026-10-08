@@ -41,39 +41,37 @@ Each one should let someone decide in a minute, without opening the client:
 
 ## Open
 
-One, filed 2026-10-08. The seven before it were built on 2026-08-06 — each in its own worktree
-branch, all merged into plMail `main` in one push (`cbd27e0`) — and are under "Landed" below.
+One, filed 2026-10-08 and **built the same day, not yet merged**. The seven before it were built on
+2026-08-06 — each in its own worktree branch, all merged into plMail `main` in one push (`cbd27e0`)
+— and are under "Landed" below.
 
-### "Move to" over JMAP — the phone composes it, and is a second implementation of `MoveToService`
+### "Move to" over JMAP — built on plMail branch `feat/jmap-move-to`, awaiting merge
 
-- **What the client wants to do.** File a conversation the way the web's "Move to" does (plMail
-  `464df704`): the target label on, the label of the list being looked at off, as one action with
-  one undo.
-- **What it can do today.** The web's move is a web route (`BulkStatusController`,
-  `ThreadStatusController`) and has no JMAP method, so the app sends one `Email/set` patch per
-  account — `mailboxIds/<target>: true`, `mailboxIds/<leaving>: null` — built by
-  `MailActions.patchFor`. That is a plain attach and detach through `EmailPatchApplier`, where
-  `MoveToService::moveWithinAccount` calls `archive()`, `restore()` and `move()` because each
-  carries provider behaviour. Three places the two can disagree:
-  - *Leaving the Inbox for a tag.* The server archives; the phone detaches Inbox and, on an account
-    with no All Mail, attaches Archive as its own Archive action does. The same result where the
-    target is a tag. Where the target is a real folder on a plain IMAP account the server leaves
-    Archive out and the phone cannot tell, so it adds it.
-  - *Only the messages that carry the leaving label lose it* on the server. The phone patches every
-    message of the conversation alike, which is the same for a detach and is not the same for the
-    Archive it adds: a sent reply in an inbox thread gains Archive here.
-  - *Out of Trash or Spam under a label* is restore-then-archive on the server, and detaching Trash
-    as though it were a tag is what `MoveToService` says not to do. **The phone does not offer it**:
-    from the bin the picker has the Inbox (the existing restore) and nothing else of the user's.
-- **What was checked.** Read, not probed: `MoveToService`, `EmailPatchApplier`. Nothing here was
-  run against a live Gmail, Exchange or plain IMAP account.
-- **The smallest server change that would unblock it.** A JMAP surface that takes a target mailbox
-  and the view being left and calls `MoveToService` — a `Thread/set` extension property beside
-  `snoozedUntil` would fit, since a conversation is the unit of both. Its undo would want
-  `StatusUndoService`'s remembered labels rather than the phone's inverse move.
-- **Whether a workaround exists.** It is the workaround, shipped at the user's request on
-  2026-10-08. The cost of being wrong is mail on a plain IMAP account landing in Archive as well as
-  in the folder it was moved to.
+- **What the client wanted.** File a conversation the way the web's "Move to" does (plMail
+  `464df704`): the target label on, the label of the list being looked at off, as one action.
+  0.0.26 shipped it as an `Email/set` patch the phone composed — a plain attach and detach where
+  `MoveToService` calls `archive()`, `restore()` and `move()` — which this file's own rule says to
+  ask about first, and which could not move mail out of Trash or Spam at all.
+- **What was built.** `Thread/set` accepts `moveTo: { mailboxId, fromMailboxId }`, an instruction
+  rather than a property. The client names the target and the view; `MoveToService::plan()` decides
+  what comes off, and the move runs through the same service the browser's button calls. Authorised
+  by the user on 2026-10-08 and worked on a branch of the primary checkout rather than a worktree,
+  because the test container mounts that checkout; `main` was not moved.
+- **What was verified.** Over HTTP against the test stack on 8001, running the branch: a
+  conversation moved from the Inbox to a tag came back with the tag and Archive on and the Inbox
+  off, and the same call the other way round put it back exactly. 23 cases in
+  `ThreadSetMethodTest`, including out of the bin under a label. **Not** verified against a live
+  Gmail, Exchange or plain IMAP account — the provider jobs are queued, not watched.
+- **What the app does now.** `MailActions.sendMove` sends `moveTo`. A server that refuses the
+  property by name (`"moveTo" is not a settable Thread property.`) is remembered for the life of
+  the process and gets the old patch instead; a move in or out of the bin against such a server is
+  refused out loud, since the patch cannot say it. Labels are now offered from Trash and Spam.
+- **What is left.** Merge the branch and get it onto a server. Until then every install is "a
+  server too old", and behaves exactly as 0.0.26 did outside the bin.
+- **Not asked for.** The web's Undo restores each message's remembered labels
+  (`StatusUndoService`); the phone's undo is the same move the other way round. Exact for one
+  conversation between two places, which is what the round trip above shows, and not the same thing
+  for a mixed selection.
 
 ---
 

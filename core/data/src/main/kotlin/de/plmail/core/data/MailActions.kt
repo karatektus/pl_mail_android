@@ -11,6 +11,7 @@ import de.plmail.jmap.methods.EmailPatch
 import de.plmail.jmap.methods.EmailSet
 import de.plmail.jmap.methods.ThreadPatch
 import de.plmail.jmap.methods.ThreadSet
+import de.plmail.jmap.methods.isUnsupportedMove
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.EmailId
 import de.plmail.jmap.protocol.JmapError
@@ -22,6 +23,7 @@ import java.io.IOException
 import java.time.Instant
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -408,7 +410,91 @@ constructor(
      * trip per account, and the server's `maxObjectsInSet` is 500.
      */
     private suspend fun send(action: MailAction, targets: List<ActionTarget>) {
-        if (action is MailAction.Snooze) return sendSnooze(action, targets)
+        when (action) {
+            is MailAction.Snooze -> sendSnooze(action, targets)
+            is MailAction.MoveTo -> sendMove(action, targets)
+            else -> sendEmailSet(action, targets)
+        }
+    }
+
+    /**
+     * A move, as the instruction the server carries out — or, for a server too old to know it, as
+     * the patch this app used to compose.
+     *
+     * `Thread/set` `moveTo` hands the whole decision to `MoveToService`, which is what the web's
+     * button calls: leaving the Inbox for a tag is an archive, leaving the bin is a restore, and
+     * only the messages that carried the view's label lose it. The patch in [patchFor] is a plain
+     * attach and detach — right for a tag on Gmail, wrong for a folder on plain IMAP and for
+     * anything leaving the bin — and is kept only for a server that refuses the property by name.
+     *
+     * Which servers those are is remembered for the life of the process and no longer. It costs one
+     * refused call per account per launch, and forgets the answer exactly when it may have changed:
+     * an upgraded server is a restarted one, and the app notices on its next start.
+     */
+    private suspend fun sendMove(action: MailAction.MoveTo, targets: List<ActionTarget>) {
+        targets
+            .groupBy { it.accountKey }
+            .forEach { (accountKey, forAccount) ->
+                if (accountKey in withoutServerMove) {
+                    return@forEach sendEmailSet(action.patchable(), forAccount)
+                }
+
+                val account = database.accounts().byUid(accountKey) ?: return@forEach
+                val client = clients.forAccount(accountKey) ?: return@forEach
+
+                val to =
+                    moveBinding(action.target, accountKey)
+                        ?: error(
+                            "This account has nowhere called " +
+                                "\"${action.target?.name ?: "Inbox"}\" to move mail to."
+                        )
+                // Null where the label being left is not bound here, which the
+                // server reads as a list with no mailbox of its own.
+                val from = moveBinding(action.leaving, accountKey)
+
+                val request = RequestBuilder()
+                val handle =
+                    request.add(
+                        ThreadSet(
+                            accountId = AccountId(account.accountId),
+                            update =
+                                forAccount.associate {
+                                    ThreadId(it.threadId) to ThreadPatch.moveTo(to, from)
+                                },
+                        )
+                    )
+
+                val result = client.send(request).result(handle)
+                val failure = result.notUpdated.values.firstOrNull() ?: return@forEach
+
+                if (!failure.isUnsupportedMove) error(failure.description ?: failure.type)
+
+                // Refused by name, so nothing was moved for any of them: the
+                // property is checked before anything is applied.
+                withoutServerMove += accountKey
+                sendEmailSet(action.patchable(), forAccount)
+            }
+    }
+
+    /**
+     * This move, if a `mailboxIds` patch can say it; an error naming why not otherwise.
+     *
+     * The bin is the line. Taking mail out of Trash or Spam, or putting it there, is a provider
+     * operation — detaching Trash as though it were a tag tells Gmail to remove a label by a local
+     * id and tells a plain IMAP server nothing useful — so against a server without `moveTo` the
+     * app refuses out loud rather than doing the wrong thing quietly.
+     */
+    private fun MailAction.MoveTo.patchable(): MailAction.MoveTo =
+        if (listOf(target, leaving).any { it?.role in BIN_ROLES }) {
+            error("This server is too old to move mail in or out of the bin from the app.")
+        } else {
+            this
+        }
+
+    /** Accounts whose server refused `moveTo` by name. See [sendMove]. */
+    private val withoutServerMove: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    private suspend fun sendEmailSet(action: MailAction, targets: List<ActionTarget>) {
 
         targets
             .groupBy { it.accountKey }
@@ -669,6 +755,9 @@ constructor(
     private companion object {
         /** The role plMail gives the mailbox a snoozed conversation waits in. */
         const val SNOOZED_ROLE = "snoozed"
+
+        /** Trash and Spam, by the roles JMAP gives them. */
+        val BIN_ROLES = setOf("trash", "junk")
     }
 }
 

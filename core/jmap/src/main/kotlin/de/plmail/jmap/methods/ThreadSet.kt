@@ -2,6 +2,7 @@ package de.plmail.jmap.methods
 
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.JmapMethod
+import de.plmail.jmap.protocol.MailboxId
 import de.plmail.jmap.protocol.ThreadId
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -89,6 +90,28 @@ class ThreadPatch private constructor(private val fields: Map<String, JsonElemen
         fun shown(): ThreadPatch =
             ThreadPatch(mapOf("isNew" to kotlinx.serialization.json.JsonPrimitive(false)))
 
+        /**
+         * `moveTo`: the web's "Move to", carried out by the server.
+         *
+         * An instruction rather than a property — nothing reads it back. [to] is where the
+         * conversation goes and [from] is the mailbox of the list the user was looking at; **the
+         * client names the view and the server decides what that takes off**, because leaving the
+         * Inbox is an archive, leaving the bin is a restore, and both are provider operations no
+         * `mailboxIds` patch can express.
+         *
+         * A server older than this refuses the property by name — see [isUnsupportedMove].
+         */
+        fun moveTo(to: MailboxId, from: MailboxId?): ThreadPatch =
+            ThreadPatch(
+                mapOf(
+                    "moveTo" to
+                        buildJsonObject {
+                            put("mailboxId", to.value)
+                            put("fromMailboxId", from?.value)
+                        }
+                )
+            )
+
         fun snoozedUntil(utcDateTime: String?): ThreadPatch =
             ThreadPatch(
                 mapOf(
@@ -108,3 +131,17 @@ data class ThreadSetResult(
     val updated: Map<String, JsonElement?> = emptyMap(),
     val notUpdated: Map<String, SetError> = emptyMap(),
 )
+
+/**
+ * Whether a `Thread/set` refusal means "this server has never heard of `moveTo`".
+ *
+ * `ThreadSetMethod` answers an unknown property with `invalidProperties` and the sentence `"moveTo"
+ * is not a settable Thread property.` — which is also the type a *malformed* move gets from a
+ * server that does know it, so the type alone cannot tell the two apart and the wording has to.
+ * Matched on both the property's name and the phrase, so a newer server rewording some other
+ * refusal cannot be mistaken for an old one.
+ */
+val SetError.isUnsupportedMove: Boolean
+    get() =
+        type == "invalidProperties" &&
+            description.orEmpty().let { "moveTo" in it && "not a settable" in it }
