@@ -202,6 +202,13 @@ constructor(
         // Once it succeeds it is a no-op; see PushRepository for why.
         push.sweepLegacySubscriptions(deviceClientId.value)
 
+        // Here for the same reason the sweep is: a phone that has been live on
+        // Firebase since before the app sent sealing keys never registers
+        // again, and this is the only seam it passes through. Not allowed to
+        // fail the launch -- a server that will not take the keys leaves the
+        // device exactly as it was.
+        runCatching { push.ensureSealingKeys() }
+
         val stored = state.state.first()
         val choice = PushChoice.of(stored.choice) ?: PushChoice.WEB_PUSH
 

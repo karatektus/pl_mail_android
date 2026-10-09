@@ -8,6 +8,7 @@ import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import de.plmail.CalendarActivity
 import de.plmail.MainActivity
 import de.plmail.core.notifications.MailDestinations
 import javax.inject.Inject
@@ -29,6 +30,23 @@ constructor(@param:ApplicationContext private val context: Context) : MailDestin
 
     override fun reply(accountKey: String, emailId: String): PendingIntent =
         activity(ACTION_REPLY, accountKey, emailId, "reply#$accountKey#$emailId")
+
+    /**
+     * The calendar as its own task, which is what [CalendarActivity] is.
+     *
+     * Not exported and it does not need to be: this intent is sent by the system on the app's own
+     * behalf, with the app's identity. One request code for every reminder, deliberately — they all
+     * open the same place, so there is nothing for two of them to disagree about.
+     */
+    override fun openCalendar(): PendingIntent =
+        PendingIntent.getActivity(
+            context,
+            CALENDAR_REQUEST,
+            Intent(context, CalendarActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
 
     private fun activity(
         action: String,
@@ -97,3 +115,4 @@ private const val ACTION_OPEN_CONVERSATION = "de.plmail.OPEN_CONVERSATION"
 private const val ACTION_REPLY = "de.plmail.REPLY"
 private const val EXTRA_ACCOUNT = "account"
 private const val EXTRA_OBJECT = "object"
+private const val CALENDAR_REQUEST = 0x63616c

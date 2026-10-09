@@ -6,6 +6,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import de.plmail.core.data.NewMailListener
+import de.plmail.core.data.ReminderListener
 import javax.inject.Singleton
 
 /**
@@ -24,4 +25,9 @@ import javax.inject.Singleton
 abstract class NotificationsModule {
 
     @Binds @IntoSet @Singleton abstract fun mailNotifier(real: MailNotifier): NewMailListener
+
+    @Binds
+    @IntoSet
+    @Singleton
+    abstract fun reminderNotifier(real: ReminderNotifier): ReminderListener
 }

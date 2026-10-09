@@ -1,5 +1,6 @@
 package de.plmail.core.data
 
+import de.plmail.core.datastore.PushKeyStore
 import de.plmail.core.datastore.PushStateStore
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.NewPushSubscription
@@ -11,10 +12,14 @@ import de.plmail.jmap.methods.SetError
 import de.plmail.jmap.methods.StateChange
 import de.plmail.jmap.protocol.MethodResults
 import de.plmail.jmap.protocol.RequestBuilder
+import de.plmail.jmap.push.PushKeys
+import de.plmail.jmap.push.SealedPush
+import de.plmail.jmap.push.SealedPushException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 
 /**
@@ -34,6 +39,9 @@ sealed interface PushPayload {
 
     /** The ordinary case: a state token moved. Never content. */
     data class Changed(val accounts: Map<String, Map<String, String>>) : PushPayload
+
+    /** A calendar reminder: the one payload that carries words. See [Reminder]. */
+    data class Alert(val reminder: Reminder) : PushPayload
 
     /** Something else arrived on our endpoint. Ignored rather than trusted. */
     data object Unrecognised : PushPayload
@@ -89,6 +97,8 @@ constructor(
     private val changes: StateChangeApplier,
     private val log: PushLog,
     private val state: PushStateStore,
+    private val sealingKeys: PushKeyStore,
+    private val reminders: Set<@JvmSuppressWildcards ReminderListener> = emptySet(),
 ) {
 
     /**
@@ -118,8 +128,78 @@ constructor(
      * the same thing earlier and without a round trip — but it is the one that catches an
      * administrator switching Firebase off while a phone is registered against it.
      */
-    suspend fun subscribeFcm(token: String, deviceClientId: String): SubscribeOutcome =
-        create(NewPushSubscription.Fcm(deviceClientId = deviceClientId, fcmToken = token))
+    suspend fun subscribeFcm(token: String, deviceClientId: String): SubscribeOutcome {
+        val keys = keysToRegister()
+
+        val outcome =
+            create(
+                NewPushSubscription.Fcm(
+                    deviceClientId = deviceClientId,
+                    fcmToken = token,
+                    keys = keys,
+                )
+            )
+
+        if (outcome is SubscribeOutcome.Registered && keys != null) {
+            state.sealingKeysRegistered(outcome.subscriptionId, keys.p256dh)
+        }
+
+        return outcome
+    }
+
+    /**
+     * Makes sure the server holds this device's sealing keys for its FCM subscription.
+     *
+     * For the device that registered before the app sent any — which is every device on the day it
+     * updates to a version that does. Without this such a phone would keep its working
+     * subscription, keep receiving state changes, and never be sent a reminder, because the server
+     * sends nothing with content in it to a device it cannot seal for.
+     *
+     * An update, not a new create: keys decide what a payload is sealed to and not where it goes,
+     * so there is no handshake to redo and the subscription stays live throughout.
+     *
+     * Idempotent and cheap to call on every launch. What was registered is remembered as
+     * `subscriptionId:publicKey`, so it does nothing once the server has the keys the device has,
+     * and does it again if either half changes.
+     */
+    suspend fun ensureSealingKeys() {
+        val stored = state.state.first()
+        val subscriptionId = stored.subscriptionId ?: return
+
+        if (PushChoice.of(stored.transport) != PushChoice.FCM) return
+
+        val keys = keysToRegister() ?: return
+
+        if (stored.sealingKeysRegistered == "$subscriptionId:${keys.p256dh}") return
+
+        val client = clients.current() ?: return
+        val request = RequestBuilder()
+        val set = request.add(PushSubscriptionSet.registerKeys(subscriptionId, keys))
+
+        if (client.send(request).result(set).notUpdated.isEmpty()) {
+            state.sealingKeysRegistered(subscriptionId, keys.p256dh)
+        }
+    }
+
+    /**
+     * The keys to hand the server, or null when it would refuse them.
+     *
+     * Asked of the session first. A server that predates sealing refuses `keys` on an FCM
+     * subscription, and on a create that refusal takes the whole registration with it — so a phone
+     * pointed at an older instance must register exactly as it always did.
+     */
+    private suspend fun keysToRegister(): PushKeys? {
+        val supported = runCatching {
+            clients.current()?.session()?.push?.fcmEncryption == true
+        }
+            .getOrDefault(false)
+
+        if (!supported) return null
+
+        // A device that cannot make or store a key pair still gets its state
+        // changes. Reminders are what it goes without, which is where it was.
+        return runCatching { sealingKeys.keysOrCreate() }.getOrNull()
+    }
 
     /**
      * Tells the server the device's FCM token has changed.
@@ -184,6 +264,19 @@ constructor(
                 changes.apply(parsed.accounts)
             }
 
+            is PushPayload.Alert -> {
+                // The type and nothing else. The log is a diagnostics file a
+                // user may attach to a bug report, and what a reminder says is
+                // their diary.
+                log.record(ReceivedPush(at = now, transport = via.wire, type = ALERT_TYPE))
+
+                reminders.forEach { listener ->
+                    // One listener failing must not cost the others the
+                    // reminder, nor turn a delivered push into a crashed one.
+                    runCatching { listener.onReminder(parsed.reminder) }
+                }
+            }
+
             PushPayload.Unrecognised ->
                 log.record(
                     ReceivedPush(
@@ -196,6 +289,39 @@ constructor(
         }
 
         return parsed
+    }
+
+    /**
+     * Handles a push the server sealed to this device's keys — the FCM data key `encrypted`.
+     *
+     * Opened and then handed to [deliver], so a sealed payload goes through the same door as every
+     * other once it is readable; this method only adds the one step Firebase's own transport does
+     * not do for us. (A UnifiedPush distributor's payload is opened by the connector library before
+     * the app sees it, which is why that path has no equivalent.)
+     *
+     * One that will not open is recorded and dropped. It is not retried and not treated as a state
+     * change: there is nothing in it the app can act on, and the likeliest cause — keys that had to
+     * be regenerated since the server was last given them — is repaired by [ensureSealingKeys] on
+     * the next launch, not by anything that can be done with this message.
+     */
+    suspend fun deliverSealed(encoded: String, via: PushDelivery): PushPayload {
+        val opened =
+            try {
+                sealingKeys.keys()?.let { SealedPush.open(encoded, it).decodeToString() }
+            } catch (unopened: SealedPushException) {
+                null
+            }
+
+        if (opened != null) return deliver(opened, via)
+
+        val now = System.currentTimeMillis()
+
+        state.received(now, via.wire)
+        log.record(
+            ReceivedPush(at = now, transport = via.wire, type = SEALED_TYPE, note = NOTE_UNOPENED)
+        )
+
+        return PushPayload.Unrecognised
     }
 
     /** The bytes overload, for a transport that hands over an undecoded payload. */
@@ -449,6 +575,26 @@ constructor(
                     )
                 }
 
+                (fields["@type"] as? JsonPrimitive)?.content == ALERT_TYPE -> {
+                    val title = (fields["title"] as? JsonPrimitive)?.content.orEmpty()
+                    val tag = (fields["tag"] as? JsonPrimitive)?.content.orEmpty()
+
+                    // A reminder with nothing to say, or nothing to be told
+                    // apart by, is not one this app can show.
+                    if (title.isBlank() || tag.isBlank()) {
+                        PushPayload.Unrecognised
+                    } else {
+                        PushPayload.Alert(
+                            Reminder(
+                                title = title,
+                                body = (fields["body"] as? JsonPrimitive)?.content.orEmpty(),
+                                tag = tag,
+                                url = (fields["url"] as? JsonPrimitive)?.content,
+                            )
+                        )
+                    }
+                }
+
                 fields.containsKey("changed") ->
                     PushPayload.Changed(
                         MethodResults.JMAP_JSON.decodeFromJsonElement(
@@ -476,6 +622,10 @@ constructor(
 
         const val STATE_CHANGE_TYPE = "StateChange"
         const val VERIFICATION_TYPE = "PushVerification"
+        const val ALERT_TYPE = "CalendarAlert"
+
+        /** The log's name for a sealed push that would not open: its real type is unknowable. */
+        const val SEALED_TYPE = "sealed"
         const val UNKNOWN_TYPE = "unknown"
         const val UNKNOWN_REFUSAL = "unknownError"
 
@@ -510,6 +660,9 @@ constructor(
         const val NOTE_VERIFIED = "Verification code echoed back; the subscription is now live."
         const val NOTE_VERIFY_FAILED = "Verification code could not be echoed back."
         const val NOTE_UNPARSEABLE = "Payload could not be parsed; delivery itself worked."
+        const val NOTE_UNOPENED =
+            "Sealed payload did not open with this device's keys; delivery itself worked. " +
+                "The keys are registered again on the next launch."
         const val NOTE_SWEPT =
             "Destroyed the pre-upgrade subscription registered under deviceClientId " +
                 "\"$LEGACY_DEVICE_CLIENT_ID\", which was delivering alongside this device's own:"

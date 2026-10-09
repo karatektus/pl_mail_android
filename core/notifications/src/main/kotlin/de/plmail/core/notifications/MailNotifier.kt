@@ -215,3 +215,18 @@ internal fun groupKey(accountKey: String): String = "account#$accountKey"
 internal fun NotificationManagerCompat.notifySafely(id: Int, notification: Notification) {
     runCatching { notify(id, notification) }
 }
+
+/**
+ * The same, for a notification keyed on a tag as well as an id.
+ *
+ * A reminder's identity is a string, and its id is only that string's hash; posting under both is
+ * what stops two reminders whose hashes collide from replacing each other.
+ */
+@SuppressLint("MissingPermission")
+internal fun NotificationManagerCompat.notifySafely(
+    tag: String,
+    id: Int,
+    notification: Notification,
+) {
+    runCatching { notify(tag, id, notification) }
+}

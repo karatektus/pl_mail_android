@@ -54,6 +54,7 @@ class PushStateStore @Inject constructor(private val preferences: DataStore<Pref
                 lastMessageTransport = stored[LAST_MESSAGE_TRANSPORT],
                 lastError = stored[LAST_ERROR],
                 hasSweptLegacySubscriptions = stored[LEGACY_SWEPT] == true,
+                sealingKeysRegistered = stored[SEALING_KEYS],
             )
         }
 
@@ -138,6 +139,17 @@ class PushStateStore @Inject constructor(private val preferences: DataStore<Pref
      * alternative is a device that asked once, was refused, and never asks again. See
      * `PushRepository` for what is being swept and why destroying it cannot lose anything.
      */
+    /**
+     * The server has been given this device's sealing keys for this subscription.
+     *
+     * Both halves are recorded, because either changing makes the record stale: a new subscription
+     * has no keys until it is given them, and keys that had to be regenerated — the keystore that
+     * sealed the private half is gone — are not the ones the server holds.
+     */
+    suspend fun sealingKeysRegistered(subscriptionId: String, publicKey: String) {
+        preferences.edit { it[SEALING_KEYS] = "$subscriptionId:$publicKey" }
+    }
+
     suspend fun sweptLegacySubscriptions() {
         preferences.edit { it[LEGACY_SWEPT] = true }
     }
@@ -158,6 +170,7 @@ class PushStateStore @Inject constructor(private val preferences: DataStore<Pref
             store.remove(FCM_TOKEN)
             store.remove(REGISTERED_AT)
             store.remove(VERIFIED_AT)
+            store.remove(SEALING_KEYS)
         }
     }
 
@@ -185,6 +198,7 @@ class PushStateStore @Inject constructor(private val preferences: DataStore<Pref
         val LAST_MESSAGE_TRANSPORT = stringPreferencesKey("push_last_message_transport")
         val LAST_ERROR = stringPreferencesKey("push_last_error")
         val LEGACY_SWEPT = booleanPreferencesKey("push_legacy_subscription_swept")
+        val SEALING_KEYS = stringPreferencesKey("push_sealing_keys_registered")
     }
 }
 
@@ -210,6 +224,12 @@ data class PushState(
      * `PushSubscription/get` before every single create.
      */
     val hasSweptLegacySubscriptions: Boolean = false,
+    /**
+     * `subscriptionId:publicKey` of the sealing keys the server was last given, or null.
+     *
+     * Compared whole against what the device has now; see [PushStateStore.sealingKeysRegistered].
+     */
+    val sealingKeysRegistered: String? = null,
 ) {
     /**
      * Registered as far as this device can tell. Whether the *server* agrees needs a round trip.

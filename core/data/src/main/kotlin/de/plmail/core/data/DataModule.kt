@@ -53,6 +53,9 @@ abstract class DataModule {
      */
     @Multibinds abstract fun newMailListeners(): Set<NewMailListener>
 
+    /** Declared for the reason the set above is: a graph with nobody listening must still build. */
+    @Multibinds abstract fun reminderListeners(): Set<ReminderListener>
+
     /**
      * The queue's view of the label list.
      *

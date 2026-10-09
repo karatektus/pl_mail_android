@@ -27,4 +27,11 @@
         <item quantity="one">und 1 weitere</item>
         <item quantity="other">und %1$d weitere</item>
     </plurals>
+
+    <!--
+      One channel for every calendar reminder, separate from the per-account
+      mail channels: muting a mailbox is not asking to miss an appointment.
+    -->
+    <string name="channel_reminders">Erinnerungen</string>
+    <string name="channel_reminders_description">Kalendererinnerungen, zu der Zeit, die du am Termin eingestellt hast.</string>
 </resources>

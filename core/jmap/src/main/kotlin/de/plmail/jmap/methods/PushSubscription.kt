@@ -1,6 +1,7 @@
 package de.plmail.jmap.methods
 
 import de.plmail.jmap.protocol.JmapMethod
+import de.plmail.jmap.push.PushKeys
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -106,6 +107,16 @@ class PushSubscriptionSet(
             PushSubscriptionSet(
                 update = mapOf(subscriptionId to PushSubscriptionPatch.fcmToken(token))
             )
+
+        /**
+         * Registers the keys content is sealed to, on a subscription that already exists.
+         *
+         * This is how a device that registered with a version of the app that sent none starts
+         * receiving reminders: no new create, and no handshake to wait for, because keys decide
+         * what a payload is sealed to and not where it goes.
+         */
+        fun registerKeys(subscriptionId: String, keys: PushKeys) =
+            PushSubscriptionSet(update = mapOf(subscriptionId to PushSubscriptionPatch.keys(keys)))
     }
 }
 
@@ -165,14 +176,20 @@ sealed interface NewPushSubscription {
     /**
      * A Firebase registration token.
      *
-     * No URL and no keys: FCM is not a place the server can POST to, it is an API the server calls
-     * with a token that addresses one install of one app on one device. The server refuses this
-     * shape outright (`forbidden`) on an instance where Firebase is unconfigured or switched off,
-     * so check the session's `fcm` first — that refusal is a backstop, not the check.
+     * No URL: FCM is not a place the server can POST to, it is an API the server calls with a token
+     * that addresses one install of one app on one device. The server refuses this shape outright
+     * (`forbidden`) on an instance where Firebase is unconfigured or switched off, so check the
+     * session's `fcm` first — that refusal is a backstop, not the check.
+     *
+     * [keys] are optional and are what a reminder needs. Anything the server pushes that carries
+     * content is sealed to them, or — to a device that sent none — not pushed through Firebase at
+     * all. Send them only when the session says `fcmEncryption`: a server without it refuses the
+     * property, and with it the whole create.
      */
     data class Fcm(
         override val deviceClientId: String,
         val fcmToken: String,
+        val keys: PushKeys? = null,
         override val types: List<String>? = DEFAULT_TYPES,
         override val expires: String? = null,
     ) : NewPushSubscription {
@@ -180,6 +197,7 @@ sealed interface NewPushSubscription {
         override fun toJson(): JsonObject = buildJsonObject {
             put("deviceClientId", deviceClientId)
             put("fcmToken", fcmToken)
+            keys?.let { put("keys", it.toJson()) }
             put("types", encodeTypes(types))
             expires?.let { put("expires", it) }
         }
@@ -209,6 +227,9 @@ class PushSubscriptionPatch private constructor(private val fields: Map<String, 
 
         fun fcmToken(token: String) =
             PushSubscriptionPatch(mapOf("fcmToken" to JsonPrimitive(token)))
+
+        /** Gives an FCM subscription its sealing keys, or new ones. No handshake follows. */
+        fun keys(keys: PushKeys) = PushSubscriptionPatch(mapOf("keys" to keys.toJson()))
     }
 }
 
@@ -294,3 +315,9 @@ data class StateChange(
     /** Per account id, the object types whose state token moved. */
     val changed: Map<String, Map<String, String>> = emptyMap()
 )
+
+/** As the server reads it: `{"p256dh": …, "auth": …}`, both base64url. */
+private fun PushKeys.toJson(): JsonObject = buildJsonObject {
+    put("p256dh", p256dh)
+    put("auth", authSecret)
+}

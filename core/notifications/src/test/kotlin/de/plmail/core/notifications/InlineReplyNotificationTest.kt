@@ -62,6 +62,8 @@ class InlineReplyNotificationTest {
         override fun reply(accountKey: String, emailId: String): PendingIntent =
             broadcast("reply#$accountKey#$emailId")
 
+        override fun openCalendar(): PendingIntent = broadcast("calendar")
+
         private fun broadcast(key: String): PendingIntent {
             val context = ApplicationProvider.getApplicationContext<Context>()
 

@@ -532,6 +532,12 @@ data class PushCapability(
     /** Whether the server answered the FCM question at all. False on an instance predating FCM. */
     val knowsFcm: Boolean = false,
     val fcmConfig: FcmConfig? = null,
+    /**
+     * Whether an FCM subscription may carry `keys`, and the server seals pushes with content in
+     * them to those keys. False on a server that predates it — which refuses the property, so this
+     * is checked before any are sent.
+     */
+    val fcmEncryption: Boolean = false,
 ) {
     /** Whether a Web Push (or UnifiedPush) subscription may be created against this instance. */
     val webPush: Boolean
@@ -546,6 +552,9 @@ data class PushCapability(
                 fcm = fcm?.content?.toBooleanStrictOrNull() ?: false,
                 knowsFcm = fcm != null,
                 fcmConfig = (json["fcmConfig"] as? JsonObject)?.let(FcmConfig::from),
+                fcmEncryption =
+                    (json["fcmEncryption"] as? JsonPrimitive)?.content?.toBooleanStrictOrNull()
+                        ?: false,
             )
         }
     }

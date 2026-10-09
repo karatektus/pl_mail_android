@@ -19,4 +19,7 @@ interface MailDestinations {
 
     /** Opens the composer, replying to one message. */
     fun reply(accountKey: String, emailId: String): PendingIntent
+
+    /** Opens the calendar, for a reminder that was tapped. */
+    fun openCalendar(): PendingIntent
 }

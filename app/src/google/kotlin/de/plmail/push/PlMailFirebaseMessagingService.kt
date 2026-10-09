@@ -25,6 +25,10 @@ import kotlinx.coroutines.launch
  * JSON string whose `@type` is `StateChange` or `PushVerification` — byte for byte the same JSON
  * Web Push carries, which is what lets both go through one parser.
  *
+ * Those two carry no content. A message that does — a calendar reminder — has no `payload` key; it
+ * has `encrypted`, the same JSON sealed to the keys this device registered, so that Firebase relays
+ * something it cannot read.
+ *
  * ## One apply-path
  *
  * Nothing here interprets the payload. It is handed to [PushRepository.deliver], the same call the
@@ -49,6 +53,15 @@ class PlMailFirebaseMessagingService : FirebaseMessagingService() {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onMessageReceived(message: RemoteMessage) {
+        // A push with content in it -- a calendar reminder -- arrives sealed to
+        // this device's keys, under its own key and with no `payload` at all.
+        // The server never sends such a thing readable through Firebase; see
+        // PushRepository.deliverSealed for the other half.
+        message.data[ENCRYPTED]?.let { sealed ->
+            launch { push.deliverSealed(sealed, PushDelivery.FCM) }
+            return
+        }
+
         val payload = message.data[PAYLOAD]
 
         if (payload == null) {
@@ -128,5 +141,8 @@ class PlMailFirebaseMessagingService : FirebaseMessagingService() {
 
         /** The one data key plMail sends. Its value is the JSON Web Push would have carried. */
         const val PAYLOAD = "payload"
+
+        /** The other one: an RFC 8291 body, base64url, in place of [PAYLOAD]. */
+        const val ENCRYPTED = "encrypted"
     }
 }

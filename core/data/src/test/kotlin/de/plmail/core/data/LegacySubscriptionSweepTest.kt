@@ -2,6 +2,7 @@ package de.plmail.core.data
 
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.datastore.CredentialStore
+import de.plmail.core.datastore.PushKeyStore
 import de.plmail.core.datastore.PushLogStore
 import de.plmail.core.datastore.PushStateStore
 import de.plmail.core.datastore.ServerConnection
@@ -349,6 +350,7 @@ class LegacySubscriptionSweepTest {
                 ),
             log = log,
             state = state,
+            sealingKeys = PushKeyStore(InMemoryPreferences(), PlainCipher),
         )
 
     private suspend fun manager(
