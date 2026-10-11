@@ -92,4 +92,7 @@
         <item quantity="one">und 1 weitere wartet</item>
         <item quantity="other">und %1$d weitere warten</item>
     </plurals>
+    <!-- Drive -->
+    <string name="compose_drive">Drive-Link einfügen</string>
+    <string name="compose_too_large_note">Zu groß als Anhang, daher liegt es in meinem Drive. Hier herunterladen:</string>
 </resources>

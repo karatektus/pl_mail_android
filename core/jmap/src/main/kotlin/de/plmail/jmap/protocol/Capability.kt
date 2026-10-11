@@ -32,6 +32,13 @@ object Capability {
      */
     const val SYNC = "urn:plmail:params:jmap:sync"
 
+    /**
+     * Drive. Not JMAP methods: the capability object carries an `apiUrl` for a small
+     * REST API (browse, upload, download, share links) behind the same credential. A server
+     * without it simply has no Drive, and the app hides the screen.
+     */
+    const val DRIVE = "urn:plmail:params:jmap:drive"
+
     /** The usual declaration for a mail request. */
     val USING_MAIL = listOf(CORE, MAIL)
 

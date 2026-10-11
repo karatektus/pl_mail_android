@@ -16,6 +16,8 @@ android {
 
 dependencies {
     implementation(projects.core.data)
+    // "Insert from Drive" link picker.
+    implementation(projects.feature.drive)
     // The agenda draws an AgendaRow, which is the DAO's own projection. Same
     // reasoning as the thread row: the join exists in that shape so a list can
     // scroll without a query per row, and a UI model copied field for field

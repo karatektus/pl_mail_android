@@ -11,4 +11,5 @@
       about twelve characters before it ellipsises.
     -->
     <string name="calendar_app_name">plMail Calendar</string>
+    <string name="share_to_drive">plMail Drive</string>
 </resources>

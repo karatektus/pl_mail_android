@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -62,6 +63,7 @@ import de.plmail.core.database.CalendarEntity
 import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailPane
 import de.plmail.core.designsystem.PlMailTheme
+import de.plmail.feature.drive.DriveLinkPicker
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -120,6 +122,24 @@ internal fun EventEditorScreen(
 
     val form = state.form
     var confirmingDelete by remember(session) { mutableStateOf(false) }
+    var isPickingDrive by remember(session) { mutableStateOf(false) }
+
+    // "Add from Drive" appends "name: link" to the description.
+    if (isPickingDrive) {
+        DriveLinkPicker(
+            onDismiss = { isPickingDrive = false },
+            onPicked = { name, url ->
+                isPickingDrive = false
+                viewModel.edit {
+                    val line = "$name: $url"
+                    it.copy(
+                        description =
+                            if (it.description.isBlank()) line else it.description.trimEnd() + "\n" + line
+                    )
+                }
+            },
+        )
+    }
 
     if (confirmingDelete) {
         DeleteConfirmation(
@@ -246,6 +266,14 @@ internal fun EventEditorScreen(
                 minLines = 3,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            TextButton(onClick = { isPickingDrive = true }) {
+                Icon(Icons.Filled.AddLink, contentDescription = null)
+                Text(
+                    stringResource(R.string.calendar_add_from_drive),
+                    modifier = Modifier.padding(start = PlMailTheme.spacing.small),
+                )
+            }
 
             WriteNote(state.outcome)
 

@@ -17,6 +17,8 @@ android {
 dependencies {
     implementation(projects.core.designsystem)
     implementation(projects.core.data)
+    // "Insert from Drive" link picker.
+    implementation(projects.feature.drive)
     implementation(projects.core.database)
     // EmailAddress and the reply/forward composer are this module's vocabulary:
     // the screen draws addresses and the ViewModel asks DraftComposer what a

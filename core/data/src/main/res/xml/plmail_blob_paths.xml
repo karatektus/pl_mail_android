@@ -9,4 +9,6 @@
 -->
 <paths>
     <cache-path name="blobs" path="blobs/" />
+    <!-- Drive downloads (DriveRepository.downloadToCache). -->
+    <cache-path name="drive" path="drive/" />
 </paths>

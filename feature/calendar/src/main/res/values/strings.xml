@@ -182,4 +182,5 @@
         <item quantity="one">%1$d more</item>
         <item quantity="other">%1$d more</item>
     </plurals>
+    <string name="calendar_add_from_drive">Add from Drive</string>
 </resources>

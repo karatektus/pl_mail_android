@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Campaign
+import androidx.compose.material.icons.outlined.Cloud
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Drafts
 import androidx.compose.material.icons.outlined.Forum
@@ -151,6 +152,8 @@ fun LabelSidebar(
      * boundary exists to prevent.
      */
     onCalendar: (() -> Unit)?,
+    /** Null where the server publishes no Drive, so the drawer offers none. */
+    onDrive: (() -> Unit)? = null,
     onPush: () -> Unit,
     onNotifications: () -> Unit,
     onDiagnostics: () -> Unit,
@@ -177,6 +180,7 @@ fun LabelSidebar(
             onEditingChange = onEditingChange,
             onImportantChange = onImportantChange,
             onCalendar = onCalendar,
+            onDrive = onDrive,
             onPush = onPush,
             onNotifications = onNotifications,
             onDiagnostics = onDiagnostics,
@@ -201,6 +205,7 @@ private fun SidebarContent(
     onEditingChange: (Boolean) -> Unit,
     onImportantChange: (Label, Boolean) -> Unit,
     onCalendar: (() -> Unit)?,
+    onDrive: (() -> Unit)?,
     onPush: () -> Unit,
     onNotifications: () -> Unit,
     onDiagnostics: () -> Unit,
@@ -344,6 +349,16 @@ private fun SidebarContent(
                     onClick = open,
                     icon = Icons.Outlined.CalendarMonth,
                     text = stringResource(R.string.calendar),
+                )
+            }
+
+            // Drive: a place, like the calendar, so it sits beside it.
+            onDrive?.let { open ->
+                SidebarRow(
+                    selected = false,
+                    onClick = open,
+                    icon = Icons.Outlined.Cloud,
+                    text = stringResource(R.string.drive),
                 )
             }
 

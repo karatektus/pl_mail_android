@@ -95,6 +95,7 @@
       one. Only drawn where the server publishes a calendar at all.
     -->
     <string name="calendar">Calendar</string>
+    <string name="drive">Drive</string>
     <string name="push">Push</string>
     <!--
       "Notifications", not "Notification settings": the drawer's other entries

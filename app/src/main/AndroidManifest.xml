@@ -248,6 +248,26 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
+
+        <!--
+          "plMail Drive" in every app's share sheet. Sharing a
+          photo or a PDF here uploads it straight into Drive instead of opening
+          the composer. An alias of MainActivity (so it shares the one task and
+          the one connection); MainActivity tells the two apart by the alias's
+          component name, de.plmail.ShareToDrive.
+        -->
+        <activity-alias
+            android:name=".ShareToDrive"
+            android:exported="true"
+            android:label="@string/share_to_drive"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity-alias>
         <!--
           The calendar as its own app, off unless the user asks for it.
 

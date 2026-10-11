@@ -36,6 +36,7 @@ import de.plmail.feature.compose.ScheduledSendsBar
 import de.plmail.feature.compose.SendStatusHost
 import de.plmail.feature.compose.ShareIntake
 import de.plmail.feature.compose.SharedMessage
+import de.plmail.feature.drive.DriveScreen
 import de.plmail.feature.mail.MailShell
 import de.plmail.feature.mail.ThreadTarget
 import de.plmail.feature.onboarding.OnboardingScreen
@@ -95,6 +96,12 @@ class MainActivity : ComponentActivity() {
     private var pendingNotification by mutableStateOf<NotificationRequest?>(null)
 
     /**
+     * Files shared to the "plMail Drive" share target, waiting to be uploaded. The share target is
+     * an activity-alias of this activity, told apart by its component name.
+     */
+    private var pendingDriveUpload by mutableStateOf<List<String>>(emptyList())
+
+    /**
      * The chosen language, laid over this activity's own configuration.
      *
      * An activity's configuration comes from the ActivityThread rather than from the application's,
@@ -145,6 +152,8 @@ class MainActivity : ComponentActivity() {
                     onNotificationHandled = { pendingNotification = null },
                     share = pendingShare,
                     onShareHandled = { pendingShare = null },
+                    driveUpload = pendingDriveUpload,
+                    onDriveUploadHandled = { pendingDriveUpload = emptyList() },
                 )
             }
         }
@@ -181,11 +190,21 @@ class MainActivity : ComponentActivity() {
         // waiting for an account must survive whatever else happens to this
         // activity in the meantime, and during onboarding what happens is a
         // pairing link arriving through this very method.
+        // A share aimed at "plMail Drive" uploads the files to Drive instead
+        // of opening the composer.
+        if (intent?.component?.className == DRIVE_SHARE_ALIAS) {
+            ShareIntake.read(intent)?.streams?.takeIf { it.isNotEmpty() }?.let {
+                pendingDriveUpload = it
+            }
+            return
+        }
+
         ShareIntake.read(intent)?.let { pendingShare = it }
     }
 
     private companion object {
         const val PAIRING_SCHEME = "plmail:"
+        const val DRIVE_SHARE_ALIAS = "de.plmail.ShareToDrive"
     }
 }
 
@@ -205,10 +224,13 @@ private fun PlMailApp(
     onNotificationHandled: () -> Unit,
     share: SharedMessage?,
     onShareHandled: () -> Unit,
+    driveUpload: List<String>,
+    onDriveUploadHandled: () -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val connection by viewModel.connection.collectAsStateWithLifecycle()
     val hasCalendar by viewModel.hasCalendar.collectAsStateWithLifecycle()
+    val hasDrive by viewModel.hasDrive.collectAsStateWithLifecycle()
 
     // Search and compose live here rather than inside the mail shell because
     // they are their own feature modules: :feature:mail depending on either
@@ -226,6 +248,7 @@ private fun PlMailApp(
     var isSettingGestures by rememberSaveable { mutableStateOf(false) }
     var isManagingAccounts by rememberSaveable { mutableStateOf(false) }
     var isCalendaring by rememberSaveable { mutableStateOf(false) }
+    var isDriving by rememberSaveable { mutableStateOf(false) }
     var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
 
     // A conversation picked from a search result. It goes through the same
@@ -314,6 +337,15 @@ private fun PlMailApp(
                     onShareHandled()
                 }
 
+                // Files shared to "plMail Drive" open the Drive screen, which
+                // uploads them into its root folder.
+                LaunchedEffect(driveUpload) {
+                    if (driveUpload.isNotEmpty()) {
+                        isSearching = false
+                        isDriving = true
+                    }
+                }
+
                 // Mounted for every screen below, so an undo remains reachable
                 // after the user has navigated on. Reopening replaces whatever
                 // is showing, because the message being recovered is the thing
@@ -343,6 +375,7 @@ private fun PlMailApp(
                             openThread != null -> Screen.MAIL
                             isManagingAccounts -> Screen.ACCOUNTS
                             isCalendaring -> Screen.CALENDAR
+                            isDriving -> Screen.DRIVE
                             isAdjustingAppearance -> Screen.APPEARANCE
                             isSettingGestures -> Screen.GESTURES
                             isReadingPushLog -> Screen.PUSH_LOG
@@ -363,6 +396,7 @@ private fun PlMailApp(
                         when (screen) {
                             Screen.ACCOUNTS -> isManagingAccounts = false
                             Screen.CALENDAR -> isCalendaring = false
+                            Screen.DRIVE -> isDriving = false
                             Screen.APPEARANCE -> isAdjustingAppearance = false
                             Screen.GESTURES -> isSettingGestures = false
                             // The log closes back onto the push screen it was
@@ -386,6 +420,12 @@ private fun PlMailApp(
                         // whether the calendar or the mail is on screen, the
                         // same way it does for every other swapped screen here.
                         CalendarScreen(onBack = { isCalendaring = false })
+                    } else if (screen == Screen.DRIVE) {
+                        DriveScreen(
+                            onBack = { isDriving = false },
+                            incoming = driveUpload,
+                            onIncomingHandled = onDriveUploadHandled,
+                        )
                     } else if (screen == Screen.APPEARANCE) {
                         AppearanceScreen(onBack = { isAdjustingAppearance = false })
                     } else if (screen == Screen.GESTURES) {
@@ -431,6 +471,7 @@ private fun PlMailApp(
                             // calendar, rather than a control that opens an
                             // empty one.
                             onCalendar = if (hasCalendar) ({ isCalendaring = true }) else null,
+                            onDrive = if (hasDrive) ({ isDriving = true }) else null,
                             onCompose = { composing = ComposeRequest.New },
                             onReply = { accountKey, emailId, all ->
                                 composing = ComposeRequest.Reply(accountKey, emailId, all)
@@ -514,6 +555,7 @@ private val ThreadTargetSaver =
 private enum class Screen {
     MAIL,
     CALENDAR,
+    DRIVE,
     SEARCH,
     DIAGNOSTICS,
     PUSH,

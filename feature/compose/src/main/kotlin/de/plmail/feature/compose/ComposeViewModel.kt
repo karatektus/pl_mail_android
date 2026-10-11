@@ -8,6 +8,7 @@ import de.plmail.core.data.CancelOutcome
 import de.plmail.core.data.ComposeDraft
 import de.plmail.core.data.ComposeRepository
 import de.plmail.core.data.ContactSuggestions
+import de.plmail.core.data.DriveRepository
 import de.plmail.core.data.ScheduledSend
 import de.plmail.core.data.ScheduledSends
 import de.plmail.core.data.SendIdentity
@@ -56,6 +57,7 @@ constructor(
     private val contacts: ContactSuggestions,
     private val sendQueue: SendQueue,
     private val scheduled: ScheduledSends,
+    private val drive: DriveRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ComposeUiState())
@@ -177,8 +179,41 @@ constructor(
     fun attachPicked(uris: List<Uri>) {
         if (uris.isEmpty()) return
 
-        edit { draft -> draft.copy(attachments = draft.attachments + uris.map(compose::describe)) }
+        // Anything over the attachment limit goes to Drive and is linked in
+        // the message instead of failing at Send.
+        val described = uris.map { it to compose.describe(it) }
+        val (oversized, normal) = described.partition { (_, staged) -> staged.size > MAX_BYTES }
+
+        if (normal.isNotEmpty()) {
+            edit { draft -> draft.copy(attachments = draft.attachments + normal.map { it.second }) }
+        }
+        if (oversized.isNotEmpty()) linkThroughDrive(oversized)
     }
+
+    private fun linkThroughDrive(files: List<Pair<Uri, StagedAttachment>>) {
+        viewModelScope.launch {
+            _state.update { it.copy(isUploadingToDrive = true) }
+            val links = mutableListOf<DriveLinkInsert>()
+            for ((uri, staged) in files) {
+                runCatching {
+                        val stored = drive.upload(uri, null)
+                        DriveLinkInsert(stored.name, drive.linkFor(stored), stored.size)
+                    }
+                    .onSuccess { links += it }
+                    .onFailure { error ->
+                        _state.update {
+                            it.copy(error = ComposeError.SaveFailed("${staged.name}: ${error.message ?: "upload failed"}"))
+                        }
+                    }
+            }
+            _state.update {
+                it.copy(isUploadingToDrive = false, pendingDriveLinks = it.pendingDriveLinks + links)
+            }
+        }
+    }
+
+    /** The screen has written these links into the body. */
+    fun driveLinksInserted() = _state.update { it.copy(pendingDriveLinks = emptyList()) }
 
     fun detach(attachment: StagedAttachment) = edit {
         it.copy(attachments = it.attachments - attachment)

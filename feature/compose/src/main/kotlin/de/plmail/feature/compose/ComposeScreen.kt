@@ -22,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.AddLink
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -71,6 +72,7 @@ import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailPane
 import de.plmail.core.designsystem.PlMailTheme
+import de.plmail.feature.drive.DriveLinkPicker
 import de.plmail.jmap.mail.DraftComposer
 import java.time.Instant
 
@@ -106,6 +108,7 @@ fun ComposeScreen(
     val body = rememberRichTextState()
 
     var isChoosingWhen by remember { mutableStateOf(false) }
+    var isPickingDrive by remember { mutableStateOf(false) }
     var isPickingExactTime by remember { mutableStateOf(false) }
 
     // Open, until the message itself is being written. Saveable because a
@@ -125,6 +128,23 @@ fun ComposeScreen(
     // the cursor to the end of the line on every keystroke, which is the classic
     // way a Compose text field becomes unusable.
     LaunchedEffect(body.annotatedString) { viewModel.setBody(body.toHtml()) }
+
+    // Files too big to attach were put in Drive; link them here.
+    val tooLargeNote = stringResource(R.string.compose_too_large_note)
+    LaunchedEffect(state.pendingDriveLinks) {
+        if (state.pendingDriveLinks.isEmpty()) return@LaunchedEffect
+        val html = buildString {
+            append("<p><i>").append(tooLargeNote.escapeHtml()).append("</i>")
+            state.pendingDriveLinks.forEach { link ->
+                append("<br><a href=\"").append(link.url.escapeHtml()).append("\">📎 ")
+                append(link.name.escapeHtml()).append("</a> (")
+                append(String.format(java.util.Locale.ROOT, "%.1f", link.sizeBytes / 1048576.0)).append(" MB)")
+            }
+            append("</p>")
+        }
+        body.setHtml(body.toHtml() + html)
+        viewModel.driveLinksInserted()
+    }
 
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -162,6 +182,14 @@ fun ComposeScreen(
                     }
                 },
                 actions = {
+                    // Insert a Drive share link into the message.
+                    IconButton(onClick = { isPickingDrive = true }) {
+                        Icon(
+                            imageVector = Icons.Filled.AddLink,
+                            contentDescription = stringResource(R.string.compose_drive),
+                        )
+                    }
+
                     IconButton(onClick = { picker.launch(arrayOf("*/*")) }) {
                         Icon(
                             imageVector = Icons.Filled.AttachFile,
@@ -201,6 +229,16 @@ fun ComposeScreen(
             }
 
             return@Scaffold
+        }
+
+        if (isPickingDrive) {
+            DriveLinkPicker(
+                onDismiss = { isPickingDrive = false },
+                onPicked = { name, url ->
+                    isPickingDrive = false
+                    body.addLink(text = name, url = url)
+                },
+            )
         }
 
         if (isPickingExactTime) {
@@ -659,3 +697,6 @@ private val UNDERLINE =
     androidx.compose.ui.text.SpanStyle(
         textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline
     )
+
+private fun String.escapeHtml(): String =
+    replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")

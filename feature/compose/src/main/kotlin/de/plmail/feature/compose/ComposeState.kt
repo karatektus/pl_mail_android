@@ -14,8 +14,15 @@ import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 import java.time.format.FormatStyle
 
+/** A file that was too big to attach, now in Drive, waiting to be linked in the body. */
+data class DriveLinkInsert(val name: String, val url: String, val sizeBytes: Long)
+
 /** Everything on the composer screen. */
 data class ComposeUiState(
+    /** Drive links for oversized files, for the screen to write into the body. */
+    val pendingDriveLinks: List<DriveLinkInsert> = emptyList(),
+    /** True while oversized files are going up to Drive. */
+    val isUploadingToDrive: Boolean = false,
     val draft: ComposeDraft = ComposeDraft(accountKey = "", identityId = ""),
     val identities: List<SendIdentity> = emptyList(),
     /**

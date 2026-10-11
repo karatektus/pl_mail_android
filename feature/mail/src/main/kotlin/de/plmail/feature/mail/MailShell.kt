@@ -54,6 +54,8 @@ fun MailShell(
     onAccounts: () -> Unit,
     /** Null where this install has no calendar. See [LabelSidebar]. */
     onCalendar: (() -> Unit)?,
+    /** Null where the server publishes no Drive capability. See [LabelSidebar]. */
+    onDrive: (() -> Unit)? = null,
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
@@ -156,6 +158,13 @@ fun MailShell(
                 },
                 onCalendar =
                     onCalendar?.let { open ->
+                        {
+                            scope.launch { drawer.close() }
+                            open()
+                        }
+                    },
+                onDrive =
+                    onDrive?.let { open ->
                         {
                             scope.launch { drawer.close() }
                             open()

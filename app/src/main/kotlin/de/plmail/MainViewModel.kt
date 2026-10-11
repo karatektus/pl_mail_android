@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.data.CalendarRepository
+import de.plmail.core.data.DriveRepository
 import de.plmail.core.data.PushTransportManager
 import de.plmail.core.data.SyncWorker
 import de.plmail.core.datastore.CredentialStore
@@ -40,6 +41,7 @@ class MainViewModel
 constructor(
     credentials: CredentialStore,
     calendar: CalendarRepository,
+    drive: DriveRepository,
     private val pushTransports: PushTransportManager,
     private val shared: SharedAttachmentStore,
     @param:ApplicationContext private val context: Context,
@@ -69,6 +71,19 @@ constructor(
     val hasCalendar: StateFlow<Boolean> =
         calendar
             .isAvailable()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = false,
+            )
+
+    /**
+     * Whether the connected server publishes Drive, which decides whether the drawer offers it.
+     * Re-checked whenever the stored connection changes.
+     */
+    val hasDrive: StateFlow<Boolean> =
+        credentials.connection
+            .map { stored -> stored != null && drive.isAvailable() }
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),

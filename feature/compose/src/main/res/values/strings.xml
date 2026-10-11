@@ -156,4 +156,7 @@
         <item quantity="one">and 1 more waiting</item>
         <item quantity="other">and %1$d more waiting</item>
     </plurals>
+    <!-- Drive -->
+    <string name="compose_drive">Insert Drive link</string>
+    <string name="compose_too_large_note">Too large to attach, so it is in my Drive. Download it here:</string>
 </resources>
