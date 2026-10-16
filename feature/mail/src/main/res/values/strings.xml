@@ -31,6 +31,8 @@
     <string name="action_spam">Mark as spam</string>
     <string name="undo">Undo</string>
     <string name="reader_back">Back to the list</string>
+    <string name="reader_next_conversation">Next conversation</string>
+    <string name="reader_previous_conversation">Previous conversation</string>
     <!-- Conversations, not messages: conversations are what the user acted on. -->
     <plurals name="archived">
         <item quantity="one">1 conversation archived</item>

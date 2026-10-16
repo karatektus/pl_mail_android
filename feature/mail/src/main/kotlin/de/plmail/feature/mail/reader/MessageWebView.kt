@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
@@ -69,7 +70,18 @@ fun MessageWebView(
      * `Context` and fired an intent could not be rendered in a test at all.
      */
     onLink: (Uri) -> Unit = {},
+    /**
+     * A horizontal swipe across the body that scrolled nothing: true for one towards the next
+     * conversation (finger moving left), false for the previous. See [ReaderWebView] for how
+     * "scrolled nothing" is told apart from reading a wide table.
+     */
+    onSwipe: (next: Boolean) -> Unit = {},
 ) {
+    // Read through this rather than handed to the view in `update`: `update`
+    // reloads the document, and a new lambda on every recomposition would
+    // reload the message under the reader's finger.
+    val currentOnSwipe by rememberUpdatedState(onSwipe)
+
     // Keyed on `remoteImages` as well, because the document itself now differs
     // between the two states -- blocked pictures are rewritten into placeholders
     // inside it. Without the key, allowing pictures would swap the client out
@@ -119,6 +131,8 @@ fun MessageWebView(
         factory = { context ->
             ReaderWebView(context).apply {
                 configure()
+
+                this.onSwipe = { next -> currentOnSwipe(next) }
 
                 // Transparent, so the Compose surface behind shows through
                 // instead of a white rectangle in a dark theme. The document's
@@ -183,6 +197,18 @@ fun MessageWebView(
  *
  * The release is re-asserted *after* `super.onTouchEvent`, not before, because the WebView asks for
  * interception itself while it believes it is scrolling.
+ *
+ * ## A horizontal drag is also how the reader moves to the next conversation
+ *
+ * Only when it scrolled nothing, so a wide table keeps working. That cannot be asked directly: the
+ * table scrolls inside `#plmail-message-root`, not the page, so [canScrollHorizontally] answers for
+ * a page that never moves sideways — and JavaScript is off, so the element cannot be asked either.
+ * What Chromium does report is the remainder. A scroll the wrapper cannot take — because it does
+ * not overflow, or is already at that edge — chains to the root scroller, which cannot take it
+ * either, and the unused delta comes back through [overScrollBy] even with over-scroll effects off.
+ * That remainder is counted, and the gesture is a swipe when it adds up to the same fraction of the
+ * width the rest of the reader asks for. So a table is scrolled to its edge first, and a swipe
+ * needs a further pull past it, which is how a pager holding scrollable pages behaves.
  */
 private class ReaderWebView(context: Context) : WebView(context) {
 
@@ -193,8 +219,17 @@ private class ReaderWebView(context: Context) : WebView(context) {
     /** Null until the gesture has moved past the slop and its direction is known. */
     private var isVerticalDrag: Boolean? = null
 
+    /**
+     * Horizontal drag in this gesture that scrolled nothing, in pixels, signed as a scroll is:
+     * positive when the finger moved left. See the class note.
+     */
+    private var unusedX = 0
+
     /** Told the composable how tall the document is. See [MessageWebView]. */
     var onContentHeight: (Int) -> Unit = {}
+
+    /** A swipe across the body that scrolled nothing: true towards the next conversation. */
+    var onSwipe: (next: Boolean) -> Unit = {}
 
     private var reportedHeight = 0
 
@@ -257,6 +292,7 @@ private class ReaderWebView(context: Context) : WebView(context) {
                 downX = event.x
                 downY = event.y
                 isVerticalDrag = null
+                unusedX = 0
 
                 // Claimed up front and given back below if the drag turns out to
                 // be the list's. A tap has to reach the WebView intact or links
@@ -277,7 +313,49 @@ private class ReaderWebView(context: Context) : WebView(context) {
 
         if (isVerticalDrag == true) parent?.requestDisallowInterceptTouchEvent(false)
 
+        // After super, so the remainder of this last move has been counted.
+        if (
+            event.actionMasked == MotionEvent.ACTION_UP &&
+                isVerticalDrag == false &&
+                abs(unusedX) >= width * SWIPE_FRACTION
+        ) {
+            onSwipe(unusedX > 0)
+        }
+
         return handled
+    }
+
+    /**
+     * Where Chromium hands back the part of a scroll nothing in the page could take.
+     *
+     * Counted only once the drag is known to be horizontal; a vertical one is the list's. A fling
+     * that runs on after the finger lifts lands here too, and changes nothing: the gesture was
+     * judged at ACTION_UP and the count starts again at the next ACTION_DOWN.
+     */
+    override fun overScrollBy(
+        deltaX: Int,
+        deltaY: Int,
+        scrollX: Int,
+        scrollY: Int,
+        scrollRangeX: Int,
+        scrollRangeY: Int,
+        maxOverScrollX: Int,
+        maxOverScrollY: Int,
+        isTouchEvent: Boolean,
+    ): Boolean {
+        if (isVerticalDrag == false) unusedX += deltaX
+
+        return super.overScrollBy(
+            deltaX,
+            deltaY,
+            scrollX,
+            scrollY,
+            scrollRangeX,
+            scrollRangeY,
+            maxOverScrollX,
+            maxOverScrollY,
+            isTouchEvent,
+        )
     }
 }
 

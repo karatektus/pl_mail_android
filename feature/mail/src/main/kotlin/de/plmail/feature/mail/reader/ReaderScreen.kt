@@ -118,6 +118,13 @@ fun ReaderScreen(
     onMove: () -> Unit = {},
     /** Goes to a label's own list, from a chip under the subject. */
     onOpenLabel: (Label) -> Unit = {},
+    /**
+     * Opens the conversation below this one in the list it was opened from, on a swipe left. Null
+     * where there is none, or where this was not opened from a list.
+     */
+    onNext: (() -> Unit)? = null,
+    /** The conversation above, on a swipe right. Null as for [onNext]. */
+    onPrevious: (() -> Unit)? = null,
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -233,7 +240,12 @@ fun ReaderScreen(
                 }
             },
         ) { insets ->
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(insets)) {
+            LazyColumn(
+                modifier =
+                    Modifier.fillMaxSize()
+                        .padding(insets)
+                        .swipeBetweenConversations(onNext = onNext, onPrevious = onPrevious)
+            ) {
                 // The subject, on the page rather than in the bar. In the bar it
                 // had one line between the back arrow and the actions, which on
                 // a phone is about twenty characters of a subject that is
@@ -270,6 +282,7 @@ fun ReaderScreen(
                             savePicker.launch(attachment.name ?: DEFAULT_SAVE_NAME)
                         },
                         onShowSource = { viewModel.showSource(message) },
+                        onSwipe = { next -> (if (next) onNext else onPrevious)?.invoke() },
                     )
                 }
             }
@@ -567,6 +580,7 @@ private fun Message(
     onOpenAttachment: (AttachmentEntity) -> Unit,
     onSaveAttachment: (AttachmentEntity) -> Unit,
     onShowSource: () -> Unit,
+    onSwipe: (next: Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val body = message.body
@@ -730,6 +744,7 @@ private fun Message(
             remoteImages = message.remoteImages,
             modifier = Modifier.fillMaxWidth(),
             onLink = context::openLink,
+            onSwipe = onSwipe,
         )
 
         // Under the body, which is where the eye arrives after reading: an

@@ -1,6 +1,8 @@
 package de.plmail.feature.mail
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,8 @@ import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaf
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -26,14 +30,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.paging.compose.collectAsLazyPagingItems
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailView
+import de.plmail.core.database.ThreadEntity
 import de.plmail.feature.mail.reader.ReaderScreen
 import kotlinx.coroutines.launch
 
@@ -77,6 +84,25 @@ fun MailPane(
     var selectedAccount by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedThread by rememberSaveable { mutableStateOf<String?>(null) }
 
+    // Which way the reader last moved: +1 to the next conversation, -1 to the
+    // previous, 0 for one opened any other way. Only the arrival animation reads
+    // it, so a conversation tapped in the list appears in place rather than
+    // sliding in from a side it has nothing to do with.
+    var step by remember { mutableIntStateOf(0) }
+
+    // Collected here rather than by the list, because the reader needs the
+    // order too: a swipe opens the row beside the open one. Handed down to
+    // MailScreen so that both read one copy of what Paging has loaded.
+    val threads = viewModel.threads.collectAsLazyPagingItems()
+
+    val openRow = { row: ThreadEntity, towards: Int ->
+        step = towards
+        selectedUid = row.uid
+        selectedSubject = row.subject
+        selectedAccount = row.accountKey
+        selectedThread = row.threadId
+    }
+
     // Both panes act on mail, and neither is on screen for the whole life of
     // what it started. Archiving from the reader closes the reader; archiving
     // from the list leaves the row's own pane composed but is the same change --
@@ -105,6 +131,7 @@ fun MailPane(
     // pressing back and then rotating does not silently reopen it.
     LaunchedEffect(openThread) {
         openThread?.let { target ->
+            step = 0
             selectedUid = null
             // Null rather than a guess, and the reader falls back to the
             // conversation's own subject. Inventing one here — from the
@@ -150,11 +177,9 @@ fun MailPane(
                         onCompose = onCompose,
                         onNavigate = onNavigate,
                         viewModel = viewModel,
+                        threads = threads,
                         onThreadSelected = { thread ->
-                            selectedUid = thread.uid
-                            selectedSubject = thread.subject
-                            selectedAccount = thread.accountKey
-                            selectedThread = thread.threadId
+                            openRow(thread, 0)
                             scope.launch {
                                 navigator.navigateTo(ListDetailPaneScaffoldRole.Detail)
                             }
@@ -170,47 +195,105 @@ fun MailPane(
                     if (account == null || thread == null) {
                         NothingSelected()
                     } else {
-                        ReaderScreen(
-                            accountKey = account,
-                            threadId = thread,
-                            subject = selectedSubject,
-                            onReply = { emailId, all -> onReply(account, emailId, all) },
-                            onForward = { emailId -> onForward(account, emailId) },
-                            onAction = { action ->
-                                viewModel.apply(action, listOf(ActionTarget(account, thread)))
+                        // Indices into what Paging has loaded, placeholders included,
+                        // so they are the same indices `threads[i]` takes.
+                        val rows =
+                            threads.itemSnapshotList.map { row ->
+                                row?.let { ActionTarget(it.accountKey, it.threadId) }
+                            }
+                        val here = ActionTarget(account, thread)
+                        val nextAt = neighbourIndex(rows, here, next = true)
+                        val previousAt = neighbourIndex(rows, here, next = false)
 
-                                // Archiving, trashing, marking spam and snoozing all
-                                // take the conversation out of the list it was
-                                // opened from, so the reader stops being a view of
-                                // anything. Starring and labelling do not, and
-                                // closing on those would be a screen that vanishes
-                                // when somebody stars a message.
-                                if (action.leavesTheList) closeReader()
-                            },
-                            onLabel = {
-                                viewModel.openLabelSheet(listOf(ActionTarget(account, thread)))
-                            },
-                            onOpenLabel = { label ->
-                                // The reader first, or on a phone the list
-                                // changes underneath a pane that is still
-                                // covering it.
-                                closeReader()
-                                onNavigate(MailView.Labelled(label))
-                            },
-                            onMove = {
-                                viewModel.openMoveSheet(view, listOf(ActionTarget(account, thread)))
-                            },
-                            // Only where there is a list to go back *to*. On a
-                            // tablet both panes are on screen and an arrow that
-                            // leaves a pane already beside its list is a control
-                            // pointing at nothing.
-                            onBack =
-                                if (navigator.canNavigateBack()) {
-                                    { scope.launch { navigator.navigateBack() } }
-                                } else {
-                                    null
-                                },
-                        )
+                        // Read through LazyPagingItems rather than off the snapshot,
+                        // because a read is what tells Paging where the user is. The
+                        // list stops reading once the reader covers it, so without
+                        // this a run of swipes reaches the last loaded row and stops
+                        // there, with more mail on the server than on the device.
+                        val at = rows.indexOf(here)
+                        LaunchedEffect(at) { if (at >= 0) threads[at] }
+
+                        // A fresh reader per conversation: its list's scroll offset,
+                        // the attachment being saved and its snackbars are about the
+                        // conversation they were made for. Without the key, swiping
+                        // from the end of a long thread opened the next one scrolled
+                        // to the same depth.
+                        key(account, thread) {
+                            val towards = remember { step }
+                            val arriving = remember { Animatable(if (towards == 0) 0f else 1f) }
+                            LaunchedEffect(Unit) {
+                                arriving.animateTo(0f, tween(ARRIVAL_MILLIS))
+                            }
+
+                            Box(
+                                modifier =
+                                    Modifier.fillMaxSize().graphicsLayer {
+                                        // From the side the swipe pushed towards: the
+                                        // next conversation comes in from the right.
+                                        translationX =
+                                            arriving.value * towards * size.width * ARRIVAL_SHIFT
+                                        alpha = 1f - arriving.value
+                                    }
+                            ) {
+                                ReaderScreen(
+                                    accountKey = account,
+                                    threadId = thread,
+                                    subject = selectedSubject,
+                                    onNext =
+                                        nextAt?.let { i ->
+                                            { threads[i]?.let { row -> openRow(row, 1) } }
+                                        },
+                                    onPrevious =
+                                        previousAt?.let { i ->
+                                            { threads[i]?.let { row -> openRow(row, -1) } }
+                                        },
+                                    onReply = { emailId, all -> onReply(account, emailId, all) },
+                                    onForward = { emailId -> onForward(account, emailId) },
+                                    onAction = { action ->
+                                        viewModel.apply(
+                                            action,
+                                            listOf(ActionTarget(account, thread)),
+                                        )
+
+                                        // Archiving, trashing, marking spam and snoozing all
+                                        // take the conversation out of the list it was
+                                        // opened from, so the reader stops being a view of
+                                        // anything. Starring and labelling do not, and
+                                        // closing on those would be a screen that vanishes
+                                        // when somebody stars a message.
+                                        if (action.leavesTheList) closeReader()
+                                    },
+                                    onLabel = {
+                                        viewModel.openLabelSheet(
+                                            listOf(ActionTarget(account, thread))
+                                        )
+                                    },
+                                    onOpenLabel = { label ->
+                                        // The reader first, or on a phone the list
+                                        // changes underneath a pane that is still
+                                        // covering it.
+                                        closeReader()
+                                        onNavigate(MailView.Labelled(label))
+                                    },
+                                    onMove = {
+                                        viewModel.openMoveSheet(
+                                            view,
+                                            listOf(ActionTarget(account, thread)),
+                                        )
+                                    },
+                                    // Only where there is a list to go back *to*. On a
+                                    // tablet both panes are on screen and an arrow that
+                                    // leaves a pane already beside its list is a control
+                                    // pointing at nothing.
+                                    onBack =
+                                        if (navigator.canNavigateBack()) {
+                                            { scope.launch { navigator.navigateBack() } }
+                                        } else {
+                                            null
+                                        },
+                                )
+                            }
+                        }
                     }
                 }
             },
@@ -280,6 +363,19 @@ private fun close(
 ) {
     if (navigator.canNavigateBack()) scope.launch { navigator.navigateBack() } else clearSelection()
 }
+
+/** How long a conversation opened by a swipe takes to settle into place. */
+private const val ARRIVAL_MILLIS = 220
+
+/**
+ * How far it starts from its resting place, as a share of the pane's width.
+ *
+ * A quarter rather than the whole width: the conversation being left is not drawn sliding out — see
+ * `swipeBetweenConversations` for why only one reader exists at a time — so a full-width entrance
+ * would cross an empty pane first. A short slide with a fade says which way the list moved without
+ * pretending to be a pager.
+ */
+private const val ARRIVAL_SHIFT = 0.25f
 
 /** Whether an action takes the conversation out of the list it was opened from. */
 private val MailAction.leavesTheList: Boolean
