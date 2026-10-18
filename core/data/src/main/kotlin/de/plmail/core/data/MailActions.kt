@@ -19,7 +19,6 @@ import de.plmail.jmap.protocol.EmailId
 import de.plmail.jmap.protocol.JmapError
 import de.plmail.jmap.protocol.MailboxId
 import de.plmail.jmap.protocol.RequestBuilder
-import de.plmail.jmap.protocol.StateToken
 import de.plmail.jmap.protocol.ThreadId
 import java.io.IOException
 import java.time.Instant
@@ -579,15 +578,20 @@ constructor(
                 val request = RequestBuilder()
                 val accountId = AccountId(account.accountId)
 
+                // No `ifInState`, deliberately. The server bumps the account's
+                // Email state on every IMAP sync and flag change, and on the
+                // action before this one, so a token read from the cache is
+                // often stale by the time a second swipe arrives. The server
+                // then answers `stateMismatch` and nothing is changed -- which
+                // the user sees as "may not have reached the server" for a
+                // plain archive or trash. These are relocations of named
+                // messages, each one undoable; last writer wins is the right
+                // answer, not a refusal.
                 val set =
                     if (action == MailAction.Trash) {
                         // `destroy` is the move to Trash. The server has no
                         // hard-delete path, so this is a relocation.
-                        EmailSet(
-                            accountId = accountId,
-                            destroy = ids,
-                            ifInState = state(account.emailState),
-                        )
+                        EmailSet(accountId = accountId, destroy = ids)
                     } else {
                         // A missing binding is reported, never skipped. Silently
                         // doing nothing here is the worst possible outcome: the
@@ -601,14 +605,7 @@ constructor(
                                         "relative to yet. Its labels have not been synced."
                                 )
 
-                        EmailSet(
-                            accountId = accountId,
-                            update = ids.associateWith { patch },
-                            // The state the local copy was built from. Two
-                            // clients editing one conversation otherwise take
-                            // turns overwriting each other silently.
-                            ifInState = state(account.emailState),
-                        )
+                        EmailSet(accountId = accountId, update = ids.associateWith { patch })
                     }
 
                 val handle = request.add(set)
@@ -707,8 +704,6 @@ constructor(
         DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss'Z'")
             .withZone(ZoneOffset.UTC)
             .format(Instant.ofEpochMilli(epochMillis))
-
-    private fun state(token: String?): StateToken? = token?.let(::StateToken)
 
     /**
      * The patch for an action, resolved against this account's own bindings.
