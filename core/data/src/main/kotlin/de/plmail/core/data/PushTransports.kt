@@ -1,5 +1,6 @@
 package de.plmail.core.data
 
+import de.plmail.core.datastore.PushState
 import de.plmail.jmap.protocol.FcmConfig
 import de.plmail.jmap.protocol.PushCapability
 
@@ -33,6 +34,17 @@ enum class PushChoice(val wire: String) {
         fun of(wire: String?): PushChoice? = entries.firstOrNull { it.wire == wire }
     }
 }
+
+/**
+ * The transport this device is meant to be on.
+ *
+ * What the user picked, and where nothing was ever picked, the transport it is registered on --
+ * only then Web Push. The order is the fix: a phone that moved to Firebase before the app stored a
+ * choice has `transport = fcm` and no choice, and treating that as "Web Push" both showed the wrong
+ * radio and had `reapply` move the device off Firebase on the next launch (releasing its token).
+ */
+internal fun PushState.effectiveChoice(): PushChoice =
+    PushChoice.of(choice) ?: PushChoice.of(transport) ?: PushChoice.WEB_PUSH
 
 /**
  * Why an option is not on offer.

@@ -105,7 +105,7 @@ constructor(
 
     val transports: Flow<PushTransportState> =
         combine(state.state, serverSupport) { stored, server ->
-            val choice = PushChoice.of(stored.choice) ?: PushChoice.WEB_PUSH
+            val choice = stored.effectiveChoice()
 
             PushTransportState(
                 options = options(server),
@@ -210,7 +210,7 @@ constructor(
         runCatching { push.ensureSealingKeys() }
 
         val stored = state.state.first()
-        val choice = PushChoice.of(stored.choice) ?: PushChoice.WEB_PUSH
+        val choice = stored.effectiveChoice()
 
         if (choice == PushChoice.PULL) return
 

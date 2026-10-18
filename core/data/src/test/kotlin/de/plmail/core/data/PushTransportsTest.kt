@@ -1,5 +1,6 @@
 package de.plmail.core.data
 
+import de.plmail.core.datastore.PushState
 import de.plmail.jmap.protocol.FcmConfig
 import de.plmail.jmap.protocol.PushCapability
 import kotlin.test.Test
@@ -132,5 +133,32 @@ class PushTransportsTest {
 
         assertNull(PushChoice.of("something else"))
         assertNull(PushChoice.of(null))
+    }
+
+    /**
+     * The bug: Firebase registered, no choice stored, and the screen and `reapply` said Web Push.
+     */
+    @Test
+    fun `a registered transport stands in where no choice was stored`() {
+        assertEquals(PushChoice.FCM, PushState(transport = "fcm").effectiveChoice())
+        assertEquals(PushChoice.WEB_PUSH, PushState(transport = "webpush").effectiveChoice())
+    }
+
+    @Test
+    fun `a stored choice wins over the transport it has not reached yet`() {
+        assertEquals(
+            PushChoice.PULL,
+            PushState(choice = "pull", transport = "fcm").effectiveChoice(),
+        )
+        assertEquals(
+            PushChoice.FCM,
+            PushState(choice = "fcm", transport = "webpush").effectiveChoice(),
+        )
+    }
+
+    @Test
+    fun `a device that never registered and never chose is on Web Push`() {
+        assertEquals(PushChoice.WEB_PUSH, PushState().effectiveChoice())
+        assertEquals(PushChoice.WEB_PUSH, PushState(choice = "garbled").effectiveChoice())
     }
 }
