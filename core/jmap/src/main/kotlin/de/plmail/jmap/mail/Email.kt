@@ -130,11 +130,16 @@ data class EmailBodyPart(
     val cid: String? = null,
 ) {
     /**
-     * Whether this part is displayed inside the message rather than listed beneath it. A `cid` is
-     * what an inline image is referenced by.
+     * Whether this part is displayed inside the message rather than listed beneath it.
+     *
+     * The `disposition` decides when there is one. A `cid` is what an inline image is referenced
+     * by, but plenty of mailers also put a Content-ID on a part they mark `attachment` -- an
+     * invoice PDF from an accounting package, a forwarded file -- and reading the cid alone hid
+     * every such file from the reader's list and from a forward. Only a part with no disposition
+     * falls back to the cid.
      */
     val isInline: Boolean
-        get() = disposition == "inline" || cid != null
+        get() = disposition == "inline" || (disposition == null && cid != null)
 }
 
 @Serializable
