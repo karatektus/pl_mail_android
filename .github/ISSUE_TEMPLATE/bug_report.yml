@@ -1,0 +1,62 @@
+name: Bug
+description: Something in the app that worked, or should work, does not.
+labels: [bug, needs-triage]
+body:
+    - type: markdown
+      attributes:
+          value: |
+              Thanks for reporting. A bug fix may go straight to a pull request as long as it describes the bug; this form is for when you would rather somebody else fixed it, or want to check first.
+
+              If the web app on the same server shows the same problem, it is the server's — please report it in [pl_mail](https://github.com/karatektus/pl_mail/issues/new/choose) instead.
+    - type: textarea
+      id: what
+      attributes:
+          label: What happened
+          description: What you did, what you expected, and what you saw instead.
+      validations:
+          required: true
+    - type: textarea
+      id: steps
+      attributes:
+          label: How to make it happen again
+          placeholder: |
+              1. Open …
+              2. Tap …
+              3. …
+    - type: input
+      id: version
+      attributes:
+          label: App version
+          description: Android Settings → Apps → plMail, or the release you installed (`v0.0.31`).
+      validations:
+          required: true
+    - type: dropdown
+      id: flavour
+      attributes:
+          label: Build
+          description: The `foss` build has no Google Play Services; the `google` one delivers push through Firebase.
+          options: [foss, google, Built it myself, Not sure]
+      validations:
+          required: true
+    - type: input
+      id: server
+      attributes:
+          label: plMail server version
+          description: Shown on the server's Admin page for an administrator, or the image tag you run (`latest`, `main`, `v0.3.7`).
+    - type: input
+      id: device
+      attributes:
+          label: Device and Android version
+          placeholder: Pixel 8, Android 16
+    - type: dropdown
+      id: provider
+      attributes:
+          label: Mail provider
+          multiple: true
+          options: [Gmail, Outlook / Microsoft 365, Other IMAP, Not about mail]
+    - type: textarea
+      id: logs
+      attributes:
+          label: Logs or screenshots
+          description: Anything from `adb logcat` around the time it happened, or Settings → Push → Received pushes for a notification that did not arrive. Remove addresses and tokens you would not want public.
+          render: text

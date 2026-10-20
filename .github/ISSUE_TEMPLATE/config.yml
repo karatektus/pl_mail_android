@@ -1,0 +1,18 @@
+# The chooser shown on "New issue". Blank issues are off so that every issue
+# arrives as a bug or a feature, labelled and waiting for triage — see
+# CONTRIBUTING.md, "How work gets in".
+#
+# This repository has no Discussions of its own: the app and the server are one
+# project, and a question about either is answered in the server's, where the
+# next person looks first.
+blank_issues_enabled: false
+contact_links:
+    - name: Ask a question
+      url: https://github.com/karatektus/pl_mail/discussions
+      about: Installing, pairing or using the app — anything that is not a bug or a feature request.
+    - name: Something on the server, or in the web app
+      url: https://github.com/karatektus/pl_mail/issues/new/choose
+      about: When the web app shows the same problem, it is the server's, and its issue belongs there.
+    - name: Read the handbook
+      url: https://karatektus.github.io/pl_mail/
+      about: Features, installation and providers, in English and German.

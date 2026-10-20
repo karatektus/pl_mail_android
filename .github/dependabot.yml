@@ -1,0 +1,44 @@
+version: 2
+
+# The app holds app passwords and push keys and parses whatever the server and
+# Firebase hand it, so its dependency tree is attack surface like the server's.
+#
+# Grouped and weekly rather than per-package and daily, as in the server
+# repository: Compose, AndroidX and Kotlin each move as a family, and a PR per
+# package would be a dozen PRs that only make sense merged at once. Every
+# version lives in gradle/libs.versions.toml, which Dependabot reads.
+updates:
+    - package-ecosystem: gradle
+      directory: /
+      schedule:
+          interval: weekly
+      open-pull-requests-limit: 5
+      groups:
+          kotlin:
+              patterns:
+                  - 'org.jetbrains.kotlin*'
+                  - 'org.jetbrains.kotlinx*'
+                  - 'com.google.devtools.ksp*'
+          compose:
+              patterns:
+                  - 'androidx.compose*'
+          androidx:
+              patterns:
+                  - 'androidx.*'
+          # Everything else together: these are the ones worth reading
+          # individually, and there are few enough of them to do that.
+          minor-and-patch:
+              update-types:
+                  - minor
+                  - patch
+
+    # The release workflow signs and publishes the APKs people install, so a
+    # stale or vulnerable action there reaches further than a stale library.
+    - package-ecosystem: github-actions
+      directory: /
+      schedule:
+          interval: weekly
+      groups:
+          actions:
+              patterns:
+                  - '*'

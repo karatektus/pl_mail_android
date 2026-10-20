@@ -14,8 +14,13 @@ on:
             - 'docs/**'
             - 'README.md'
             - '**/*.dist'
+    # `wip/**` and `milestone/**` as in the server repository: a feature too
+    # big for one pull request is built on a `wip/` branch in phases, and a
+    # release's work is collected on a milestone branch (`milestone/v0.4.0`)
+    # before it reaches main. A pull request into either is the same proposal
+    # a pull request into main is.
     pull_request:
-        branches: [main]
+        branches: [main, 'wip/**', 'milestone/**']
     workflow_dispatch:
 
 permissions:
