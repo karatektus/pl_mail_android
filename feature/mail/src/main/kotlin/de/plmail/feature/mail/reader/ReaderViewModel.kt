@@ -276,6 +276,13 @@ constructor(
                     )
                 }
 
+        // Another conversation was opened while this one was being read from
+        // disk or downloaded. The load is left to finish -- its bodies land in
+        // the cache, and cancelling would throw away a download the user may
+        // come straight back to -- but it must not draw: the reader would
+        // otherwise switch back to the conversation the user just left.
+        if (opened.value != OpenedThread(accountKey, threadId)) return
+
         _state.update { current ->
             ReaderUiState(
                 // The caller's subject where there is one, the conversation's

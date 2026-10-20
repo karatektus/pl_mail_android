@@ -23,6 +23,8 @@
     <string name="action_spam">Als Spam markieren</string>
     <string name="undo">Rückgängig</string>
     <string name="reader_back">Zurück zur Liste</string>
+    <string name="reader_next_conversation">Nächste Unterhaltung</string>
+    <string name="reader_previous_conversation">Vorherige Unterhaltung</string>
     <plurals name="archived">
         <item quantity="one">1 Unterhaltung archiviert</item>
         <item quantity="other">%1$d Unterhaltungen archiviert</item>
