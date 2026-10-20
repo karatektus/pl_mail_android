@@ -1,8 +1,11 @@
 package de.plmail.feature.calendar
 
+import android.content.Context
+import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.data.AccountsRepository
 import de.plmail.core.data.CalendarRefresh
 import de.plmail.core.data.CalendarRepository
@@ -132,6 +135,7 @@ constructor(
     private val calendar: CalendarRepository,
     private val clock: Clock,
     private val prefs: CalendarPrefsStore,
+    @ApplicationContext private val context: Context,
     connectivity: Connectivity,
     accounts: AccountsRepository,
 ) : ViewModel() {
@@ -319,6 +323,15 @@ constructor(
             val outcome = calendar.refresh(window)
 
             refreshing = null
+            // The home-screen widgets draw the same cache this just rewrote. A
+            // broadcast rather than a direct call: the widgets live in :app and
+            // this module must not depend on it. Only a real refresh re-renders;
+            // a refusal or an unreachable server changed nothing worth drawing.
+            if (outcome is CalendarRefresh.Refreshed) {
+                context.sendBroadcast(
+                    Intent(ACTION_CALENDAR_SYNCED).setPackage(context.packageName)
+                )
+            }
             // Recorded whatever the outcome, including a refusal and an
             // unreachable server. "Has it been asked" is the question this
             // answers, and re-asking a machine that is off the network on every

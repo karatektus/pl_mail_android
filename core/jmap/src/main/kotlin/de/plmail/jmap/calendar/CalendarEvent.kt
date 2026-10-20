@@ -79,6 +79,11 @@ data class CalendarEvent(
      * only show when the value was written back.
      */
     val recurrenceOverrides: Map<String, JsonObject> = emptyMap(),
+    /**
+     * Reminders, as JSCalendar keeps them: each an Alert with an OffsetTrigger such as `-PT30M`.
+     * Only present when asked for; read here for whether there are any (the agenda widget's bell).
+     */
+    val alerts: Map<String, JsonObject> = emptyMap(),
     val sequence: Int = 0,
     /** UTC instants, unlike [start] — these are `Z`-suffixed. */
     val created: String? = null,
@@ -117,6 +122,11 @@ data class CalendarEvent(
      */
     val recurrenceId: String? = null,
     val recurrenceIdTimeZone: String? = null,
+    /**
+     * plMail's extension: the event was taken from an email. Only sent when asked for, and only by
+     * a server that knows it; absent reads as false.
+     */
+    val isLinked: Boolean = false,
 ) {
     /** Whether this object is one occurrence of a series rather than the series itself. */
     val isOccurrence: Boolean

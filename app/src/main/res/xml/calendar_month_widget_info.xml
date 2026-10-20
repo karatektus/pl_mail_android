@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Home-screen month widget: a 7-column grid whose cells show event chips, so
+  it likes room. 4x4 cells is the default; it resizes both ways, and cells
+  fall back to dots when too small for text. The 30-minute
+  update keeps the "today" highlight honest overnight; a calendar sync
+  re-renders it immediately through CalendarSyncedReceiver.
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    android:minWidth="110dp"
+    android:minHeight="110dp"
+    android:minResizeWidth="110dp"
+    android:minResizeHeight="110dp"
+    android:targetCellWidth="4"
+    android:targetCellHeight="4"
+    android:resizeMode="horizontal|vertical"
+    android:updatePeriodMillis="1800000"
+    android:widgetCategory="home_screen"
+    android:description="@string/calendar_month_widget_description" />

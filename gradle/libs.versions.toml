@@ -33,6 +33,9 @@ room = "2.8.4"
 paging = "3.5.1"
 work = "2.11.2"
 datastore = "1.2.1"
+# Jetpack Glance for the home-screen calendar widgets. Only the stable,
+# long-documented APIs are used.
+glance = "1.1.1"
 webkit = "1.17.0"
 camerax = "1.6.1"
 mlkitBarcode = "17.3.0"
@@ -65,6 +68,8 @@ spotless = "8.9.0"
 ktfmt = "0.64"
 
 [libraries]
+# Home-screen calendar widgets. Glance renders RemoteViews from composables.
+androidx-glance-appwidget = { group = "androidx.glance", name = "glance-appwidget", version.ref = "glance" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "androidxCore" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }
