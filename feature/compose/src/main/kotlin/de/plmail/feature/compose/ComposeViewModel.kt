@@ -45,6 +45,10 @@ import kotlinx.coroutines.launch
  * quote behind a chip for the same reason. It also keeps the editor's HTML support narrow enough to
  * be trustworthy: it only ever has to serialise what this user typed.
  *
+ * **Nor is the signature.** The same reasoning, for the user's own HTML this time: a sign-off is
+ * often a table with a logo, and it carries the marker the web swaps it by. It is held as
+ * [ComposeUiState.signatureHtml] and joined on with the quote, in [outgoing].
+ *
  * **Autosave writes to the server, not to a local table.** Everything in the local database is a
  * cache that can be dropped and re-synced; a draft that existed only there would be the one row
  * that could not. So the draft goes to Drafts, where the web UI and every other device can see it,
@@ -109,6 +113,11 @@ constructor(
                 is ComposeRequest.Share -> startShare(current, request)
             }
 
+            // The editor loads what was just put into the draft: a reopened
+            // draft's text, a share's. Without this it opened empty, and the
+            // first keystroke replaced the draft's body with what it held.
+            _state.update { it.copy(bodyLoads = it.bodyLoads + 1) }
+
             readSendWindow()
             watchForAutosave()
         }
@@ -124,7 +133,17 @@ constructor(
 
     fun setSubject(subject: String) = edit { it.copy(subject = subject) }
 
-    fun setBody(html: String) = edit { it.copy(bodyHtml = html) }
+    /**
+     * What the editor holds now.
+     *
+     * Ignored until the draft has loaded. The editor reports its empty first frame before [open]
+     * has finished, and taking that would put an empty body over the draft being opened.
+     */
+    fun setBody(html: String) {
+        if (_state.value.isLoading) return
+
+        edit { it.copy(bodyHtml = html) }
+    }
 
     fun showCopyFields() = _state.update { it.copy(isShowingCopyFields = true) }
 
@@ -138,27 +157,29 @@ constructor(
     fun setIdentity(identity: SendIdentity) {
         val changedAccount = identity.accountKey != _state.value.draft.accountKey
 
-        // The signature follows the address, and ONLY the signature: the swap is
-        // scoped to the marked block, so a paragraph already typed above it is
-        // untouched. Changing From must never cost somebody what they have
-        // written -- the same rule, and the same marker, as the web composer's.
-        edit { draft ->
-            val body = Signatures.replaceSignature(draft.bodyHtml, identity.htmlSignature)
+        // The signature follows the address. It is held beside the body, so the
+        // swap cannot touch a word of what has been typed.
+        _state.update { state ->
+            val draft = state.draft
 
-            if (!changedAccount) {
-                draft.copy(identityId = identity.identityId, bodyHtml = body)
-            } else {
-                draft.copy(
-                    accountKey = identity.accountKey,
-                    identityId = identity.identityId,
-                    bodyHtml = body,
-                    emailId = null,
-                    // The blobs belong to the old account too; BlobResolver
-                    // filters by account and would refuse them.
-                    attachments = draft.attachments.filter { it.uri != null },
-                    savedAttachments = emptyList(),
-                )
-            }
+            state.copy(
+                draft =
+                    if (!changedAccount) {
+                        draft.copy(identityId = identity.identityId)
+                    } else {
+                        draft.copy(
+                            accountKey = identity.accountKey,
+                            identityId = identity.identityId,
+                            emailId = null,
+                            // The blobs belong to the old account too; BlobResolver
+                            // filters by account and would refuse them.
+                            attachments = draft.attachments.filter { it.uri != null },
+                            savedAttachments = emptyList(),
+                        )
+                    },
+                signatureHtml = identity.htmlSignature,
+                isSaved = false,
+            )
         }
 
         // A different account is a different `maxDelayedSend`. One login can
@@ -191,6 +212,9 @@ constructor(
     fun removeQuote() = _state.update { it.copy(quotedHtml = "") }
 
     fun toggleQuote() = _state.update { it.copy(isQuoteExpanded = !it.isQuoteExpanded) }
+
+    /** Sends this one message without a sign-off. The next one is signed again. */
+    fun removeSignature() = _state.update { it.copy(signatureHtml = "", isSaved = false) }
 
     // ------------------------------------------------------------- suggestions
 
@@ -235,7 +259,7 @@ constructor(
         // queue has taken over would write the pre-send body over the one being
         // sent, and on a draft the queue may already have replaced.
         autosave?.cancel()
-        sendQueue.enqueue(draft.withQuote(_state.value.quotedHtml), at)
+        sendQueue.enqueue(draft.outgoing(_state.value.signatureHtml, _state.value.quotedHtml), at)
 
         return true
     }
@@ -291,7 +315,9 @@ constructor(
             if (state.draft.isEmpty(state.quotedHtml)) {
                 runCatching { compose.discard(state.draft) }
             } else {
-                runCatching { compose.save(state.draft.withQuote(state.quotedHtml)) }
+                runCatching {
+                    compose.save(state.draft.outgoing(state.signatureHtml, state.quotedHtml))
+                }
             }
 
             onClosed()
@@ -330,8 +356,8 @@ constructor(
                     ComposeDraft(
                         accountKey = identity.accountKey,
                         identityId = identity.identityId,
-                        bodyHtml = Signatures.block(identity.htmlSignature),
                     ),
+                signatureHtml = identity.htmlSignature,
                 isLoading = false,
             )
         }
@@ -382,13 +408,12 @@ constructor(
                         to = composed.to,
                         cc = composed.cc,
                         subject = composed.subject.orEmpty(),
-                        // Above the quote, because the quote is held beside the
-                        // draft and appended at save. A sign-off under somebody
-                        // else's message is a sign-off nobody reads.
-                        bodyHtml = Signatures.block(identity.htmlSignature),
                         inReplyTo = composed.inReplyTo,
                         references = composed.references,
                     ),
+                // Above the quote, which is where [outgoing] puts it. A sign-off
+                // under somebody else's message is a sign-off nobody reads.
+                signatureHtml = identity.htmlSignature,
                 quotedHtml = composed.quotedHtml,
                 isShowingCopyFields = composed.cc.isNotEmpty(),
                 isLoading = false,
@@ -428,12 +453,12 @@ constructor(
                         accountKey = identity.accountKey,
                         identityId = identity.identityId,
                         subject = composed.subject.orEmpty(),
-                        bodyHtml = Signatures.block(identity.htmlSignature),
                         // The original's own files travel with the forward, by
                         // blob id -- nothing is downloaded to the phone and
                         // re-uploaded to the server it came from.
                         attachments = original.attachments.toStagedAttachments(),
                     ),
+                signatureHtml = identity.htmlSignature,
                 quotedHtml = composed.quotedHtml,
                 isLoading = false,
             )
@@ -493,6 +518,7 @@ constructor(
         _state.update {
             it.copy(
                 draft = draft,
+                signatureHtml = identity.htmlSignature,
                 // Opened when there is something in them, because a share that
                 // filled a Cc line the user cannot see is a share that copies
                 // somebody in silently.
@@ -512,11 +538,15 @@ constructor(
                     }
                     return
                 }
-        val draft = reopened.draft
+        // The sign-off comes out of the body and is held beside it, as for
+        // every other draft. A draft saved without one stays without one.
+        val (typed, signature) = Signatures.split(reopened.draft.bodyHtml)
+        val draft = reopened.draft.copy(bodyHtml = typed)
 
         _state.update {
             it.copy(
                 draft = draft,
+                signatureHtml = signature.orEmpty(),
                 // A draft on a catch-all address names an identity the list
                 // does not have; without its row the From line would read
                 // "unknown" over a draft that is perfectly sendable.
@@ -565,13 +595,13 @@ constructor(
     private fun watchForAutosave() {
         autosave = viewModelScope.launch {
             _state
-                .map { it.draft to it.quotedHtml }
+                .map { Triple(it.draft, it.signatureHtml, it.quotedHtml) }
                 .distinctUntilChanged()
                 .debounce(AUTOSAVE_DELAY_MS)
-                .collect { (draft, quote) ->
+                .collect { (draft, signature, quote) ->
                     if (draft.isEmpty(quote)) return@collect
 
-                    runCatching { compose.save(draft.withQuote(quote)) }
+                    runCatching { compose.save(draft.outgoing(signature, quote)) }
                         .onSuccess { saved ->
                             // The id and the attachment blobs the save
                             // assigned, folded back in without touching
@@ -635,11 +665,11 @@ internal fun ComposeRequest.Share.asDraft(identity: SendIdentity): ComposeDraft 
         cc = cc.flatMap { it.parseAddresses() },
         bcc = bcc.flatMap { it.parseAddresses() },
         subject = subject,
-        // The shared text above the signature, the same way a reply puts the
-        // sign-off above the quote. Escaped rather than inserted: shared text is
-        // somebody else's, and a page title containing `<b>` must not start
-        // rendering as markup in the editor.
-        bodyHtml = text.asBodyHtml() + Signatures.block(identity.htmlSignature),
+        // Escaped rather than inserted: shared text is somebody else's, and a
+        // page title containing `<b>` must not start rendering as markup in the
+        // editor. The signature is not part of it; the composer holds that
+        // beside the editor and signs under the shared text on save.
+        bodyHtml = text.asBodyHtml(),
         // Anything whose directory has gone is dropped rather than carried as a
         // row pointing at nothing. It is the one case where the composer opens
         // quieter than the share was.
@@ -692,6 +722,16 @@ private fun String.escapedForHtml(): String =
 /** The message with its quoted original appended, which is the form that is actually sent. */
 internal fun ComposeDraft.withQuote(quotedHtml: String): ComposeDraft =
     if (quotedHtml.isBlank()) this else copy(bodyHtml = bodyHtml + quotedHtml)
+
+/**
+ * The message as it is saved and sent: what was typed, the sign-off under it, the quote under both.
+ *
+ * The one place the three are joined, so a save and a send cannot disagree about it.
+ * [Signatures.replaceSignature] rather than a plain append, so a body that still carries a marked
+ * block of its own is re-signed rather than signed twice.
+ */
+internal fun ComposeDraft.outgoing(signatureHtml: String, quotedHtml: String): ComposeDraft =
+    copy(bodyHtml = Signatures.replaceSignature(bodyHtml, signatureHtml)).withQuote(quotedHtml)
 
 private fun List<de.plmail.jmap.mail.EmailBodyPart>.toStagedAttachments(): List<StagedAttachment> =
     filterNot {

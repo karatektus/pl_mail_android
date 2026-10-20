@@ -64,6 +64,7 @@
 
     <string name="compose_quoted_text">Quoted text</string>
     <string name="compose_remove_quote">Remove quote</string>
+    <string name="compose_remove_signature">Remove signature</string>
 
     <!--
       Says what is true rather than what is hoped: the draft is on the server or

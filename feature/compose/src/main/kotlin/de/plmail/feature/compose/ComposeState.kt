@@ -43,6 +43,23 @@ data class ComposeUiState(
      */
     val quotedHtml: String = "",
     val isQuoteExpanded: Boolean = false,
+    /**
+     * The sending address's sign-off, held beside the draft for the same reason as [quotedHtml].
+     *
+     * Put under what was typed when the message is saved or sent, in the marked block the web swaps
+     * on. It used to be put into `draft.bodyHtml` instead, which the editor never showed and
+     * overwrote with its own HTML on the first keystroke — so mail written on the phone went out
+     * unsigned (#3). A signature is the user's own HTML, often a table with a logo, and the editor
+     * would not keep that shape or the marker even if it were loaded into it.
+     */
+    val signatureHtml: String = "",
+    /**
+     * Counts the times the ViewModel put a body into the draft that the editor has to load.
+     *
+     * The editor owns the text once it is open, so the body only travels the other way at these
+     * moments: when a draft is reopened, when shared text arrives, when a new message starts.
+     */
+    val bodyLoads: Int = 0,
     val isShowingCopyFields: Boolean = false,
     val isLoading: Boolean = true,
     /** Whether everything on screen has reached the server. Shown, never assumed. */

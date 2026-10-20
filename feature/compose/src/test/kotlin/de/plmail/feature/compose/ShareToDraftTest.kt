@@ -68,9 +68,9 @@ class ShareToDraftTest {
                 .asDraft()
 
         assertEquals("plMail", draft.subject)
-        assertTrue(draft.bodyHtml.startsWith("<p>https://plmail.example.org</p>"))
-        // The signature is below what was shared, not above it.
-        assertTrue(draft.bodyHtml.endsWith("</div>") || draft.bodyHtml.contains("Anna"))
+        // Only what was shared. The signature is held beside the editor and
+        // signed under this on save -- see `outgoing`.
+        assertEquals("<p>https://plmail.example.org</p>", draft.bodyHtml)
     }
 
     @Test
@@ -211,9 +211,9 @@ class ShareToDraftTest {
         assertEquals("", draft.subject)
         assertEquals(emptyList<String>(), draft.to.map { it.email })
         assertEquals(emptyList<String>(), draft.attachments.map { it.name })
-        // The signature is there, which is what makes it a message rather than
-        // an empty box.
-        assertTrue(draft.bodyHtml.contains("Anna"))
+        // Nothing in the body: the signature that makes this a message rather
+        // than an empty box is the composer's to add, not the draft's.
+        assertEquals("", draft.bodyHtml)
     }
 
     /** Intent in, message out, through every step the app takes. */

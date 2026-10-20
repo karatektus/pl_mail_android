@@ -37,6 +37,7 @@
 
     <string name="compose_quoted_text">Zitierter Text</string>
     <string name="compose_remove_quote">Zitat entfernen</string>
+    <string name="compose_remove_signature">Signatur entfernen</string>
 
     <string name="compose_saved">Entwurf gespeichert</string>
     <string name="compose_saving">Wird gespeichert…</string>

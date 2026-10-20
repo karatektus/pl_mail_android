@@ -85,6 +85,23 @@ object Signatures {
     }
 
     /**
+     * The body with its signature taken out, and that signature unwrapped — null when it has none.
+     *
+     * What a reopened draft needs: the composer holds the sign-off beside the editor and puts it
+     * back with [replaceSignature] on every save, so the block has to come out of the body first or
+     * it would be signed twice. The [SEPARATOR] in front of the block goes with it, because
+     * [replaceSignature] writes a new one — leaving the old one behind would add an empty paragraph
+     * every time a draft is reopened and saved again.
+     */
+    fun split(bodyHtml: String): Pair<String, String?> {
+        val found = findBlock(bodyHtml) ?: return bodyHtml to null
+        val signature = bodyHtml.substring(found.first + OPEN.length, found.last - CLOSE.length)
+        val before = bodyHtml.substring(0, found.first).removeSuffix(SEPARATOR)
+
+        return before + bodyHtml.substring(found.last) to signature
+    }
+
+    /**
      * The half-open range the block occupies, or null.
      *
      * Anchored on the opening tag this object writes rather than on the marker alone. A body that

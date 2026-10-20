@@ -132,4 +132,37 @@ class SignaturesTest {
 
         assertTrue(fixed.startsWith(broken), fixed)
     }
+
+    // ------------------------------------------------------- reopening a draft
+
+    /**
+     * A reopened draft goes into the editor without its sign-off, which the composer holds beside
+     * it and writes back on save. Splitting and re-signing has to give back the body it started
+     * from, or every reopen-and-save cycle changes the message.
+     */
+    @Test
+    fun `splitting a signed body and signing it again gives the same body`() {
+        val signed = Signatures.replaceSignature("<p>Dear Grace,</p>", ada)
+
+        val (typed, signature) = Signatures.split(signed)
+
+        assertEquals("<p>Dear Grace,</p>", typed)
+        assertEquals(ada, signature)
+        assertEquals(signed, Signatures.replaceSignature(typed, signature))
+    }
+
+    @Test
+    fun `text after the signature stays in the body`() {
+        val body = "<p>Hi</p>${Signatures.block(ada)}<p>P.S. one more thing</p>"
+
+        val (typed, signature) = Signatures.split(body)
+
+        assertEquals("<p>Hi</p><p>P.S. one more thing</p>", typed)
+        assertEquals(ada, signature)
+    }
+
+    @Test
+    fun `a body with no signature splits into itself and nothing`() {
+        assertEquals("<p>Hi</p>" to null, Signatures.split("<p>Hi</p>"))
+    }
 }

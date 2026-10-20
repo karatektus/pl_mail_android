@@ -51,6 +51,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -125,6 +126,19 @@ fun ComposeScreen(
     // the cursor to the end of the line on every keystroke, which is the classic
     // way a Compose text field becomes unusable.
     LaunchedEffect(body.annotatedString) { viewModel.setBody(body.toHtml()) }
+
+    // The other direction, and only when the ViewModel has put a body into
+    // the draft: a reopened draft, shared text. Counted rather than compared,
+    // and the count saved, so a rotation does not load the same body over
+    // what has been typed since.
+    var loadedBody by rememberSaveable { mutableIntStateOf(0) }
+
+    LaunchedEffect(state.bodyLoads) {
+        if (state.bodyLoads != loadedBody) {
+            body.setHtml(state.draft.bodyHtml)
+            loadedBody = state.bodyLoads
+        }
+    }
 
     val picker =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
@@ -306,6 +320,10 @@ fun ComposeScreen(
                         },
                 )
 
+                if (state.signatureHtml.isNotBlank()) {
+                    Signature(html = state.signatureHtml, onRemove = viewModel::removeSignature)
+                }
+
                 if (state.quotedHtml.isNotBlank()) {
                     Quote(
                         isExpanded = state.isQuoteExpanded,
@@ -404,6 +422,37 @@ private fun Attachments(attachments: List<StagedAttachment>, onRemove: (StagedAt
                             stringResource(R.string.compose_remove_attachment, attachment.name),
                     )
                 },
+            )
+        }
+    }
+}
+
+/**
+ * The sign-off this message will carry, under what is being typed.
+ *
+ * Shown, because a signature nobody can see is one nobody can check or take off — which is how mail
+ * from the phone went out unsigned without anyone noticing (#3). As text rather than rendered, for
+ * the reason [Quote] gives, and not editable here: it is changed on the web, per address.
+ */
+@Composable
+private fun Signature(html: String, onRemove: () -> Unit) {
+    Row(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(start = PlMailTheme.spacing.medium, end = PlMailTheme.spacing.tiny),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = html.strippedOfTags(),
+            style = MaterialTheme.typography.bodyMedium,
+            color = PlMailTheme.colors.inkMuted,
+            modifier = Modifier.weight(1f).padding(vertical = PlMailTheme.spacing.small),
+        )
+
+        IconButton(onClick = onRemove) {
+            Icon(
+                imageVector = Icons.Filled.Close,
+                contentDescription = stringResource(R.string.compose_remove_signature),
             )
         }
     }

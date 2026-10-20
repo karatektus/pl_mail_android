@@ -122,6 +122,44 @@ class ComposeInputTest {
         assertTrue(!draft.copy(bodyHtml = "<p>Yes</p>$quote").isEmpty(quote))
     }
 
+    // ------------------------------------------------------- the signature
+
+    /**
+     * The bug in #3: the sign-off was put into a body the editor then overwrote, so the phone sent
+     * unsigned mail. It is held beside the draft now, and this is where it goes back on.
+     */
+    @Test
+    fun `the signature goes under what was typed and above the quote`() {
+        val draft = ComposeDraft(accountKey = "s/1", identityId = "1", bodyHtml = "<p>Yes</p>")
+
+        val sent = draft.outgoing("<p>Anna</p>", "<blockquote>old</blockquote>").bodyHtml
+
+        assertEquals(
+            "<p>Yes</p><p><br></p>" +
+                "<div class=\"pl-signature\" data-pl-signature><p>Anna</p></div>" +
+                "<blockquote>old</blockquote>",
+            sent,
+        )
+    }
+
+    @Test
+    fun `a removed signature adds nothing`() {
+        val draft = ComposeDraft(accountKey = "s/1", identityId = "1", bodyHtml = "<p>Yes</p>")
+
+        assertEquals("<p>Yes</p>", draft.outgoing("", "").bodyHtml)
+    }
+
+    @Test
+    fun `a body that still carries a signature block is not signed twice`() {
+        val signed = "<p>Yes</p><div class=\"pl-signature\" data-pl-signature><p>Old</p></div>"
+        val draft = ComposeDraft(accountKey = "s/1", identityId = "1", bodyHtml = signed)
+
+        val sent = draft.outgoing("<p>Anna</p>", "").bodyHtml
+
+        assertEquals(1, Regex("data-pl-signature").findAll(sent).count(), sent)
+        assertTrue(sent.contains("<p>Anna</p>") && !sent.contains("<p>Old</p>"), sent)
+    }
+
     // ------------------------------------------------------------ the saver
 
     @Test
