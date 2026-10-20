@@ -49,6 +49,9 @@ unifiedpush = "3.3.3"
 # google-services.json to feed one.
 firebaseBom = "34.17.0"
 playServicesBase = "18.10.0"
+# Held below 1.2 with the Compose BOM above: 1.2.0 requires Compose 1.12 and
+# pulls it in over the BOM, which is the update the BOM is held back from.
+# Dependabot ignores >= 1.2 for the same reason (.github/dependabot.yml).
 richEditor = "1.0.0"
 
 # Testing

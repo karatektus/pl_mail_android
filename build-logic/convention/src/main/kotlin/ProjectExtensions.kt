@@ -63,9 +63,20 @@ internal fun Project.configureKotlin() {
  * directly and needs no third-party plugin — only the engine on the test runtime classpath. Worth
  * knowing, because the usual advice is to reach for one. (Instrumented `androidTest` is a different
  * runner entirely and stays on JUnit 4.)
+ *
+ * ## The `--add-exports`
+ *
+ * Robolectric 4.17 sets up shared memory for the newer platform images through
+ * `jdk.internal.access.SharedSecrets`, which JDK 21 does not export. Without the flag every
+ * Robolectric test fails before its first line, with `IllegalAccessException … does not export
+ * jdk.internal.access to unnamed module` — 216 of them at once when 4.17 first came in. Harmless on
+ * earlier versions and on the plain JVM tests, which never touch the package.
  */
 internal fun Project.configureUnitTestPlatform() {
-    tasks.withType<Test>().configureEach { useJUnitPlatform() }
+    tasks.withType<Test>().configureEach {
+        useJUnitPlatform()
+        jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
+    }
 }
 
 /**
