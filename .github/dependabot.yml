@@ -31,6 +31,14 @@ updates:
               update-types:
                   - minor
                   - patch
+      ignore:
+          # 1.2.0 requires Compose 1.12 and resolves it over the Compose BOM,
+          # which is held at 2026.06.01 because the next one crashed the
+          # minified release build on launch (see `composeBom` in
+          # gradle/libs.versions.toml). Lift this together with the BOM, after a
+          # release build has been installed and watched to start.
+          - dependency-name: 'com.mohamedrejeb.richeditor:richeditor-compose'
+            versions: ['>= 1.2.0']
 
     # The release workflow signs and publishes the APKs people install, so a
     # stale or vulnerable action there reaches further than a stale library.
