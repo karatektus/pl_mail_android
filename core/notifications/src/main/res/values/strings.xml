@@ -22,6 +22,7 @@
     -->
     <string name="notification_you">You</string>
     <string name="no_subject">(no subject)</string>
+    <string name="encrypted_message">Encrypted message</string>
 
     <string name="action_archive">Archive</string>
     <string name="action_mark_read">Mark read</string>

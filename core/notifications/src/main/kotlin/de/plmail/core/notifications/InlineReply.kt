@@ -457,6 +457,7 @@ private fun Intent.putMessage(message: NewMessage) {
     putExtra(EXTRA_SUBJECT, message.subject)
     putExtra(EXTRA_PREVIEW, message.preview)
     putExtra(EXTRA_RECEIVED_AT, message.receivedAt)
+    putExtra(EXTRA_ENCRYPTED, message.isEncrypted)
 }
 
 /** The message this intent is an answer to, or null for one that carries no answerable message. */
@@ -473,6 +474,7 @@ internal fun Intent.repliedTo(): NewMessage? =
         subject = getStringExtra(EXTRA_SUBJECT),
         preview = getStringExtra(EXTRA_PREVIEW).orEmpty(),
         receivedAt = getLongExtra(EXTRA_RECEIVED_AT, 0L),
+        isEncrypted = getBooleanExtra(EXTRA_ENCRYPTED, false),
     )
 
 /**
@@ -495,3 +497,4 @@ private const val EXTRA_SENDER = "sender"
 private const val EXTRA_SUBJECT = "subject"
 private const val EXTRA_PREVIEW = "preview"
 private const val EXTRA_RECEIVED_AT = "received-at"
+private const val EXTRA_ENCRYPTED = "encrypted"

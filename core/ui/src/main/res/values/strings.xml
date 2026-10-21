@@ -33,6 +33,7 @@
     -->
     <string name="thread_new_badge">New</string>
     <string name="a11y_new">Just arrived</string>
+    <string name="a11y_encrypted">end-to-end encrypted</string>
     <string name="a11y_has_attachment">has attachment</string>
     <string name="a11y_starred">starred</string>
     <plurals name="a11y_message_count">

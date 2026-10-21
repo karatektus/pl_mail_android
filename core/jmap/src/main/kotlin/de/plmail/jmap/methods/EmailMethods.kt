@@ -131,6 +131,14 @@ class EmailGet(
                 "hasAttachment",
                 "mailboxIds",
                 "size",
+                // End-to-end encryption (#9): a lock on the row, a notification
+                // that does not pretend to have text, and the reader knowing to
+                // decrypt. A server without them ignores the names.
+                "cryptoType",
+                "encrypted",
+                "signatureState",
+                "signer",
+                "decryptedOnServer",
             )
 
         /** Everything the reader needs, bodies included. */

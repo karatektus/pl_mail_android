@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.AttachFile
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -522,6 +523,18 @@ private fun ThreadRowContent(
                 horizontalArrangement = Arrangement.spacedBy(spacing.tiny),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // End-to-end encrypted (#9): the newest message is, as in the
+                // web app's list. Its preview is blank by design, and the lock
+                // is what says the blank is not an empty message.
+                if (thread.isEncrypted) {
+                    Icon(
+                        imageVector = Icons.Outlined.Lock,
+                        contentDescription = null,
+                        modifier = Modifier.size(AFFORDANCE),
+                        tint = colors.inkFaint,
+                    )
+                }
+
                 if (thread.hasAttachment) {
                     Icon(
                         imageVector = Icons.Outlined.AttachFile,
@@ -765,6 +778,7 @@ private fun ThreadEntity.spoken(
             add(subject?.takeIf { it.isNotBlank() } ?: stringResource(R.string.no_subject))
             if (messageCount > 1)
                 add(pluralStringResource(R.plurals.a11y_message_count, messageCount, messageCount))
+            if (isEncrypted) add(stringResource(R.string.a11y_encrypted))
             if (hasAttachment) add(stringResource(R.string.a11y_has_attachment))
             if (isFlagged) add(stringResource(R.string.a11y_starred))
             // The names only. A colour is not something a screen reader can
