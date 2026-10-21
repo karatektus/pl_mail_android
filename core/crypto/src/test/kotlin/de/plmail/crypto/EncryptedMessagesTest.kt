@@ -82,6 +82,27 @@ class EncryptedMessagesTest {
     }
 
     @Test
+    fun `the decrypted entity is handed over whole, as the server is to receive it`() {
+        val opened = EncryptedMessages.open(eml("pgpmime-signed.eml"), keys(), listOf(sender()))
+
+        val mime = opened.mime.toString(Charsets.UTF_8)
+        assertTrue(mime.startsWith("Content-Type: multipart/mixed"), mime.take(80))
+        assertTrue("Subject: Quarterly report" in mime)
+        assertTrue("notes.txt" in mime)
+    }
+
+    @Test
+    fun `inline pgp is wrapped in a text entity, exactly as the web app wraps it`() {
+        val opened = EncryptedMessages.open(eml("inline.eml"), keys())
+
+        assertEquals(
+            "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" +
+                "Hello from inline PGP.\r\nSecond line.",
+            opened.mime.toString(Charsets.UTF_8),
+        )
+    }
+
+    @Test
     fun `a message encrypted to somebody else does not open`() {
         val failure =
             assertFailsWith<DecryptionException> {

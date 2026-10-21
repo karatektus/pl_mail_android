@@ -62,14 +62,17 @@ object EncryptedMessages {
         val signature = signatureOf(metadata, verifiers)
 
         if (ciphertext.isInline) {
+            // OpenPGP's text mode canonicalises line endings to CRLF on the
+            // wire; the reader wants them as typed.
+            val text = String(plaintext, Charsets.UTF_8).replace("\r\n", "\n")
+
             return OpenedMessage(
                 subject = null,
                 html = null,
-                // OpenPGP's text mode canonicalises line endings to CRLF on
-                // the wire; the reader wants them as typed.
-                text = String(plaintext, Charsets.UTF_8).replace("\r\n", "\n"),
+                text = text,
                 parts = emptyList(),
                 signature = signature,
+                mime = inlineEntity(text),
             )
         }
 
@@ -96,8 +99,19 @@ object EncryptedMessages {
             text = collected.text,
             parts = collected.parts,
             signature = if (innerSigned) InnerSignature.Unchecked else signature,
+            mime = plaintext,
         )
     }
+
+    /**
+     * Inline PGP decrypts to text, not to a message. For the server it is wrapped in the one MIME
+     * entity that says so — byte for byte the web app's `inlineEntity` — so a decrypted copy handed
+     * over from this device and one from a browser are the same thing.
+     */
+    private fun inlineEntity(text: String): ByteArray =
+        ("Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n" +
+                text.replace(Regex("\r\n|\r|\n"), "\r\n"))
+            .toByteArray(Charsets.UTF_8)
 
     /** Whether [subject] is one of the placeholders an encrypting client puts on the outside. */
     fun isPlaceholderSubject(subject: String?): Boolean =
@@ -317,6 +331,12 @@ class OpenedMessage(
     val text: String?,
     val parts: List<OpenedPart>,
     val signature: InnerSignature,
+    /**
+     * The decrypted message whole, as a MIME entity: what an account that keeps decrypted mail on
+     * the server is handed (`DecryptedMail/store`). For inline PGP, the text wrapped as the web app
+     * wraps it.
+     */
+    val mime: ByteArray = ByteArray(0),
 ) {
     override fun toString(): String =
         "OpenedMessage(html=${html != null}, text=${text != null}, parts=${parts.size}, $signature)"

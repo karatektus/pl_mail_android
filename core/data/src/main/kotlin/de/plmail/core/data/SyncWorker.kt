@@ -49,6 +49,8 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
         fun appearance(): AppearanceRepository
 
         fun bodies(): BodyPrefetcher
+
+        fun decryptedMail(): DecryptedMailKeeper
     }
 
     override suspend fun doWork(): Result {
@@ -90,6 +92,11 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
         // After the prefetch rather than before it, so nothing downloaded in the
         // line above is measured against a threshold it has just moved past.
         runCatching { dependencies.bodies().prune() }
+
+        // End-to-end encrypted mail of accounts that keep a readable copy on the
+        // server (#9): decrypted here and handed over, so search and rules work
+        // on it. Optional work like the prefetch, so never the run's result.
+        runCatching { dependencies.decryptedMail().keep() }
 
         // Retried only when everything failed. One unreachable account among
         // several is not a reason to re-run the whole sync -- the others are
