@@ -38,6 +38,14 @@ object DataStoreModule {
 
     @Provides @Singleton fun secretCipher(): SecretCipher = KeystoreSecretCipher()
 
+    /** The end-to-end keys' own Keystore key — see [KeyVault] for why it is not the password's. */
+    @Provides
+    @Singleton
+    @KeyVaultCipher
+    fun keyVaultCipher(): SecretCipher = KeystoreSecretCipher(alias = KEY_VAULT_ALIAS)
+
+    private const val KEY_VAULT_ALIAS = "plmail.e2e.keys"
+
     /**
      * `Dispatchers.IO` because on a real device the cipher is the Android Keystore, and opening the
      * secret is two binder round trips into the TEE. Left to the collector's thread that happens on

@@ -1,10 +1,15 @@
 package de.plmail.core.data
 
+import de.plmail.crypto.PairingBundle
+import de.plmail.crypto.Purposes
+import de.plmail.crypto.UserKey
+import de.plmail.crypto.WrappingException
 import de.plmail.jmap.client.Credential
 import de.plmail.jmap.client.DevicePairingClient
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.client.JmapTransport
 import de.plmail.jmap.client.KeyFingerprint
+import de.plmail.jmap.client.PairedCredential
 import de.plmail.jmap.client.PairingInvitation
 import de.plmail.jmap.client.ServerAddress
 import de.plmail.jmap.client.StreamingTransport
@@ -46,6 +51,14 @@ data class VerifiedServer(
     val credential: Credential.AppPassword,
     val pinnedKey: KeyFingerprint?,
     val session: Session,
+    /**
+     * The person's user keys, when the pairing QR came from a browser with its keyring open (#9).
+     *
+     * Opened here, while the transfer key from the QR's fragment is still at hand, and held in
+     * memory until the connection is saved — a pairing the person backs out of must not leave keys
+     * behind. Empty for a pasted app password, a QR without keys, and a bundle that would not open.
+     */
+    val pairedKeys: List<UserKey> = emptyList(),
 ) {
     /** The address the server says the credential belongs to. */
     val username: String
@@ -139,8 +152,46 @@ class ServerConnector(
                 DevicePairingClient(transports.create(invitation.address, pinned))
                     .redeem(invitation, deviceName)
 
-            verify(invitation.address, paired.credential, pinned)
+            when (val verified = verify(invitation.address, paired.credential, pinned)) {
+                is ConnectionAttempt.Connected ->
+                    ConnectionAttempt.Connected(
+                        verified.server.copy(
+                            pairedKeys = openPairedKeys(invitation, paired, verified.server.session)
+                        )
+                    )
+                else -> verified
+            }
         }
+
+    /**
+     * The user keys a browser sealed into this pairing, or none.
+     *
+     * Never a reason to fail the pairing: the credential is the thing being paired and it already
+     * works. A bundle that will not open — a fragment cut short by a QR reader, a transfer key from
+     * a different code — leaves a device without keys, which the password or a second pairing fixes
+     * later.
+     */
+    private fun openPairedKeys(
+        invitation: PairingInvitation,
+        paired: PairedCredential,
+        session: Session,
+    ): List<UserKey> {
+        val sealed = paired.keys ?: return emptyList()
+        val transferKey =
+            invitation.transferKey?.let(PairingBundle::transferKey) ?: return emptyList()
+
+        return try {
+            PairingBundle.open(
+                transferKey,
+                sealed,
+                purpose = session.keys?.purposes?.pairingTransfer ?: Purposes.PAIRING_TRANSFER,
+            )
+        } catch (unopened: WrappingException) {
+            emptyList()
+        } finally {
+            transferKey.fill(0)
+        }
+    }
 
     /**
      * Runs [block], turning a trust refusal into the question it is.

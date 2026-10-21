@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Drafts
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.LocalOffer
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.NotificationsActive
@@ -168,6 +169,8 @@ fun LabelSidebar(
     onGestures: () -> Unit,
     onAccounts: () -> Unit,
     modifier: Modifier = Modifier,
+    /** End-to-end encryption on this device (#9). Defaulted, so callers that predate it compile. */
+    onEncryption: () -> Unit = {},
 ) {
     // The user's sidebar density, where they have chosen one that differs from the
     // overall setting. Wrapping the whole drawer rather than its rows: the group
@@ -194,6 +197,7 @@ fun LabelSidebar(
             onAppearance = onAppearance,
             onGestures = onGestures,
             onAccounts = onAccounts,
+            onEncryption = onEncryption,
             modifier = modifier,
         )
     }
@@ -219,6 +223,7 @@ private fun SidebarContent(
     onAppearance: () -> Unit,
     onGestures: () -> Unit,
     onAccounts: () -> Unit,
+    onEncryption: () -> Unit,
     modifier: Modifier,
 ) {
     val theme = PlMailTheme.values
@@ -363,6 +368,13 @@ private fun SidebarContent(
                 onClick = onAccounts,
                 icon = Icons.Outlined.AccountCircle,
                 text = stringResource(R.string.accounts),
+            )
+
+            SidebarRow(
+                selected = false,
+                onClick = onEncryption,
+                icon = Icons.Outlined.Lock,
+                text = stringResource(R.string.encryption),
             )
 
             SidebarRow(

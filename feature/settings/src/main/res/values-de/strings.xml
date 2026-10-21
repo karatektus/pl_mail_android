@@ -222,4 +222,36 @@
     <string name="swipe_confirm_on_body">Ein Dialog fragt jedes Mal zuerst.</string>
     <string name="swipe_confirm_off_body">Wirkt sofort. Lässt sich über die eingeblendete Leiste rückgängig machen.</string>
     <string name="swipe_confirm_not_needed">Nichts zu fragen: Diese Richtung tut nichts.</string>
+
+    <string name="encryption_title">Verschlüsselung</string>
+    <string name="encryption_checking">Schlüssel werden geprüft…</string>
+    <string name="encryption_unsupported">Dieser Server bietet keine Ende-zu-Ende-Verschlüsselung an.</string>
+    <string name="encryption_not_set_up">Für dein Konto ist die Ende-zu-Ende-Verschlüsselung noch nicht eingerichtet. Richte sie in der Web-App unter Einstellungen → Verschlüsselung ein und komm dann hierher zurück.</string>
+    <string name="encryption_unreachable">Dein Server war nicht erreichbar, um deine Schlüssel zu prüfen.</string>
+    <string name="encryption_retry">Erneut versuchen</string>
+    <string name="encryption_locked_heading">Dieses Gerät hat noch keine Schlüssel</string>
+    <string name="encryption_locked">Verschlüsselte Mails lassen sich nur auf einem Gerät lesen, das deine Schlüssel hat. Hol sie auf einem der beiden Wege unten hierher.</string>
+    <string name="encryption_locked_stale">Die Schlüssel auf diesem Gerät öffnen deinen Schlüsselbund nicht mehr. Wahrscheinlich wurde er in der Web-App zurückgesetzt. Hol die aktuellen Schlüssel auf einem der beiden Wege unten hierher.</string>
+    <string name="encryption_pair_heading">Mit der Web-App koppeln</string>
+    <string name="encryption_pair_explains">Öffne in der Web-App bei entsperrtem Schlüsselbund Einstellungen → App-Passwörter und scanne den Kopplungscode mit diesem Gerät. Die Schlüssel kommen mit, und dein Server sieht sie nie.</string>
+    <string name="encryption_unlock_password_heading">Oder gib dein plMail-Passwort ein</string>
+    <string name="encryption_unlock_password_explains">Deine Schlüssel werden auf diesem Gerät geöffnet. Dein Passwort wird nirgendwohin gesendet.</string>
+    <string name="encryption_unlock_passphrase_heading">Oder gib deine Verschlüsselungs-Passphrase ein</string>
+    <string name="encryption_unlock_passphrase_explains">Die Passphrase, die du in der Web-App für die Verschlüsselung gewählt hast, nicht das Passwort zum Anmelden. Sie wird nirgendwohin gesendet.</string>
+    <string name="encryption_password">plMail-Passwort</string>
+    <string name="encryption_passphrase">Verschlüsselungs-Passphrase</string>
+    <string name="encryption_unlock">Entsperren</string>
+    <string name="encryption_wrong_password">Mit diesem Passwort lassen sich deine Schlüssel nicht öffnen.</string>
+    <string name="encryption_wrong_passphrase">Mit dieser Passphrase lassen sich deine Schlüssel nicht öffnen.</string>
+    <string name="encryption_ready_heading">Deine Schlüssel sind auf diesem Gerät</string>
+    <string name="encryption_ready">Dieses Gerät kann deine Schlüssel öffnen. Schlüssel, die du in der Web-App hinzufügst oder erneuerst, kommen ohne erneutes Koppeln hier an.</string>
+    <string name="encryption_keys_heading">Adress-Schlüssel</string>
+    <string name="encryption_key_unlocked">Auf diesem Gerät entsperrt</string>
+    <string name="encryption_key_retired">Abgelöst: öffnet weiterhin ältere Mails</string>
+    <string name="encryption_key_does_not_open">Die Schlüssel auf diesem Gerät öffnen diesen nicht</string>
+    <string name="encryption_forget">Schlüssel von diesem Gerät entfernen</string>
+    <string name="encryption_forget_title">Schlüssel von diesem Gerät entfernen?</string>
+    <string name="encryption_forget_explains">Verschlüsselte Mails lassen sich hier erst wieder öffnen, wenn du die Schlüssel per Kopplung oder mit deinem Passwort zurückholst. Auf deinem Server ändert sich nichts.</string>
+    <string name="encryption_forget_confirm">Entfernen</string>
+    <string name="encryption_forget_cancel">Behalten</string>
 </resources>
