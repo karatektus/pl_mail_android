@@ -1,8 +1,13 @@
 package de.plmail.feature.compose
 
 import de.plmail.core.data.ComposeDraft
+import de.plmail.core.data.EncryptionBlock
+import de.plmail.core.data.EncryptionMode
+import de.plmail.core.data.EncryptionPlan
+import de.plmail.core.data.RecipientKeys
 import de.plmail.core.data.ScheduledSend
 import de.plmail.core.data.SendIdentity
+import de.plmail.core.data.plan
 import de.plmail.jmap.mail.DraftComposer
 import de.plmail.jmap.mail.Email
 import de.plmail.jmap.mail.EmailAddress
@@ -66,7 +71,39 @@ data class ComposeUiState(
     val isSaved: Boolean = false,
     val suggestions: List<EmailAddress> = emptyList(),
     val error: ComposeError? = null,
+    /**
+     * End-to-end encryption for this one message (#9): the person's choice, and what the server
+     * said about the recipients' keys. [encryption] is the decision drawn from the two.
+     */
+    val encryptionMode: EncryptionMode = EncryptionMode.AUTO,
+    val recipientKeys: RecipientKeys? = null,
+    /**
+     * A draft this device cannot open — sealed by the web app, or encrypted to keys that are not
+     * here. Shown with what is known, and never saved or sent from here, which would replace it
+     * with an empty message.
+     */
+    val isUnopenable: Boolean = false,
 ) {
+    val encryption: EncryptionPlan
+        get() =
+            plan(
+                encryptionMode,
+                (draft.to + draft.cc + draft.bcc).mapNotNull { it.email },
+                recipientKeys,
+            )
+
+    /** The lock on a recipient's chip, or null where encryption does not apply. */
+    fun lockOf(address: EmailAddress): RecipientLock? {
+        val known = recipientKeys as? RecipientKeys.Known ?: return null
+        val answer = known.byAddress[address.email?.trim()?.lowercase()] ?: return null
+
+        return when {
+            answer.key == null -> null
+            answer.changed -> RecipientLock.KEY_CHANGED
+            else -> RecipientLock.HAS_KEY
+        }
+    }
+
     val identity: SendIdentity?
         get() = identities.firstOrNull { it.identityId == draft.identityId }
 
@@ -145,6 +182,30 @@ sealed interface ComposeError {
 
     /** Shared files the app was not allowed to read, or that were gone by the time it looked. */
     data class AttachmentsUnreadable(val names: List<String>) : ComposeError
+
+    /** The message is to be encrypted, and cannot be. Nothing was sent. */
+    data class EncryptionBlocked(val block: EncryptionBlock) : ComposeError
+
+    /** The recipients' keys could not be checked, so whether to encrypt is unknown. */
+    data object KeysUnchecked : ComposeError
+
+    /** The encrypted original could not be decrypted, so the quote is empty. */
+    data object OriginalNotDecrypted : ComposeError
+
+    /** A draft the web app sealed: only a browser with the keys opens it. */
+    data object SealedOnWeb : ComposeError
+
+    /** An encrypted draft whose keys are not on this device. */
+    data object DraftNotDecrypted : ComposeError
+}
+
+/** What a recipient's chip shows about their key. */
+enum class RecipientLock {
+    /** plMail has a key for the address: mail to it can be encrypted. */
+    HAS_KEY,
+
+    /** It has one, and a new one is waiting to be accepted on the web; the known one is used. */
+    KEY_CHANGED,
 }
 
 /**

@@ -108,6 +108,11 @@ data class Email(
      * any other message's. The mail is still end-to-end encrypted in transit.
      */
     val decryptedOnServer: Boolean = false,
+    /**
+     * A draft the web app sealed: its text is encrypted to the person's own keys in a form only a
+     * browser opens (`draft.asc`), and no JMAP method hands it out. The app cannot edit it.
+     */
+    val sealedDraft: Boolean = false,
 ) {
     /** Whether the text has to be decrypted on this device to be read. */
     val needsDecryption: Boolean

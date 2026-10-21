@@ -164,9 +164,10 @@ class EmailGet(
          * Not folded into [READER_PROPERTIES]: the value carries a whole identity, signature
          * included, and the reader and the body prefetcher fetch messages by the dozen without ever
          * answering one. A server that predates the property ignores the name and the field decodes
-         * as null, so this is asked unconditionally.
+         * as null, so this is asked unconditionally. `sealedDraft` likewise: only a draft being
+         * reopened needs to know the web app sealed it.
          */
-        val REPLY_PROPERTIES = READER_PROPERTIES + "replyFrom"
+        val REPLY_PROPERTIES = READER_PROPERTIES + "replyFrom" + "sealedDraft"
 
         /** Fetches exactly the ids an earlier query produced, in one request. */
         fun byReference(

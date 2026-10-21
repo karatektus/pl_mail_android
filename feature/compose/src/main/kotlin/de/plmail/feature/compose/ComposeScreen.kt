@@ -183,7 +183,17 @@ fun ComposeScreen(
                         )
                     }
 
-                    IconButton(onClick = { if (viewModel.send()) onClose() }) {
+                    if (state.encryption.available) {
+                        EncryptButton(
+                            isEncrypting = state.encryption.encrypt,
+                            onClick = viewModel::toggleEncryption,
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { viewModel.send(onClose) },
+                        enabled = !state.isUnopenable,
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Send,
                             contentDescription = stringResource(R.string.compose_send),
@@ -202,7 +212,7 @@ fun ComposeScreen(
                         isOpen = isChoosingWhen,
                         latest = state.latestSendAt(Instant.now()),
                         onDismiss = { isChoosingWhen = false },
-                        onChosen = { at -> if (viewModel.sendLater(at)) onClose() },
+                        onChosen = { at -> viewModel.sendLater(at, onClose) },
                         onPickExact = { isPickingExactTime = true },
                     )
                 },
@@ -223,7 +233,7 @@ fun ComposeScreen(
                 onDismiss = { isPickingExactTime = false },
                 onChosen = { at ->
                     isPickingExactTime = false
-                    if (viewModel.sendLater(at)) onClose()
+                    viewModel.sendLater(at, onClose)
                 },
             )
         }
@@ -272,6 +282,8 @@ fun ComposeScreen(
                     onShowCopyFields = viewModel::showCopyFields,
                     onQueryChanged = viewModel::suggest,
                 )
+
+                EncryptionHint(state.encryption)
 
                 PlMailDivider()
 
@@ -645,6 +657,13 @@ private fun ComposeError.text(): String =
             stringResource(R.string.compose_error_attachments_too_large, names.named(), limitMb)
         is ComposeError.AttachmentsUnreadable ->
             stringResource(R.string.compose_error_attachments_unreadable, names.named())
+        is ComposeError.EncryptionBlocked -> block.text()
+        ComposeError.KeysUnchecked -> stringResource(R.string.compose_crypto_unchecked)
+        ComposeError.OriginalNotDecrypted ->
+            stringResource(R.string.compose_crypto_original_not_decrypted)
+        ComposeError.SealedOnWeb -> stringResource(R.string.compose_crypto_sealed_on_web)
+        ComposeError.DraftNotDecrypted ->
+            stringResource(R.string.compose_crypto_draft_not_decrypted)
     }
 
 /**

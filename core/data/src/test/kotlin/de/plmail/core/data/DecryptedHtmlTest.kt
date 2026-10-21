@@ -83,4 +83,23 @@ class DecryptedHtmlTest {
             DecryptedHtml.fromText("1 < 2 && <b>not bold</b>"),
         )
     }
+
+    @Test
+    fun `an encrypted message's text part breaks lines where its HTML does`() {
+        assertEquals(
+            "Hello Grace,\nthe numbers & more.\n\nSecond paragraph.\n\n— Ada",
+            DecryptedHtml.toText(
+                "<p>Hello Grace,<br>the <b>numbers</b> &amp; more.</p><p>Second&nbsp;paragraph.</p>" +
+                    "<div class=\"pl-signature\" data-pl-signature><p>— Ada</p></div>"
+            ),
+        )
+    }
+
+    @Test
+    fun `a reopened draft keeps the marker its sign-off is swapped by`() {
+        val clean =
+            DecryptedHtml.sanitize("<div class=\"pl-signature\" data-pl-signature>Ada</div>")
+
+        assertTrue("data-pl-signature" in clean, clean)
+    }
 }
