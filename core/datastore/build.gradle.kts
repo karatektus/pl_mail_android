@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.plmail.android.library)
     alias(libs.plugins.plmail.android.hilt)
+    alias(libs.plugins.kotlin.serialization)
 }
 
 android { namespace = "de.plmail.core.datastore" }
@@ -9,6 +10,9 @@ dependencies {
     // For ServerAddress and Credential: this module stores them, so it has to
     // speak the same types the transport does rather than its own copies.
     implementation(projects.core.jmap)
+    // For UserKey: KeyVault stores the keys :core:crypto opens, as that type.
+    api(projects.core.crypto)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.core)
 

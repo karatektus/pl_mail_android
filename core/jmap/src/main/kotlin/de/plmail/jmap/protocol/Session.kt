@@ -169,6 +169,28 @@ data class Session(
         get() = appearance?.inboxTabs != false
 
     /**
+     * The constants for end-to-end encryption, or null on an instance without it.
+     *
+     * Null is a supported instance: the app pairs, reads and sends as before, and shows encrypted
+     * mail it cannot open as such.
+     */
+    val keys: KeysCapability?
+        get() = capabilities[Capability.KEYS]?.let(KeysCapability::from)
+
+    /**
+     * Whether [id] keeps a decrypted copy of encrypted mail on the server, which the app then has
+     * to provide (`DecryptedMail/pending` and `/store`). False wherever the server does not say.
+     */
+    fun keepsDecryptedMail(id: AccountId): Boolean =
+        account(id)
+            ?.accountCapabilities
+            ?.get(Capability.KEYS)
+            ?.get("keepsDecryptedMail")
+            ?.let { it as? JsonPrimitive }
+            ?.content
+            ?.toBooleanStrictOrNull() ?: false
+
+    /**
      * How much of one account this server has fetched so far.
      *
      * Null when the account publishes no sync capability. Absence is the signal, as with calendars

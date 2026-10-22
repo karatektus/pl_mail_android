@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.ConnectionAttempt
 import de.plmail.core.data.ServerConnector
 import de.plmail.core.datastore.CredentialStore
+import de.plmail.core.datastore.KeyVault
 import de.plmail.core.datastore.ServerConnection
 import de.plmail.jmap.client.Credential
 import de.plmail.jmap.client.PairingInvitation
@@ -35,6 +36,7 @@ class OnboardingViewModel
 constructor(
     private val connector: ServerConnector,
     private val credentials: CredentialStore,
+    private val keys: KeyVault,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(OnboardingUiState())
@@ -160,6 +162,14 @@ constructor(
         if (step !is OnboardingStep.Confirm) return
 
         viewModelScope.launch {
+            // The keys first. Saving the connection is what moves the app off
+            // this screen, and the scope this runs in goes with it.
+            //
+            // Replaces whatever an earlier pairing left: none, when this one
+            // brought none, because a device paired again may be paired to
+            // somebody else.
+            keys.save(step.server.pairedKeys)
+
             credentials.save(
                 ServerConnection(
                     address = step.server.address,

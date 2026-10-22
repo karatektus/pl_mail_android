@@ -43,6 +43,8 @@ include(":app")
 
 include(":core:jmap")
 
+include(":core:crypto")
+
 include(":core:database")
 
 include(":core:datastore")

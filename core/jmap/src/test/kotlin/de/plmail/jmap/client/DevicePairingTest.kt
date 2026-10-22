@@ -114,6 +114,70 @@ class DevicePairingTest {
         assertTrue(transport.lastBody!!.contains("\"deviceName\":\"Pixel 8\""))
     }
 
+    // ------------------------------------------------- keys through pairing (#9)
+
+    /** What the web app's pairing page shows while its keyring is open. */
+    @Test
+    fun `the transfer key in the fragment is carried, and never into the query`() {
+        val key = "Zm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyMTI"
+
+        val parsed = PairingUri.parse(uriFor("https://nas.local", "abc") + "#k=" + key)
+
+        val invitation = assertIs<ParsedInvitation.Valid>(parsed).invitation
+        assertEquals(key, invitation.transferKey)
+        assertEquals("abc", invitation.code)
+    }
+
+    @Test
+    fun `a uri without a fragment pairs without keys`() {
+        val parsed = PairingUri.parse(uriFor("https://nas.local", "abc"))
+
+        assertEquals(null, assertIs<ParsedInvitation.Valid>(parsed).invitation.transferKey)
+    }
+
+    @Test
+    fun `the transfer key never appears in a string representation`() {
+        val key = "Zm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyZm9vYmFyMTI"
+        val invitation =
+            assertIs<ParsedInvitation.Valid>(
+                    PairingUri.parse(uriFor("https://nas.local", "abc") + "#k=" + key)
+                )
+                .invitation
+
+        assertTrue(key !in invitation.toString())
+    }
+
+    @Test
+    fun `the sealed keys in the redeem answer are handed back, and the fragment is not sent`() =
+        runTest {
+            val transport =
+                RecordingTransport.alwaysReturning(
+                    """{"secret":"$secret","username":"a@b","keys":"v1.aXY=.Y3Q="}"""
+                )
+            val invitation =
+                assertIs<ParsedInvitation.Valid>(
+                        PairingUri.parse(uriFor("https://nas.local", "abc") + "#k=transferkey")
+                    )
+                    .invitation
+
+            val paired = DevicePairingClient(transport).redeem(invitation, deviceName = "Pixel 8")
+
+            assertEquals("v1.aXY=.Y3Q=", paired.keys)
+            assertTrue("transferkey" !in transport.lastBody!!)
+            assertTrue("transferkey" !in transport.requests.single().url)
+        }
+
+    @Test
+    fun `a redeem answer without keys carries none`() = runTest {
+        val transport =
+            RecordingTransport.alwaysReturning("""{"secret":"$secret","username":"a@b"}""")
+
+        val paired =
+            DevicePairingClient(transport).redeem(invitation("https://nas.local", "abc"), "Pixel 8")
+
+        assertEquals(null, paired.keys)
+    }
+
     @Test
     fun `a reverse-proxy path prefix is kept on the pairing endpoint`() = runTest {
         val transport =

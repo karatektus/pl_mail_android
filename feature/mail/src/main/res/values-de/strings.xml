@@ -72,6 +72,7 @@
     <string name="notifications">Benachrichtigungen</string>
     <string name="diagnostics">Diagnose</string>
     <string name="accounts">Konten</string>
+    <string name="encryption">Verschlüsselung</string>
     <string name="label_new_title">Neues Label</string>
     <string name="label_edit">Label bearbeiten</string>
     <string name="label_edit_title">Label bearbeiten</string>

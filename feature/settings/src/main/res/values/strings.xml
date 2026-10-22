@@ -365,4 +365,41 @@
     <string name="swipe_confirm_on_body">A dialog asks first, every time.</string>
     <string name="swipe_confirm_off_body">Acts at once. It can be undone from the bar that appears.</string>
     <string name="swipe_confirm_not_needed">Nothing to ask: this direction does nothing.</string>
+
+    <!--
+      End-to-end encryption (#9). "Password" and "passphrase" are never
+      interchangeable here: a single-sign-on account has no plMail password,
+      and asking it for one has it type its identity provider's.
+    -->
+    <string name="encryption_title">Encryption</string>
+    <string name="encryption_checking">Checking your keys…</string>
+    <string name="encryption_unsupported">This server does not offer end-to-end encryption.</string>
+    <string name="encryption_not_set_up">End-to-end encryption is not set up for your account yet. Set it up in the web app under Settings → Encryption, then come back here.</string>
+    <string name="encryption_unreachable">Your server could not be reached to check your keys.</string>
+    <string name="encryption_retry">Try again</string>
+    <string name="encryption_locked_heading">This device has no keys yet</string>
+    <string name="encryption_locked">Your encrypted mail can only be read on a device that holds your keys. Bring them here in one of the two ways below.</string>
+    <string name="encryption_locked_stale">The keys on this device no longer open your keyring. It was probably reset in the web app. Bring the current keys here in one of the two ways below.</string>
+    <string name="encryption_pair_heading">Pair from the web app</string>
+    <string name="encryption_pair_explains">In the web app, open Settings → App passwords with your keyring unlocked and scan the pairing code with this device. The keys come with it, and your server never sees them.</string>
+    <string name="encryption_unlock_password_heading">Or enter your plMail password</string>
+    <string name="encryption_unlock_password_explains">Your keys are opened on this device. Your password is not sent anywhere.</string>
+    <string name="encryption_unlock_passphrase_heading">Or enter your encryption passphrase</string>
+    <string name="encryption_unlock_passphrase_explains">The passphrase you chose for encryption in the web app, not the password you sign in with. It is not sent anywhere.</string>
+    <string name="encryption_password">plMail password</string>
+    <string name="encryption_passphrase">Encryption passphrase</string>
+    <string name="encryption_unlock">Unlock</string>
+    <string name="encryption_wrong_password">That password does not open your keys.</string>
+    <string name="encryption_wrong_passphrase">That passphrase does not open your keys.</string>
+    <string name="encryption_ready_heading">Your keys are on this device</string>
+    <string name="encryption_ready">This device can open your keys. Keys you add or renew in the web app are picked up here without pairing again.</string>
+    <string name="encryption_keys_heading">Address keys</string>
+    <string name="encryption_key_unlocked">Unlocked on this device</string>
+    <string name="encryption_key_retired">Retired: still opens older mail</string>
+    <string name="encryption_key_does_not_open">The keys on this device do not open this one</string>
+    <string name="encryption_forget">Remove keys from this device</string>
+    <string name="encryption_forget_title">Remove your keys from this device?</string>
+    <string name="encryption_forget_explains">Encrypted mail cannot be opened here until you bring the keys back by pairing or with your password. Nothing changes on your server.</string>
+    <string name="encryption_forget_confirm">Remove</string>
+    <string name="encryption_forget_cancel">Keep</string>
 </resources>

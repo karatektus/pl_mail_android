@@ -44,6 +44,7 @@ import de.plmail.feature.settings.AccountsScreen
 import de.plmail.feature.settings.AppearanceScreen
 import de.plmail.feature.settings.AppearanceViewModel
 import de.plmail.feature.settings.DiagnosticsScreen
+import de.plmail.feature.settings.EncryptionScreen
 import de.plmail.feature.settings.NotificationsScreen
 import de.plmail.feature.settings.PushLogScreen
 import de.plmail.feature.settings.PushScreen
@@ -225,6 +226,7 @@ private fun PlMailApp(
     var isAdjustingAppearance by rememberSaveable { mutableStateOf(false) }
     var isSettingGestures by rememberSaveable { mutableStateOf(false) }
     var isManagingAccounts by rememberSaveable { mutableStateOf(false) }
+    var isManagingEncryption by rememberSaveable { mutableStateOf(false) }
     var isCalendaring by rememberSaveable { mutableStateOf(false) }
     var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
 
@@ -342,6 +344,7 @@ private fun PlMailApp(
                         when {
                             openThread != null -> Screen.MAIL
                             isManagingAccounts -> Screen.ACCOUNTS
+                            isManagingEncryption -> Screen.ENCRYPTION
                             isCalendaring -> Screen.CALENDAR
                             isAdjustingAppearance -> Screen.APPEARANCE
                             isSettingGestures -> Screen.GESTURES
@@ -362,6 +365,7 @@ private fun PlMailApp(
                     BackHandler(enabled = screen != Screen.MAIL) {
                         when (screen) {
                             Screen.ACCOUNTS -> isManagingAccounts = false
+                            Screen.ENCRYPTION -> isManagingEncryption = false
                             Screen.CALENDAR -> isCalendaring = false
                             Screen.APPEARANCE -> isAdjustingAppearance = false
                             Screen.GESTURES -> isSettingGestures = false
@@ -380,6 +384,8 @@ private fun PlMailApp(
 
                     if (screen == Screen.ACCOUNTS) {
                         AccountsScreen(onBack = { isManagingAccounts = false })
+                    } else if (screen == Screen.ENCRYPTION) {
+                        EncryptionScreen(onBack = { isManagingEncryption = false })
                     } else if (screen == Screen.CALENDAR) {
                         // The calendar owns its own detail and editor and its
                         // own back between them; what :app decides is only
@@ -425,6 +431,7 @@ private fun PlMailApp(
                             onAppearance = { isAdjustingAppearance = true },
                             onGestures = { isSettingGestures = true },
                             onAccounts = { isManagingAccounts = true },
+                            onEncryption = { isManagingEncryption = true },
                             // Null hides the drawer entry outright, which is
                             // what an instance publishing no calendars
                             // capability has to look like: a product without a
@@ -522,4 +529,5 @@ private enum class Screen {
     APPEARANCE,
     GESTURES,
     ACCOUNTS,
+    ENCRYPTION,
 }

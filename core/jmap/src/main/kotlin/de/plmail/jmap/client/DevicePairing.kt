@@ -16,9 +16,24 @@ import kotlinx.serialization.json.Json
  * immediately once used. That is what makes it safe to photograph a QR on a laptop screen, and it
  * is why this type holds a [code] rather than a credential.
  */
-data class PairingInvitation(val address: ServerAddress, val code: String) {
-    /** The code is a short-lived secret; it has no business in a log line. */
-    override fun toString(): String = "PairingInvitation($address, …)"
+data class PairingInvitation(
+    val address: ServerAddress,
+    val code: String,
+    /**
+     * The key the browser sealed this person's user keys under, from the URI's `#k=` fragment, or
+     * null when the QR came from a browser whose keyring was not open.
+     *
+     * Kept as the fragment's text (base64url, 32 bytes): this module carries it to the redeem call
+     * and back and never uses it, and decoding it here would put key bytes into a type whose job is
+     * transport. The fragment is never sent anywhere — `java.net.URI` keeps it out of the query,
+     * and the redeem request carries only [code] — which is what keeps the server from ever holding
+     * the keys and the key to them at once.
+     */
+    val transferKey: String? = null,
+) {
+    /** The code and the transfer key are secrets; neither has any business in a log line. */
+    override fun toString(): String =
+        "PairingInvitation($address, …${if (transferKey != null) ", with keys" else ""})"
 }
 
 /** What reading a `plmail://pair?…` URI produced. */
@@ -84,7 +99,15 @@ object PairingUri {
                 else -> return ParsedInvitation.Incomplete("“$host” is not a usable address")
             }
 
-        return ParsedInvitation.Valid(PairingInvitation(address, code))
+        // The fragment is the browser's, written after the server's URI
+        // (`#k=<transfer key>`), and it is optional: a QR from a browser
+        // whose keyring was locked pairs exactly as before, without keys.
+        val transferKey =
+            uri.rawFragment?.split('&')?.mapNotNull(::parameter)?.toMap()?.get("k")?.takeIf {
+                it.isNotBlank()
+            }
+
+        return ParsedInvitation.Valid(PairingInvitation(address, code, transferKey))
     }
 
     /**
@@ -109,7 +132,15 @@ object PairingUri {
 }
 
 /** What the server hands back once a code is redeemed. */
-data class PairedCredential(val credential: Credential.AppPassword, val username: String)
+data class PairedCredential(
+    val credential: Credential.AppPassword,
+    val username: String,
+    /**
+     * The user keys the browser sealed under the invitation's transfer key (`v1.<iv>.<ct>`), or
+     * null when it sealed none. Ciphertext: useless without the fragment the server never saw.
+     */
+    val keys: String? = null,
+)
 
 /**
  * Exchanges a pairing code for an app password.
@@ -181,7 +212,11 @@ class DevicePairingClient(
                 )
             }
 
-            PairedCredential(Credential.AppPassword(paired.secret), paired.username)
+            PairedCredential(
+                Credential.AppPassword(paired.secret),
+                paired.username,
+                keys = paired.keys?.takeIf { it.isNotBlank() },
+            )
         } catch (undecodable: SerializationException) {
             throw JmapError.MalformedResponse("The server's pairing response was not JSON.")
         }
@@ -219,7 +254,12 @@ class DevicePairingClient(
 @Serializable
 private data class PairRequest(val code: String, @SerialName("deviceName") val deviceName: String)
 
-@Serializable private data class PairResponse(val secret: String = "", val username: String = "")
+@Serializable
+private data class PairResponse(
+    val secret: String = "",
+    val username: String = "",
+    val keys: String? = null,
+)
 
 @Serializable
 private data class PairProblem(

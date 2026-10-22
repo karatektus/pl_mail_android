@@ -6,14 +6,19 @@ import androidx.datastore.preferences.core.emptyPreferences
 import de.plmail.core.data.ServerConnector
 import de.plmail.core.data.TransportFactory
 import de.plmail.core.datastore.CredentialStore
+import de.plmail.core.datastore.KeyVault
 import de.plmail.core.datastore.SealedSecret
 import de.plmail.core.datastore.SecretCipher
+import de.plmail.crypto.Purposes
+import de.plmail.crypto.UserKey
+import de.plmail.crypto.Wrapping
 import de.plmail.jmap.client.HttpResponse
 import de.plmail.jmap.client.JmapTransport
 import de.plmail.jmap.client.KeyFingerprint
 import de.plmail.jmap.client.ServerAddress
 import de.plmail.jmap.client.StreamingTransport
 import de.plmail.jmap.protocol.JmapError
+import java.util.Base64
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -70,6 +75,7 @@ class OnboardingViewModelTest {
         """
 
     private lateinit var store: CredentialStore
+    private lateinit var vault: KeyVault
 
     @BeforeTest
     fun useTestDispatcher() {
@@ -77,7 +83,9 @@ class OnboardingViewModelTest {
         // replaced rather than injected; that is the whole reason this needs
         // setMain at all.
         Dispatchers.setMain(dispatcher)
-        store = CredentialStore(FakeDataStore(), ReversingCipher())
+        val preferences = FakeDataStore()
+        store = CredentialStore(preferences, ReversingCipher())
+        vault = KeyVault(preferences, ReversingCipher())
     }
 
     @AfterTest fun restoreDispatcher() = Dispatchers.resetMain()
@@ -241,6 +249,74 @@ class OnboardingViewModelTest {
         assertNull(store.connection.first())
     }
 
+    // ---------------------------------------------------- keys through pairing (#9)
+
+    @Test
+    fun `the keys a browser sealed into the pairing are stored on confirm, not before`() = runTest {
+        val userKey = ByteArray(32) { 9 }
+        val transferKey = ByteArray(32) { 4 }
+        val bundle =
+            """{"v":1,"userKeys":[{"id":3,"key":"${Base64.getEncoder().encodeToString(userKey)}"}]}"""
+        val sealed =
+            Wrapping.seal(transferKey, bundle.encodeToByteArray(), Purposes.PAIRING_TRANSFER)
+        val fragment = Base64.getUrlEncoder().withoutPadding().encodeToString(transferKey)
+        val viewModel =
+            pairing(redeemed = """{"secret":"$secret","username":"a@b","keys":"$sealed"}""")
+
+        viewModel.invitationReceived(
+            "plmail://pair?host=https%3A%2F%2Fnas.local&code=abc#k=$fragment"
+        )
+        advanceUntilIdle()
+
+        assertTrue(vault.userKeys().isEmpty(), "Nothing is stored before the person confirms.")
+
+        viewModel.confirm()
+        advanceUntilIdle()
+
+        assertEquals(listOf(UserKey(3, userKey)), vault.userKeys())
+    }
+
+    @Test
+    fun `a bundle that will not open still pairs, without keys`() = runTest {
+        val sealed =
+            Wrapping.seal(ByteArray(32) { 1 }, "{}".encodeToByteArray(), Purposes.PAIRING_TRANSFER)
+        val wrongKey = Base64.getUrlEncoder().withoutPadding().encodeToString(ByteArray(32) { 2 })
+        val viewModel =
+            pairing(redeemed = """{"secret":"$secret","username":"a@b","keys":"$sealed"}""")
+
+        viewModel.invitationReceived(
+            "plmail://pair?host=https%3A%2F%2Fnas.local&code=abc#k=$wrongKey"
+        )
+        advanceUntilIdle()
+        viewModel.confirm()
+        advanceUntilIdle()
+
+        assertEquals(secret, store.connection.first()!!.credential.secret)
+        assertTrue(vault.userKeys().isEmpty())
+    }
+
+    @Test
+    fun `pairing again without keys does not keep an earlier pairing's keys`() = runTest {
+        vault.save(listOf(UserKey(1, ByteArray(32))))
+        val viewModel = viewModel { answering(sessionJson) }
+
+        viewModel.addressChanged("nas.local")
+        viewModel.appPasswordChanged(secret)
+        viewModel.connect()
+        advanceUntilIdle()
+        viewModel.confirm()
+        advanceUntilIdle()
+
+        assertTrue(vault.userKeys().isEmpty())
+    }
+
+    private fun pairing(redeemed: String): OnboardingViewModel = viewModel {
+        JmapTransport { request ->
+            val body = if (request.url.endsWith("/device/pair")) redeemed else sessionJson
+            HttpResponse(200, emptyMap(), body.encodeToByteArray())
+        }
+    }
+
     @Test
     fun `a uri that is not an invitation is ignored rather than shown as an error`() = runTest {
         val viewModel = viewModel { answering(sessionJson) }
@@ -301,6 +377,7 @@ class OnboardingViewModelTest {
         OnboardingViewModel(
             connector = ServerConnector(factory(transport), deviceName = "Pixel"),
             credentials = store,
+            keys = vault,
         )
 
     /**
