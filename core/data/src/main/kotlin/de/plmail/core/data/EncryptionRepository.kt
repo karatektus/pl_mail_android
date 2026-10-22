@@ -1,5 +1,6 @@
 package de.plmail.core.data
 
+import de.plmail.core.datastore.DeviceLockRequired
 import de.plmail.core.datastore.KeyVault
 import de.plmail.crypto.AddressKeyException
 import de.plmail.crypto.AddressKeys
@@ -22,6 +23,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -43,7 +46,12 @@ import kotlinx.coroutines.withContext
 @Singleton
 class EncryptionRepository
 @Inject
-constructor(private val clients: AccountClients, private val vault: KeyVault) {
+constructor(
+    private val clients: AccountClients,
+    private val vault: KeyVault,
+    /** How the person is asked to confirm it is them, for protected keys (phase 5). */
+    private val prompt: UnlockPrompt = UnlockPrompt.NEVER,
+) {
 
     /**
      * The address keys last unlocked, and when.
@@ -70,7 +78,33 @@ constructor(private val clients: AccountClients, private val vault: KeyVault) {
         when {
             !keyring.enabled -> EncryptionStatus.Unsupported
             !keyring.isSetUp -> EncryptionStatus.NotSetUp(keyring.isPassphrase)
-            else -> describe(keyring, capability, vault.userKeys())
+            else ->
+                try {
+                    describe(keyring, capability, vault.userKeys())
+                } catch (_: DeviceLockRequired) {
+                    // Protected and not confirmed lately. The settings screen
+                    // is not a reason to ask: it says the keys are here, and
+                    // that it cannot see further without the person.
+                    EncryptionStatus.Ready(
+                        addresses = keyring.addressKeys.map { it.status(opens = null) },
+                        isProtected = true,
+                    )
+                }
+        }
+    }
+
+    /**
+     * Protects the keys on this device behind the person's fingerprint, face or screen lock — or
+     * stops. Asks them to confirm it is them first, both ways.
+     */
+    suspend fun protect(on: Boolean): ProtectResult {
+        if (!prompt.confirm()) return ProtectResult.NotConfirmed
+
+        return try {
+            vault.setProtected(on)
+            ProtectResult.Done
+        } catch (_: DeviceLockRequired) {
+            ProtectResult.NotConfirmed
         }
     }
 
@@ -131,18 +165,54 @@ constructor(private val clients: AccountClients, private val vault: KeyVault) {
      *
      * For the phases that decrypt and sign; phase 1 only uses it through [status]. Empty when the
      * device holds no keys or the server is out of reach.
+     *
+     * When the keys are protected and the person has not confirmed it is them lately, an
+     * [interactive] caller — somebody just opened an encrypted message — has them asked; anybody
+     * else, and an [interactive] caller whose person declined, gets [KeysLocked].
      */
-    suspend fun unlockedAddressKeys(): List<UnlockedAddressKey> = unlocking.withLock {
-        unlocked
-            ?.takeIf { (at, _) -> System.currentTimeMillis() - at < UNLOCKED_FOR_MILLIS }
-            ?.let {
-                return@withLock it.second
-            }
+    suspend fun unlockedAddressKeys(interactive: Boolean = false): List<UnlockedAddressKey> =
+        unlocking.withLock {
+            unlocked
+                ?.takeIf { (at, _) -> System.currentTimeMillis() - at < UNLOCKED_FOR_MILLIS }
+                ?.let {
+                    return@withLock it.second
+                }
 
-        freshlyUnlocked().also { keys ->
-            unlocked = if (keys.isEmpty()) null else System.currentTimeMillis() to keys
+            val keys =
+                try {
+                    freshlyUnlocked()
+                } catch (_: DeviceLockRequired) {
+                    if (!interactive || !prompt.confirm()) throw KeysLocked()
+                    try {
+                        freshlyUnlocked()
+                    } catch (_: DeviceLockRequired) {
+                        throw KeysLocked()
+                    }
+                }
+
+            keys.also { unlocked = if (it.isEmpty()) null else System.currentTimeMillis() to it }
         }
-    }
+
+    /**
+     * The fingerprints of the address keys this device signs with, without opening anything when
+     * the keys are protected and locked: then the keyring's active keys, which are the ones the
+     * keys here open. For the composer, which wants to know before anybody is asked.
+     */
+    suspend fun signingFingerprints(): List<String> =
+        try {
+            unlockedAddressKeys().map { it.fingerprint }
+        } catch (_: KeysLocked) {
+            runCatching {
+                val client = clients.current() ?: return emptyList()
+                keyring(client)?.addressKeys?.filter { it.isActive }?.map { it.fingerprint }
+            }
+                .getOrNull()
+                .orEmpty()
+        }
+
+    /** Whether the keys here are protected, for the composer and the settings screen. */
+    val isProtected: Flow<Boolean>
+        get() = vault.isProtected
 
     /**
      * The keys plMail holds for other people, from `ContactKey/get`; empty when there are none or
@@ -179,6 +249,8 @@ constructor(private val clients: AccountClients, private val vault: KeyVault) {
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
+        } catch (locked: DeviceLockRequired) {
+            throw locked
         } catch (refused: JmapError.NotAuthenticated) {
             forget()
             emptyList()
@@ -203,25 +275,28 @@ constructor(private val clients: AccountClients, private val vault: KeyVault) {
         val addresses =
             withContext(Dispatchers.Default) {
                 keyring.addressKeys.map { entry ->
-                    AddressKeyStatus(
-                        fingerprint = entry.fingerprint,
-                        addresses = entry.addresses.map { it.email },
-                        primaryAddress = entry.addresses.firstOrNull { it.primary }?.email,
-                        isActive = entry.isActive,
-                        opens = open(entry, userKeys, capability) != null,
-                    )
+                    entry.status(opens = open(entry, userKeys, capability) != null)
                 }
             }
 
         // Keys are stored but open none of the address keys: a reset in the
         // web app retired the user key this device holds. Asking again is the
         // way back, and saying "ready" here would be the first lie of many.
-        if (addresses.isNotEmpty() && addresses.none { it.opens }) {
+        if (addresses.isNotEmpty() && addresses.none { it.opens == true }) {
             return EncryptionStatus.Locked(keyring.isPassphrase, hadKeys = true)
         }
 
-        return EncryptionStatus.Ready(addresses)
+        return EncryptionStatus.Ready(addresses, isProtected = vault.isProtected.first())
     }
+
+    private fun AddressKeyEntry.status(opens: Boolean?) =
+        AddressKeyStatus(
+            fingerprint = fingerprint,
+            addresses = addresses.map { it.email },
+            primaryAddress = addresses.firstOrNull { it.primary }?.email,
+            isActive = isActive,
+            opens = opens,
+        )
 
     private fun open(
         entry: AddressKeyEntry,
@@ -289,8 +364,13 @@ sealed interface EncryptionStatus {
      */
     data class Locked(val isPassphrase: Boolean, val hadKeys: Boolean) : EncryptionStatus
 
-    /** The device holds keys; [addresses] says which address keys they open. */
-    data class Ready(val addresses: List<AddressKeyStatus>) : EncryptionStatus
+    /**
+     * The device holds keys; [addresses] says which address keys they open. [isProtected] keys open
+     * only after the person confirms it is them; while they have not, nothing was opened to answer
+     * this, and each address key's `opens` is null.
+     */
+    data class Ready(val addresses: List<AddressKeyStatus>, val isProtected: Boolean = false) :
+        EncryptionStatus
 
     /** The server could not be asked. Says nothing about the keys either way. */
     data class Unreachable(val cause: Throwable?) : EncryptionStatus
@@ -302,9 +382,17 @@ data class AddressKeyStatus(
     val addresses: List<String>,
     val primaryAddress: String?,
     val isActive: Boolean,
-    /** Whether the keys on this device unlock it. */
-    val opens: Boolean,
+    /** Whether the keys on this device unlock it; null when they are protected and locked. */
+    val opens: Boolean?,
 )
+
+/** What switching the protection did. */
+enum class ProtectResult {
+    Done,
+
+    /** The person did not confirm it is them, or the device has no screen lock. Nothing changed. */
+    NotConfirmed,
+}
 
 /** What typing the password (or passphrase) did. */
 sealed interface UnlockResult {

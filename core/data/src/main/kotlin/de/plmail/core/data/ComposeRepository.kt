@@ -276,6 +276,9 @@ constructor(
         return sealing.keysFor(account.accountId, from, addresses, lookUp)
     }
 
+    /** See [OutgoingEncryption.openKeys]. */
+    suspend fun openSigningKeys(): Boolean = sealing.openKeys()
+
     /**
      * [email], an end-to-end encrypted message, decrypted: the original of a reply or forward, or a
      * draft being reopened.

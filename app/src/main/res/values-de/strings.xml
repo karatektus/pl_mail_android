@@ -8,4 +8,6 @@
     -->
 
     <string name="calendar_app_name">plMail Kalender</string>
+    <string name="unlock_title">Verschlüsselte Mails öffnen</string>
+    <string name="unlock_subtitle">Bestätige, dass du es bist, um deine Schlüssel auf diesem Gerät zu nutzen</string>
 </resources>

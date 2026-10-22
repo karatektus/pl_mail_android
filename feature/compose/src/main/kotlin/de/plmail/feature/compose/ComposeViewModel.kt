@@ -321,6 +321,15 @@ constructor(
                             return@launch
                         }
 
+                // Protected keys are opened here, where the person can be asked,
+                // and not in the queue, which runs after the screen has gone.
+                if (plan.encrypt && !compose.openSigningKeys()) {
+                    _state.update {
+                        it.copy(error = ComposeError.EncryptionBlocked(EncryptionBlock.KeysLocked))
+                    }
+                    return@launch
+                }
+
                 // Cancelled rather than left to fire: an autosave landing after
                 // the queue has taken over would write the pre-send body over
                 // the one being sent, and on a draft the queue may already have
@@ -435,7 +444,14 @@ constructor(
                     val unchanged =
                         plan?.encrypt == true && current.draft.savedSealed && current.isSaved
 
-                    if (plan != null && !(plan.encrypt && plan.blocked != null) && !unchanged) {
+                    val worthSaving =
+                        plan != null && !(plan.encrypt && plan.blocked != null) && !unchanged
+
+                    // Protected keys are asked for only when there is something to
+                    // save with them, and a person who declines saves nothing.
+                    if (
+                        plan != null && worthSaving && (!plan.encrypt || compose.openSigningKeys())
+                    ) {
                         current.draft
                             .outgoing(current.signatureHtml, current.quotedHtml)
                             .sealedFor(plan, current.identity)

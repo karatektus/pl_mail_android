@@ -105,6 +105,7 @@
     <string name="compose_crypto_missing">Für %1$s gibt es keinen Schlüssel. Entferne die Adresse oder schalte die Verschlüsselung für diese Nachricht aus.</string>
     <string name="compose_crypto_no_own_key">Für diese Absenderadresse hast du keinen Schlüssel, also lässt sich von ihr aus nichts signieren oder verschlüsseln.</string>
     <string name="compose_crypto_no_keys_here">Deine Schlüssel sind nicht auf diesem Gerät. Hol sie im Menü unter Verschlüsselung hierher oder schalte die Verschlüsselung für diese Nachricht aus.</string>
+    <string name="compose_crypto_keys_locked">Deine Schlüssel sind auf diesem Gerät gesperrt. Bestätige, dass du es bist, oder schalte die Verschlüsselung für diese Nachricht aus.</string>
     <string name="compose_crypto_unchecked">Die Schlüssel der Empfänger ließen sich nicht prüfen, deshalb wurde nichts gesendet. Versuche es noch einmal.</string>
     <string name="compose_crypto_original_not_decrypted">Die verschlüsselte Nachricht ließ sich hier nicht entschlüsseln, deshalb wird sie nicht zitiert.</string>
     <string name="compose_crypto_sealed_on_web">Dieser Entwurf wurde im Browser verschlüsselt, lesen kann ihn nur ein Browser mit deinen geöffneten Schlüsseln.</string>

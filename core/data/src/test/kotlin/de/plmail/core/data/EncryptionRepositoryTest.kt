@@ -1,7 +1,10 @@
 package de.plmail.core.data
 
 import de.plmail.core.datastore.CredentialStore
+import de.plmail.core.datastore.DeviceLockRequired
 import de.plmail.core.datastore.KeyVault
+import de.plmail.core.datastore.SealedSecret
+import de.plmail.core.datastore.SecretCipher
 import de.plmail.core.datastore.ServerConnection
 import de.plmail.crypto.UserKey
 import de.plmail.jmap.client.Credential
@@ -14,8 +17,10 @@ import de.plmail.jmap.client.StreamingTransport
 import de.plmail.jmap.testing.RecordingTransport
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 
@@ -30,7 +35,8 @@ import kotlinx.coroutines.test.runTest
 class EncryptionRepositoryTest {
 
     private val preferences = InMemoryPreferences()
-    private val vault = KeyVault(preferences, PlainCipher)
+    private val gate = GateCipher()
+    private val vault = KeyVault(preferences, PlainCipher, gate)
 
     @Test
     fun `a server without the capability has no encryption to offer`() = runTest {
@@ -56,7 +62,7 @@ class EncryptionRepositoryTest {
         val ready = assertIs<EncryptionStatus.Ready>(repository.status())
         val address = ready.addresses.single()
         assertEquals("ada@example.org", address.primaryAddress)
-        assertTrue(address.opens)
+        assertEquals(true, address.opens)
         assertEquals(1, repository.unlockedAddressKeys().size)
     }
 
@@ -115,13 +121,103 @@ class EncryptionRepositoryTest {
 
     // ------------------------------------------------------------- fixtures
 
+    // ---------------------------------------------- protected keys (phase 5)
+
+    @Test
+    fun `protected keys that are locked read as ready, without asking anybody`() = runTest {
+        val asked = mutableListOf<Unit>()
+        val repository = protectedAndLocked {
+            asked += Unit
+            true
+        }
+
+        val ready = assertIs<EncryptionStatus.Ready>(repository.status())
+
+        assertTrue(ready.isProtected)
+        assertEquals(null, ready.addresses.single().opens)
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test
+    fun `the background is told the keys are locked, and nobody is asked`() = runTest {
+        val asked = mutableListOf<Unit>()
+        val repository = protectedAndLocked {
+            asked += Unit
+            true
+        }
+
+        assertFailsWith<KeysLocked> { repository.unlockedAddressKeys() }
+        assertTrue(asked.isEmpty())
+    }
+
+    @Test
+    fun `opening encrypted mail asks, and a yes opens the keys`() = runTest {
+        val repository = protectedAndLocked {
+            // The person confirmed: the key is open for a while.
+            gate.isUnlocked = true
+            true
+        }
+
+        assertEquals(1, repository.unlockedAddressKeys(interactive = true).size)
+        // Kept for a few minutes, so a second message does not ask again.
+        gate.isUnlocked = false
+        assertEquals(1, repository.unlockedAddressKeys().size)
+    }
+
+    @Test
+    fun `a person who declines gets locked keys, not missing ones`() = runTest {
+        val repository = protectedAndLocked { false }
+
+        assertFailsWith<KeysLocked> { repository.unlockedAddressKeys(interactive = true) }
+    }
+
+    @Test
+    fun `switching the protection asks first, and a no changes nothing`() = runTest {
+        repository { KEYRING }.unlock(PASSWORD)
+
+        assertEquals(
+            ProtectResult.NotConfirmed,
+            repository(prompt = { false }) { KEYRING }.protect(true),
+        )
+        assertEquals(false, vault.isProtected.first())
+
+        assertEquals(ProtectResult.Done, repository(prompt = { true }) { KEYRING }.protect(true))
+        assertEquals(true, vault.isProtected.first())
+    }
+
+    /** Keys stored and protected, and the protected key not open. */
+    private suspend fun protectedAndLocked(prompt: UnlockPrompt): EncryptionRepository {
+        repository { KEYRING }.unlock(PASSWORD)
+        vault.setProtected(true)
+        gate.isUnlocked = false
+
+        return repository(prompt = prompt) { KEYRING }
+    }
+
+    /** The protected Keystore key: seals and opens only while [isUnlocked]. */
+    private class GateCipher(var isUnlocked: Boolean = true) : SecretCipher {
+        override fun seal(plaintext: String): SealedSecret {
+            if (!isUnlocked) throw DeviceLockRequired()
+            return SealedSecret("gated:$plaintext")
+        }
+
+        override fun open(sealed: SealedSecret): String? {
+            if (!isUnlocked) throw DeviceLockRequired()
+            return sealed.encoded.removePrefix("gated:")
+        }
+    }
+
     private fun repository(
         session: String = SESSION,
         apiStatus: Int = 200,
+        prompt: UnlockPrompt = UnlockPrompt.NEVER,
         api: () -> String,
-    ): EncryptionRepository = repository(transport(session, apiStatus, api))
+    ): EncryptionRepository = repository(transport(session, apiStatus, api), prompt)
 
-    private fun repository(transport: JmapTransport): EncryptionRepository {
+    private fun repository(
+        transport: JmapTransport,
+        prompt: UnlockPrompt = UnlockPrompt.NEVER,
+    ): EncryptionRepository {
         val credentials = CredentialStore(preferences, PlainCipher)
         val transports =
             object : TransportFactory {
@@ -146,7 +242,7 @@ class EncryptionRepositoryTest {
             )
         }
 
-        return EncryptionRepository(AccountClients(credentials, transports), vault)
+        return EncryptionRepository(AccountClients(credentials, transports), vault, prompt)
     }
 
     private fun transport(session: String, apiStatus: Int, api: () -> String) =

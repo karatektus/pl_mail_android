@@ -397,6 +397,12 @@
     <string name="encryption_key_unlocked">Unlocked on this device</string>
     <string name="encryption_key_retired">Retired: still opens older mail</string>
     <string name="encryption_key_does_not_open">The keys on this device do not open this one</string>
+    <string name="encryption_key_locked">Locked until you confirm it is you</string>
+    <string name="encryption_protect_heading">Protection on this device</string>
+    <string name="encryption_protect">Confirm it is you to open encrypted mail</string>
+    <string name="encryption_protect_explains">Asks for your fingerprint, face or screen lock when you open encrypted mail, unless you unlocked the phone in the last 5 minutes. While your keys are locked, encrypted mail is not decrypted in the background.</string>
+    <string name="encryption_protect_unavailable">Set a screen lock on this device to use this.</string>
+    <string name="encryption_protect_refused">Nothing changed: you did not confirm it is you.</string>
     <string name="encryption_forget">Remove keys from this device</string>
     <string name="encryption_forget_title">Remove your keys from this device?</string>
     <string name="encryption_forget_explains">Encrypted mail cannot be opened here until you bring the keys back by pairing or with your password. Nothing changes on your server.</string>

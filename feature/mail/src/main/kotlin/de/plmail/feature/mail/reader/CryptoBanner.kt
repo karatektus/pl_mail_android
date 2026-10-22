@@ -63,7 +63,15 @@ internal fun CryptoBanner(message: ReaderMessage, onRetry: () -> Unit) {
                     Line(Icons.Filled.Lock, problemText(encryption.problem), Tone.WARNING)
                     if (encryption.problem != DecryptionProblem.NOT_FOR_THESE_KEYS) {
                         TextButton(onClick = onRetry) {
-                            Text(stringResource(R.string.crypto_retry))
+                            Text(
+                                stringResource(
+                                    // Trying again is asking again, for keys
+                                    // that are only locked.
+                                    if (encryption.problem == DecryptionProblem.LOCKED)
+                                        R.string.crypto_unlock
+                                    else R.string.crypto_retry
+                                )
+                            )
                         }
                     }
                 }
@@ -148,6 +156,7 @@ private fun problemText(problem: DecryptionProblem): String =
     stringResource(
         when (problem) {
             DecryptionProblem.NO_KEYS_HERE -> R.string.crypto_no_keys
+            DecryptionProblem.LOCKED -> R.string.crypto_locked
             DecryptionProblem.NOT_FOR_THESE_KEYS -> R.string.crypto_not_for_these_keys
             DecryptionProblem.NO_SOURCE -> R.string.crypto_no_source
             DecryptionProblem.UNREACHABLE -> R.string.crypto_unreachable

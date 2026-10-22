@@ -105,6 +105,7 @@ internal fun EncryptionBlock.text(): String =
             stringResource(R.string.compose_crypto_partial_blocked, addresses.joined())
         EncryptionBlock.NoOwnKey -> stringResource(R.string.compose_crypto_no_own_key)
         EncryptionBlock.NoKeysHere -> stringResource(R.string.compose_crypto_no_keys_here)
+        EncryptionBlock.KeysLocked -> stringResource(R.string.compose_crypto_keys_locked)
     }
 
 private fun List<String>.joined(): String = joinToString(", ")

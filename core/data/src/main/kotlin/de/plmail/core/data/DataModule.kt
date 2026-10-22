@@ -22,6 +22,9 @@ abstract class DataModule {
 
     @Binds @Singleton abstract fun transportFactory(real: OkHttpTransportFactory): TransportFactory
 
+    /** Protected end-to-end keys ask through the activity on screen (#9, phase 5). */
+    @Binds @Singleton abstract fun unlockPrompt(real: DeviceUnlock): UnlockPrompt
+
     @Binds @Singleton abstract fun draftSender(real: ComposeRepository): DraftSender
 
     /**

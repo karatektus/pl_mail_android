@@ -55,18 +55,32 @@ constructor(
         val client = clients.current() ?: return RecipientKeys.Unavailable
         if (client.session().keys == null) return RecipientKeys.Unavailable
 
-        val keys = encryption.unlockedAddressKeys()
-        if (keys.isEmpty()) return RecipientKeys.Unavailable
+        // Without opening protected keys: nobody is asked to confirm it is them
+        // for typing an address.
+        val fingerprints = encryption.signingFingerprints()
+        if (fingerprints.isEmpty()) return RecipientKeys.Unavailable
 
         val answer = lookup(client, AccountId(accountId), from, addresses, lookUp)
         val signer = answer.sender?.fingerprint
 
         return RecipientKeys.Known(
-            ownKey =
-                signer != null && keys.any { it.fingerprint.equals(signer, ignoreCase = true) },
+            ownKey = signer != null && fingerprints.any { it.equals(signer, ignoreCase = true) },
             byAddress = answer.recipients.associateBy { it.email.lowercase() },
         )
     }
+
+    /**
+     * Opens the signing keys now, asking the person to confirm it is them if they are protected —
+     * before a message is handed to the send queue, which has no screen to ask on. False when they
+     * declined. The keys then stay open in memory for a few minutes, long enough for the send.
+     */
+    suspend fun openKeys(): Boolean =
+        try {
+            encryption.unlockedAddressKeys(interactive = true)
+            true
+        } catch (_: KeysLocked) {
+            false
+        }
 
     /**
      * The message, encrypted to every recipient and to the sender, signed by the sender: the bytes
@@ -88,7 +102,12 @@ constructor(
         val missing = recipients.filter { answer.forAddress(it)?.key == null }
         if (missing.isNotEmpty()) throw EncryptionRefused.Missing(missing.distinct())
 
-        val keys = encryption.unlockedAddressKeys()
+        val keys =
+            try {
+                encryption.unlockedAddressKeys(interactive = true)
+            } catch (_: KeysLocked) {
+                throw EncryptionRefused.Locked
+            }
         val signer: UnlockedAddressKey =
             keys.firstOrNull { it.fingerprint.equals(answer.sender?.fingerprint, true) }
                 ?: throw EncryptionRefused.NoOwnKey
@@ -197,6 +216,12 @@ sealed class EncryptionRefused(message: String) : IllegalStateException(message)
 
     object Unusable : EncryptionRefused("The message could not be encrypted. Nothing was sent.")
 
+    object Locked :
+        EncryptionRefused(
+            "Your keys are locked on this device. Confirm it is you, or switch encryption off " +
+                "for this message."
+        )
+
     object KeysChanged :
         EncryptionRefused(
             "A recipient's key changed while you were writing. Nothing was sent; send it again."
@@ -252,6 +277,9 @@ sealed interface EncryptionBlock {
 
     /** Encryption is on, and this device holds no keys. */
     data object NoKeysHere : EncryptionBlock
+
+    /** The keys here are protected, and the person did not confirm it is them. */
+    data object KeysLocked : EncryptionBlock
 }
 
 /**

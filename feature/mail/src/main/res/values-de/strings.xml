@@ -215,6 +215,8 @@
     <string name="crypto_encrypted_kept">Verschlüsselt empfangen · auf diesem Server lesbar gespeichert</string>
     <string name="crypto_decrypting">Wird entschlüsselt …</string>
     <string name="crypto_retry">Erneut versuchen</string>
+    <string name="crypto_locked">Deine Schlüssel sind auf diesem Gerät gesperrt. Bestätige, dass du es bist, um diese Nachricht zu lesen.</string>
+    <string name="crypto_unlock">Entsperren</string>
     <string name="crypto_no_keys">Deine Schlüssel sind nicht auf diesem Gerät. Hol sie unter „Verschlüsselung“ im Menü hierher und versuche es dann erneut.</string>
     <string name="crypto_not_for_these_keys">Diese Nachricht wurde für einen Schlüssel verschlüsselt, den du hier nicht hast.</string>
     <string name="crypto_no_source">Das Original dieser Nachricht ist nicht verfügbar, darum lässt sie sich nicht entschlüsseln.</string>

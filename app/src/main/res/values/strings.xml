@@ -11,4 +11,6 @@
       about twelve characters before it ellipsises.
     -->
     <string name="calendar_app_name">plMail Calendar</string>
+    <string name="unlock_title">Open your encrypted mail</string>
+    <string name="unlock_subtitle">Confirm it is you to use your keys on this device</string>
 </resources>
