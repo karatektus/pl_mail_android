@@ -52,6 +52,18 @@ class DecryptedMailKeeperTest {
     }
 
     @Test
+    fun `S-MIME encrypted mail is handed over too, the signed content without its signature`() =
+        runTest {
+            val server = FakeServer(pending = listOf("14"), smime = true)
+
+            assertEquals(1, keeper(server).keep())
+
+            val handed = server.uploads[server.stored.getValue("14")]!!.toString(Charsets.UTF_8)
+            assertTrue(handed.startsWith("Content-Type: multipart/mixed"), handed.take(80))
+            assertTrue("pkcs7-signature" !in handed)
+        }
+
+    @Test
     fun `a message the keys do not open is skipped, and the run ends rather than asking again`() =
         runTest {
             val server = FakeServer(pending = listOf("13"))
@@ -124,6 +136,8 @@ class DecryptedMailKeeperTest {
     private class FakeServer(
         private val pending: List<String>,
         private val keeps: Boolean = true,
+        /** Serves a keyring with the person's S/MIME certificate in it (#47). */
+        private val smime: Boolean = false,
     ) : DownloadingTransport {
         val uploads = mutableMapOf<String, ByteArray>()
         val stored = mutableMapOf<String, String>()
@@ -134,6 +148,7 @@ class DecryptedMailKeeperTest {
                 "11" to "pgpmime-signed.eml",
                 "12" to "inline.eml",
                 "13" to "pgpmime-not-for-us.eml",
+                "14" to "smime/signed-encrypted.eml",
             )
 
         override suspend fun send(request: HttpRequest): HttpResponse {
@@ -148,7 +163,11 @@ class DecryptedMailKeeperTest {
                         """{"accountId":"$TEST_ACCOUNT_ID","blobId":"$blobId","type":"message/rfc822","size":${request.body!!.size}}"""
                     }
                     "Keyring/get" in body ->
-                        methods("Keyring/get", resource("keyring-get.json").decodeToString())
+                        methods(
+                            "Keyring/get",
+                            if (smime) keyringWithCertificate()
+                            else resource("keyring-get.json").decodeToString(),
+                        )
                     "DecryptedMail/pending" in body -> {
                         pendingCalls++
                         val ids =
@@ -199,6 +218,22 @@ class DecryptedMailKeeperTest {
             return receive(
                 ResponseBody(200, "message/rfc822", bytes.size.toLong(), bytes.inputStream())
             )
+        }
+
+        private fun keyringWithCertificate(): String {
+            val keyring = resource("keyring-get.json").decodeToString()
+            val certificates =
+                resource("smime/smime-keyring.json")
+                    .decodeToString()
+                    .substringAfter("\"smimeCertificates\":")
+                    .substringBeforeLast("}")
+
+            // Into the one keyring the list holds, before its closing brace.
+            val end = keyring.lastIndexOf("}", keyring.lastIndexOf("]"))
+            return keyring.substring(0, end) +
+                ",\"smimeCertificates\":" +
+                certificates +
+                keyring.substring(end)
         }
 
         private fun methods(name: String, arguments: String) =

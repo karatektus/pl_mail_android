@@ -23,6 +23,11 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
 
 /**
  * Getting the keys onto the device, against a keyring the browser's algorithms wrote.
@@ -185,6 +190,25 @@ class EncryptionRepositoryTest {
         assertEquals(true, vault.isProtected.first())
     }
 
+    // ------------------------------------------------------ S/MIME (#47)
+
+    @Test
+    fun `the person's S-MIME certificate opens with the same user key, and reads as ready`() =
+        runTest {
+            val repository = repository { KEYRING_WITH_CERTIFICATE }
+            repository.unlock(PASSWORD)
+
+            val opened = repository.unlockedKeys()
+            assertEquals(1, opened.addressKeys.size)
+            assertEquals(listOf("ada@example.org"), opened.smimeKeys.single().addresses)
+
+            val ready = assertIs<EncryptionStatus.Ready>(repository.status())
+            val certificate = ready.certificates.single()
+            assertEquals(true, certificate.opens)
+            assertTrue(certificate.isActive)
+            assertEquals("plMail Test CA", certificate.issuer)
+        }
+
     /** Keys stored and protected, and the protected key not open. */
     private suspend fun protectedAndLocked(prompt: UnlockPrompt): EncryptionRepository {
         repository { KEYRING }.unlock(PASSWORD)
@@ -265,6 +289,41 @@ class EncryptionRepositoryTest {
                     .getResource("/e2e/keyring-get.json")!!
                     .readText() +
                 ""","c0"]]}"""
+
+        /** [KEYRING] with the person's S/MIME certificate in it, as the server adds them. */
+        val KEYRING_WITH_CERTIFICATE: String by lazy {
+            val keyring =
+                Json.parseToJsonElement(
+                        EncryptionRepositoryTest::class
+                            .java
+                            .getResource("/e2e/keyring-get.json")!!
+                            .readText()
+                    )
+                    .jsonObject
+            val certificates =
+                Json.parseToJsonElement(
+                        EncryptionRepositoryTest::class
+                            .java
+                            .getResource("/e2e/smime/smime-keyring.json")!!
+                            .readText()
+                    )
+                    .jsonObject["smimeCertificates"]!!
+            val list = keyring["list"]!!.jsonArray
+            val withCertificates =
+                JsonObject(
+                    keyring +
+                        ("list" to
+                            JsonArray(
+                                list.map {
+                                    JsonObject(
+                                        it.jsonObject + ("smimeCertificates" to certificates)
+                                    )
+                                }
+                            ))
+                )
+
+            """{"methodResponses":[["Keyring/get",$withCertificates,"c0"]]}"""
+        }
 
         val SESSION =
             """

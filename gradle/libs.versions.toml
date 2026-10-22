@@ -59,6 +59,9 @@ richEditor = "1.0.0"
 # is the layer the app would otherwise have to write itself -- encrypt, sign,
 # verify, unlock a key -- where the mistakes in OpenPGP are made.
 pgpainless = "2.0.4"
+# CMS for S/MIME (#47). The version PGPainless already brings bcprov and bcpg in
+# at; a second Bouncy Castle release beside it would be two copies of one library.
+bouncycastle = "1.84"
 # Reading the MIME message inside an encrypted one (#9). The server parses
 # every other message; the inside of an end-to-end encrypted one only ever
 # exists on the device. mime4j is what Thunderbird for Android parses with.
@@ -140,6 +143,7 @@ okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver3-
 mime4j-dom = { group = "org.apache.james", name = "apache-mime4j-dom", version.ref = "mime4j" }
 jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 pgpainless-core = { group = "org.pgpainless", name = "pgpainless-core", version.ref = "pgpainless" }
+bouncycastle-pkix = { group = "org.bouncycastle", name = "bcpkix-jdk18on", version.ref = "bouncycastle" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-android = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }

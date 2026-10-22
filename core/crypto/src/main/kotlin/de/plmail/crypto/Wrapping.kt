@@ -111,5 +111,6 @@ object Purposes {
     const val USER_KEY = "plmail/user-key"
     const val ADDRESS_KEY_TOKEN = "plmail/address-key-token"
     const val PAIRING_TRANSFER = "plmail/pairing-transfer"
+    const val SMIME_KEY = "plmail/smime-key"
     const val WRAP_KEY_INFO = "plmail/user-key-wrap"
 }

@@ -40,8 +40,8 @@ data class KeyringGetResult(
 
 /**
  * The keyring. Only what the app reads is modelled; the rest of the object — key-server
- * publications, the Web Key Directory, S/MIME certificates — is the web app's to manage and is
- * dropped by `ignoreUnknownKeys` until a phase needs it.
+ * publications, the Web Key Directory — is the web app's to manage and is dropped by
+ * `ignoreUnknownKeys`.
  */
 @Serializable
 data class Keyring(
@@ -59,6 +59,8 @@ data class Keyring(
     val rootKdf: KdfParameters? = null,
     val userKeys: List<WrappedUserKeyEntry> = emptyList(),
     val addressKeys: List<AddressKeyEntry> = emptyList(),
+    /** The person's own S/MIME certificates (#47), newest expiry first. */
+    val smimeCertificates: List<SmimeCertificateEntry> = emptyList(),
 ) {
     /**
      * Whether there is a keyring to open.
@@ -111,3 +113,31 @@ data class AddressKeyEntry(
 }
 
 @Serializable data class KeyAddress(val email: String, val primary: Boolean = false)
+
+/**
+ * One of the person's S/MIME certificates, with its PKCS#8 private key wrapped directly under user
+ * key [userKeyId] with the `smimeKey` purpose. Imported, exported and removed in the web app only.
+ */
+@Serializable
+data class SmimeCertificateEntry(
+    val id: Long,
+    val userKeyId: Long,
+    /** SHA-256 of the certificate's DER, lower-case hex. */
+    val fingerprint: String = "",
+    /** PEM. */
+    val certificate: String = "",
+    /** The issuers' certificates, PEM, concatenated; may be empty. */
+    val chain: String = "",
+    val privateKey: String = "",
+    val addresses: List<String> = emptyList(),
+    val subject: String? = null,
+    val issuer: String? = null,
+    /** ATOM date-times. */
+    val notBefore: String? = null,
+    val notAfter: String? = null,
+    /** `active`, or `retired` once a newer certificate replaced it: that one only decrypts. */
+    val status: String = "",
+) {
+    val isActive: Boolean
+        get() = status == "active"
+}

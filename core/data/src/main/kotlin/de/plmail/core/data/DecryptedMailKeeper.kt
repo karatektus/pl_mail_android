@@ -2,7 +2,6 @@ package de.plmail.core.data
 
 import de.plmail.crypto.DecryptionException
 import de.plmail.crypto.EncryptedMessages
-import de.plmail.crypto.UnlockedAddressKey
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.DecryptedMailPending
 import de.plmail.jmap.methods.DecryptedMailStore
@@ -67,8 +66,8 @@ constructor(
                 }
             if (accounts.isEmpty()) return 0
 
-            val keys = encryption.unlockedAddressKeys()
-            if (keys.isEmpty()) return 0
+            val keys = encryption.unlockedKeys()
+            if (keys.isEmpty) return 0
 
             accounts.sumOf { account ->
                 keepFor(client, account, keys, capability.maxDecryptedMailSize)
@@ -93,7 +92,7 @@ constructor(
     private suspend fun keepFor(
         client: JmapClient,
         account: AccountId,
-        keys: List<UnlockedAddressKey>,
+        keys: OpenedKeys,
         maxSize: Long,
     ): Int {
         val tried = mutableSetOf<String>()
@@ -160,7 +159,7 @@ constructor(
         client: JmapClient,
         account: AccountId,
         blobId: String,
-        keys: List<UnlockedAddressKey>,
+        keys: OpenedKeys,
     ): ByteArray? =
         try {
             val raw = ByteArrayOutputStream()
@@ -169,7 +168,13 @@ constructor(
             withContext(Dispatchers.Default) {
                 // No signature checking here: the server is being handed the
                 // message, not judging it, and the reader checks when it opens.
-                EncryptedMessages.open(raw.toByteArray(), keys).mime.takeIf { it.isNotEmpty() }
+                EncryptedMessages.open(
+                        raw.toByteArray(),
+                        keys.addressKeys,
+                        smimeKeys = keys.smimeKeys,
+                    )
+                    .mime
+                    .takeIf { it.isNotEmpty() }
             }
         } catch (cancellation: CancellationException) {
             throw cancellation

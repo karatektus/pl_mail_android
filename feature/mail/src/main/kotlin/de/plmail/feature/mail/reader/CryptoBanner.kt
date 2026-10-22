@@ -49,19 +49,47 @@ internal fun CryptoBanner(message: ReaderMessage, onRetry: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.small),
                 ) {
                     CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
-                    Line(text = stringResource(R.string.crypto_decrypting), tone = Tone.QUIET)
+                    Line(
+                        text =
+                            stringResource(
+                                if (email.isEncrypted) R.string.crypto_decrypting
+                                else R.string.crypto_signed_pending
+                            ),
+                        tone = Tone.QUIET,
+                    )
                 }
             }
-        is MessageEncryption.Opened -> {
-            lines += {
-                Line(Icons.Filled.Lock, stringResource(R.string.crypto_encrypted), Tone.SECURE)
+        is MessageEncryption.Opened ->
+            if (email.isEncrypted) {
+                lines += {
+                    Line(
+                        Icons.Filled.Lock,
+                        stringResource(
+                            if (email.cryptoType == SMIME_ENCRYPTED) R.string.crypto_encrypted_smime
+                            else R.string.crypto_encrypted
+                        ),
+                        Tone.SECURE,
+                    )
+                }
+                encryption.content.signature?.let { verdict -> lines += { Inner(verdict) } }
+            } else {
+                // S/MIME signed opaquely (#47): opened here to be read, and
+                // its signature judged here too.
+                val verdict = encryption.content.signature
+                lines += {
+                    Signed(
+                        verdict?.state ?: SignatureState.fromWire(email.signatureState),
+                        verdict?.signer ?: email.signer,
+                    )
+                }
             }
-            encryption.content.signature?.let { verdict -> lines += { Inner(verdict) } }
-        }
         is MessageEncryption.Failed -> lines += {
                 Column {
                     Line(Icons.Filled.Lock, problemText(encryption.problem), Tone.WARNING)
-                    if (encryption.problem != DecryptionProblem.NOT_FOR_THESE_KEYS) {
+                    if (
+                        encryption.problem != DecryptionProblem.NOT_FOR_THESE_KEYS &&
+                            encryption.problem != DecryptionProblem.UNSUPPORTED_CIPHER
+                    ) {
                         TextButton(onClick = onRetry) {
                             Text(
                                 stringResource(
@@ -157,6 +185,8 @@ private fun problemText(problem: DecryptionProblem): String =
         when (problem) {
             DecryptionProblem.NO_KEYS_HERE -> R.string.crypto_no_keys
             DecryptionProblem.LOCKED -> R.string.crypto_locked
+            DecryptionProblem.NO_CERTIFICATE -> R.string.crypto_smime_unreadable
+            DecryptionProblem.UNSUPPORTED_CIPHER -> R.string.crypto_smime_unsupported
             DecryptionProblem.NOT_FOR_THESE_KEYS -> R.string.crypto_not_for_these_keys
             DecryptionProblem.NO_SOURCE -> R.string.crypto_no_source
             DecryptionProblem.UNREACHABLE -> R.string.crypto_unreachable
@@ -209,3 +239,5 @@ private fun grouped(hex: String): String =
     if (hex.contains('@')) hex else hex.uppercase().chunked(4).joinToString(" ")
 
 private val SIGNED_TYPES = setOf("pgp_signed", "pgp_inline_signed", "smime_signed")
+
+private const val SMIME_ENCRYPTED = "smime_encrypted"
