@@ -32,13 +32,15 @@ A feature the server cannot do yet gets an issue there as well, and the two issu
 (`Counterpart to pl_mail#28`). A pull request that needs a newer server says which version, and the
 app degrades on an older one rather than failing.
 
-**Milestones follow the server's releases.** `v0.4.0` here is the app's half of the server's
-`v0.4.0` milestone; an issue with no milestone is in the backlog. A pull request belongs to the
-milestone of the issue it closes. Work for a milestone that should not reach users before the
-server ships it is collected on a milestone branch (`milestone/v0.4.0`) — pull requests for it go
-there instead of `main`, and the branch goes to `main` in one pull request labelled `deployment`
-when the server's release is out. The app's own version numbers (`v0.0.31`) are not milestones and
-keep counting as they do.
+**Milestones are releases, numbered as the server's.** The app counted on its own up to
+`v0.0.31`; from `v0.4.0` on, an app release carries the number of the server release it belongs
+with, so `v0.4.0` here is the app's half of the server's `v0.4.0` and the next app release. An issue
+with no milestone is in the backlog, and a pull request belongs to the milestone of the issue it
+closes. A release's work is collected on its milestone branch (`milestone/v0.4.0`): pull requests
+for it go there instead of `main`, and the branch goes to `main` in one pull request labelled
+`deployment` when the server's release is out. That is the commit that gets tagged. Bug fixes still
+go to `main`, are merged into the milestone branch from there, and reach users with the next
+release; a fix that cannot wait gets a patch release (`v0.4.1`) cut from `main`.
 
 **Labels**: one type — `bug`, `enhancement`, `documentation`, `chore` — a status from triage, and
 one or more `area: …` (mail, compose, calendar, search, settings, onboarding, push, jmap, build).
