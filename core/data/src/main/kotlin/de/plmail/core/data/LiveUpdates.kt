@@ -57,6 +57,12 @@ constructor(
      * a settings object with no change log can offer.
      */
     private val appearance: AppearanceRepository,
+    /**
+     * Encrypted mail of accounts that keep a readable copy on the server (#9). Foreground is the
+     * moment the web app does this too (on becoming visible): the catch-up above has just brought
+     * in whatever arrived encrypted while the phone was away.
+     */
+    private val decryptedMail: DecryptedMailKeeper,
     @param:ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -82,6 +88,10 @@ constructor(
                 // being here is that the app is visible, and re-theming it is
                 // never worth delaying the list that is on screen.
                 appearance.refresh()
+
+                // Swallows its own failures, like the appearance above: the list
+                // is already on screen, and this is work nobody is waiting for.
+                decryptedMail.keep()
 
                 if (pushIsSilent()) stream()
             } catch (cancellation: CancellationException) {
