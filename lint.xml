@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Inherited by every module; modules with a lint.xml of their own add to it.
+
+  One finding that is in a dependency and not in this app.
+  `org.bouncycastle.est.jcajce.JcaJceUtils` in bcpkix (the CMS library S/MIME
+  is built on, #47) has trust-all X509TrustManagers for EST certificate
+  enrolment. This app does not use EST and never reaches them. R8 removes
+  them from the release APK. The app's own TLS stays pinned (KeyFingerprint).
+  The ignore is scoped to that one jar, so a trust-all manager in this code,
+  or in any other library, is still an error.
+-->
+<lint>
+    <issue id="TrustAllX509TrustManager">
+        <ignore path="**/bcpkix-jdk18on-*.jar" />
+    </issue>
+</lint>

@@ -125,6 +125,11 @@ data class RecipientKey(
     val sign: String = "auto",
     /** `pgp-mime` or `pgp-inline`. */
     val scheme: String = "pgp-mime",
+    /**
+     * The address's S/MIME certificate (#47): the contact's current, unexpired one, or the person's
+     * own for their own addresses. Null when there is none.
+     */
+    val smime: RecipientCertificate? = null,
 ) {
     val wantsEncryption: Boolean
         get() = encrypt == "always"
@@ -145,10 +150,22 @@ data class RecipientPublicKey(
 )
 
 @Serializable
+data class RecipientCertificate(
+    /** SHA-256 of the DER, lower-case hex. */
+    val fingerprint: String = "",
+    /** PEM. */
+    val certificate: String = "",
+    /** It chained to an authority the server trusts when it was seen. */
+    val verified: Boolean = false,
+    val notAfter: String? = null,
+)
+
+@Serializable
 data class LookupSender(
     val email: String = "",
     /** The address key messages from [email] are signed with, or null when it has none. */
     val fingerprint: String? = null,
+    /** The fingerprint of the S/MIME certificate mail from [email] is signed with, or null. */
     val smime: String? = null,
     val keepsDecrypted: Boolean = false,
 )

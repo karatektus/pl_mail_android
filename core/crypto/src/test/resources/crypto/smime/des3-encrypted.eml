@@ -1,0 +1,27 @@
+To: ada@example.org
+From: grace@example.net
+Subject: ...
+MIME-Version: 1.0
+Content-Disposition: attachment; filename="smime.p7m"
+Content-Type: application/x-pkcs7-mime; smime-type=enveloped-data; name="smime.p7m"
+Content-Transfer-Encoding: base64
+
+MIIDOAYJKoZIhvcNAQcDoIIDKTCCAyUCAQAxggFNMIIBSQIBADAxMBkxFzAVBgNV
+BAMMDnBsTWFpbCBUZXN0IENBAhRQg3h8MMAJq4SZzqJC49Ftuec8WTANBgkqhkiG
+9w0BAQEFAASCAQCm2IGXWPN8qCm8hlZi4rYToT6YpwvTPOEp4cC7yVCa7PdFbvJG
+3txeOX7hDtSD8AxWqAaItbFiphr/dMUsdcY/n4oymqZVWlesNagrKd8KXcbt1jJX
+mq2I8FNQEiExNr9DE1a/Mm2pdV1fxdOyrtrlU7w2X10cj4CZyrGzbE0SX2AQNkrS
+rzFkBiUT2TFgt7Xy6yMzodVkXXMsXh42ep3O4RWtVAv7JqMjmIlwZ0OHzbkd5mJ0
+ibw/2HTAXO1TTQEAcKSOwO67tQVtOhoPWj5JcggbN6vz9tLQ42k34qx/jKty5BUN
+gyR71mHzF3Nxa37r2qAvZbHn/U3LjhdsWbkdMIIBzQYJKoZIhvcNAQcBMBQGCCqG
+SIb3DQMHBAgAXt8sdm084YCCAajWxkkYOdWmlaKEa4D6UZLyGdfVyT5Vo9tLTlsa
+JnfZ+xZs91asr2buwWnkVTNonRdPLYkCamahpw/9cl9dHm17Ai19Bnkz3X3CK2Ce
+1bhf3PThLvX2hYukJKxCmhVINpSgeJgmLXL/A0PeHSYQFq4yCNoA91QZ8Z83+Isg
+NV9yreGGmB940Sv8LBYwNuEMRR7aErD5Lszra3B5PYxnif/aIcBGoe+JrvSCh+kk
+k8JF9B5x+en5/IG5XM1fn+IAolM4+TsWSwqFLpv4nsEDfZOdilhzXuGwEP9ktRTJ
+bkmk92T/yP4umkXWiwESP+3N3mW0pFa7Y9KskOMreT9Ps34vDynfTxvRpysF9NYj
+Yd6oMAlwEXpb+x35++AZSwhuKSFhLDOsWjalPH+/RApN6k1QHsTfOX7Z47g8/APG
+CaStrH0z5+2sCPRonJfPIX8BYEF6//d+JQGf/G6Wp+9IecdiO0AkOzRGGIOfeldn
+tW9jUcQr+kjYpZzH6UUahXrpnPZmhw1KIJOOugKQmJtXk6vFtl1yI5I7A3IUh9dq
+3uE39tdbu9L5B21/
+

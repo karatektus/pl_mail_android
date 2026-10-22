@@ -217,6 +217,9 @@
     <string name="crypto_retry">Erneut versuchen</string>
     <string name="crypto_locked">Deine Schlüssel sind auf diesem Gerät gesperrt. Bestätige, dass du es bist, um diese Nachricht zu lesen.</string>
     <string name="crypto_unlock">Entsperren</string>
+    <string name="crypto_encrypted_smime">Mit S/MIME verschlüsselt</string>
+    <string name="crypto_smime_unreadable">Diese Nachricht ist mit S/MIME für ein Zertifikat verschlüsselt, das plMail hier nicht hat. Importiere es in der Web-App unter Einstellungen → Verschlüsselung und versuche es dann erneut.</string>
+    <string name="crypto_smime_unsupported">Diese Nachricht ist mit einem Verfahren verschlüsselt, das plMail nicht öffnen kann.</string>
     <string name="crypto_no_keys">Deine Schlüssel sind nicht auf diesem Gerät. Hol sie unter „Verschlüsselung“ im Menü hierher und versuche es dann erneut.</string>
     <string name="crypto_not_for_these_keys">Diese Nachricht wurde für einen Schlüssel verschlüsselt, den du hier nicht hast.</string>
     <string name="crypto_no_source">Das Original dieser Nachricht ist nicht verfügbar, darum lässt sie sich nicht entschlüsseln.</string>

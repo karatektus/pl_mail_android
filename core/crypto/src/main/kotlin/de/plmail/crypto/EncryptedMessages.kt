@@ -11,6 +11,7 @@ import org.apache.james.mime4j.dom.Message
 import org.apache.james.mime4j.dom.Multipart
 import org.apache.james.mime4j.dom.SingleBody
 import org.apache.james.mime4j.dom.TextBody
+import org.apache.james.mime4j.dom.field.ContentTypeField
 import org.apache.james.mime4j.message.DefaultMessageBuilder
 import org.apache.james.mime4j.stream.MimeConfig
 import org.bouncycastle.openpgp.PGPException
@@ -52,8 +53,19 @@ object EncryptedMessages {
         raw: ByteArray,
         keys: List<UnlockedAddressKey>,
         verifiers: List<OpenPGPCertificate> = emptyList(),
+        smimeKeys: List<UnlockedSmimeKey> = emptyList(),
     ): OpenedMessage {
         val outer = parse(raw)
+
+        // S/MIME first (#47): its envelope is unmistakable, and an S/MIME
+        // message quoting an armor block must not be read as OpenPGP.
+        envelopeOf(outer)?.let { der ->
+            return opened(Smime.decrypt(der, smimeKeys))
+        }
+        opaqueSignedOf(outer)?.let { der ->
+            return content(Smime.opaque(der))
+        }
+
         val ciphertext = ciphertextOf(outer) ?: throw DecryptionException(Reason.NO_CIPHERTEXT)
 
         if (keys.isEmpty()) throw DecryptionException(Reason.NO_KEY)
@@ -102,6 +114,77 @@ object EncryptedMessages {
             mime = plaintext,
         )
     }
+
+    // ---------------------------------------------------------------- S/MIME
+
+    /**
+     * The decrypted inside of an S/MIME envelope: signed, as Outlook, Thunderbird and the web app
+     * send it — a `multipart/signed` entity or an opaque SignedData — or, rarely, not.
+     */
+    private fun opened(inner: ByteArray): OpenedMessage {
+        val entity = parse(inner)
+        val type = entity.mimeType.orEmpty()
+
+        if (type.equals("multipart/signed", ignoreCase = true)) {
+            val boundary = parameter(entity, "boundary")
+            boundary
+                ?.let { Smime.detached(inner, it) }
+                ?.let {
+                    return content(it)
+                }
+        }
+        if (with(Smime) { type.isPkcs7Mime() } && isSignedData(entity)) {
+            bytes(entity.body)?.let {
+                return content(Smime.opaque(it))
+            }
+        }
+
+        return content(Smime.Signed(inner, InnerSignature.None))
+    }
+
+    /** The message a signature covered, read like any decrypted entity. */
+    private fun content(signed: Smime.Signed): OpenedMessage {
+        val entity = parse(signed.content)
+        val collected = Collected()
+        collect(entity, collected)
+
+        return OpenedMessage(
+            subject = entity.subject?.trim()?.takeIf { it.isNotEmpty() },
+            html = collected.html,
+            text = collected.text,
+            parts = collected.parts,
+            signature = signed.signature,
+            // What the server is handed: the signed content, without the
+            // signature around it, as the web app hands it over.
+            mime = signed.content,
+        )
+    }
+
+    /**
+     * The DER of an S/MIME envelope: the message itself when it is `application/pkcs7-mime` and not
+     * signed-data, or a part that is — Exchange delivers it as an `smime.p7m` attachment.
+     */
+    private fun envelopeOf(message: Message): ByteArray? =
+        (listOf<Entity>(message) + leaves(message))
+            .firstOrNull { entity ->
+                val isEnvelope =
+                    with(Smime) { entity.mimeType.orEmpty().isPkcs7Mime() } ||
+                        entity.filename.equals("smime.p7m", ignoreCase = true)
+                isEnvelope && !isSignedData(entity) && entity.body is SingleBody
+            }
+            ?.let { bytes(it.body) }
+
+    /** The DER of an opaque SignedData that is the whole message: signed, not encrypted. */
+    private fun opaqueSignedOf(message: Message): ByteArray? =
+        message
+            .takeIf { with(Smime) { it.mimeType.orEmpty().isPkcs7Mime() } && isSignedData(it) }
+            ?.let { bytes(it.body) }
+
+    private fun isSignedData(entity: Entity): Boolean =
+        parameter(entity, "smime-type").equals("signed-data", ignoreCase = true)
+
+    private fun parameter(entity: Entity, name: String): String? =
+        (entity.header?.getField("Content-Type") as? ContentTypeField)?.getParameter(name)
 
     /**
      * Inline PGP decrypts to text, not to a message. For the server it is wrapped in the one MIME
@@ -282,9 +365,11 @@ object EncryptedMessages {
             into.text = text(entity)
             return
         }
-        // The signature of an RFC 3156 entity, if one reached this far, is
-        // not content.
+        // The signature of an RFC 3156 or S/MIME entity, if one reached this
+        // far, is not content.
         if (entity.isMimeType("application/pgp-signature")) return
+        if (entity.isMimeType("application/pkcs7-signature")) return
+        if (entity.isMimeType("application/x-pkcs7-signature")) return
 
         val cid =
             entity.header
@@ -366,6 +451,17 @@ sealed interface InnerSignature {
     /** Made with a key that was supplied, and it does not match. */
     data class Invalid(val fingerprint: String) : InnerSignature
 
+    /**
+     * An S/MIME signature (#47), made with the certificate it carries: [fingerprint] is that
+     * certificate's SHA-256, [addresses] the ones it names. [isIntact] says the message is as it
+     * was signed; whose certificate it is, and whether anybody vouches for it, the caller decides.
+     */
+    data class Certificate(
+        val fingerprint: String,
+        val addresses: List<String>,
+        val isIntact: Boolean,
+    ) : InnerSignature
+
     /** RFC 3156 signed inside the encryption; shown, and not checked. */
     data object Unchecked : InnerSignature
 }
@@ -379,6 +475,12 @@ enum class Reason {
 
     /** None of the device's keys opens it — or it has none. */
     NO_KEY,
+
+    /** S/MIME, and the person has no certificate on this device at all. */
+    NO_CERTIFICATE,
+
+    /** S/MIME, encrypted with a cipher that cannot be opened here. */
+    UNSUPPORTED,
 
     /** The ciphertext or the MIME inside it could not be read. */
     MALFORMED,

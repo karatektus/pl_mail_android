@@ -52,33 +52,42 @@ constructor(
      */
     suspend fun open(accountKey: String, blobId: String?, sender: String?): DecryptionResult {
         blobId ?: return DecryptionResult.Failed(DecryptionProblem.NO_SOURCE)
+        var hadNoKeys = false
 
         return try {
             // Interactive: somebody is opening this message, which is the one
             // moment protected keys may ask for the person (phase 5).
-            val keys = encryption.unlockedAddressKeys(interactive = true)
-            if (keys.isEmpty()) return DecryptionResult.Failed(DecryptionProblem.NO_KEYS_HERE)
+            val unlocked = encryption.unlockedKeys(interactive = true)
+            val keys = unlocked.addressKeys
+            hadNoKeys = unlocked.isEmpty
 
             val raw =
                 blobs.file(accountKey, blobId, name = SOURCE_NAME, type = SOURCE_TYPE).readBytes()
             val contacts = encryption.contactKeys().forAddress(sender.orEmpty())
             val own = keys.map { it.key.toCertificate() }
 
-            withContext(Dispatchers.Default) {
-                val opened =
-                    EncryptedMessages.open(raw, keys, verifiers = own + contacts.certificates())
-
-                DecryptionResult.Opened(
-                    present(
-                        opened,
-                        verdict(
-                            opened.signature,
-                            ownFingerprints = keys.map { it.fingerprint },
-                            contacts,
-                        ),
+            val opened =
+                withContext(Dispatchers.Default) {
+                    EncryptedMessages.open(
+                        raw,
+                        keys,
+                        verifiers = own + contacts.certificates(),
+                        smimeKeys = unlocked.smimeKeys,
                     )
-                )
-            }
+                }
+
+            val signature =
+                when (val inner = opened.signature) {
+                    is InnerSignature.Certificate ->
+                        certificateVerdict(
+                            inner,
+                            sender = sender.orEmpty(),
+                            own = unlocked.smimeKeys.map { it.fingerprint },
+                        )
+                    else -> verdict(inner, ownFingerprints = keys.map { it.fingerprint }, contacts)
+                }
+
+            DecryptionResult.Opened(withContext(Dispatchers.Default) { present(opened, signature) })
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: KeysLocked) {
@@ -86,7 +95,11 @@ constructor(
         } catch (failed: DecryptionException) {
             DecryptionResult.Failed(
                 when (failed.reason) {
-                    Reason.NO_KEY -> DecryptionProblem.NOT_FOR_THESE_KEYS
+                    Reason.NO_KEY ->
+                        if (hadNoKeys) DecryptionProblem.NO_KEYS_HERE
+                        else DecryptionProblem.NOT_FOR_THESE_KEYS
+                    Reason.NO_CERTIFICATE -> DecryptionProblem.NO_CERTIFICATE
+                    Reason.UNSUPPORTED -> DecryptionProblem.UNSUPPORTED_CIPHER
                     Reason.NO_CIPHERTEXT -> DecryptionProblem.NO_SOURCE
                     Reason.MALFORMED -> DecryptionProblem.FAILED
                 }
@@ -131,6 +144,9 @@ constructor(
         return when (signature) {
             InnerSignature.None -> null
             InnerSignature.Unchecked -> SignatureVerdict(SignatureState.UNCHECKED, signer = null)
+            // Judged by certificateVerdict; never handed here.
+            is InnerSignature.Certificate ->
+                SignatureVerdict(SignatureState.UNCHECKED, signature.fingerprint)
             is InnerSignature.Invalid ->
                 SignatureVerdict(SignatureState.INVALID, signature.fingerprint)
             is InnerSignature.UnknownKey ->
@@ -151,6 +167,43 @@ constructor(
                 SignatureVerdict(state, fingerprint)
             }
         }
+    }
+
+    /**
+     * An S/MIME signature inside, judged on the device (#47). The web app asks the server, over a
+     * route only a browser session reaches; this is the same judgement from what JMAP offers:
+     * - not intact, or a certificate that does not name the sender: invalid;
+     * - one of the person's own certificates: valid;
+     * - the certificate plMail holds for the sender: valid when it chained to a trusted authority,
+     *   untrusted when not;
+     * - another certificate while plMail holds one for the sender: changed;
+     * - nothing known: untrusted.
+     */
+    private suspend fun certificateVerdict(
+        signature: InnerSignature.Certificate,
+        sender: String,
+        own: List<String>,
+    ): SignatureVerdict {
+        val fingerprint = signature.fingerprint
+        val state =
+            when {
+                !signature.isIntact -> SignatureState.INVALID
+                sender.isNotBlank() &&
+                    signature.addresses.none { it.equals(sender.trim(), ignoreCase = true) } ->
+                    SignatureState.INVALID
+                own.any { it.equals(fingerprint, ignoreCase = true) } -> SignatureState.VALID
+                else -> {
+                    val known = encryption.certificateFor(sender)
+                    when {
+                        known == null -> SignatureState.UNTRUSTED
+                        known.fingerprint.equals(fingerprint, ignoreCase = true) ->
+                            if (known.verified) SignatureState.VALID else SignatureState.UNTRUSTED
+                        else -> SignatureState.KEY_CHANGED
+                    }
+                }
+            }
+
+        return SignatureVerdict(state, fingerprint.ifBlank { null })
     }
 
     private fun List<ContactKey>.certificates(): List<OpenPGPCertificate> = mapNotNull { key ->
@@ -179,6 +232,12 @@ enum class DecryptionProblem {
 
     /** The keys here are protected, and the person did not confirm it is them. */
     LOCKED,
+
+    /** S/MIME, and the person has no certificate on this device: it lives in the web app. */
+    NO_CERTIFICATE,
+
+    /** S/MIME, encrypted with a cipher this device cannot open. */
+    UNSUPPORTED_CIPHER,
 
     /** The device's keys do not open this message: it was encrypted to a key it does not have. */
     NOT_FOR_THESE_KEYS,

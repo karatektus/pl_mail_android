@@ -5,7 +5,10 @@ import de.plmail.core.datastore.KeyVault
 import de.plmail.crypto.AddressKeyException
 import de.plmail.crypto.AddressKeys
 import de.plmail.crypto.KeyDerivation
+import de.plmail.crypto.SmimeKeyException
+import de.plmail.crypto.SmimeKeys
 import de.plmail.crypto.UnlockedAddressKey
+import de.plmail.crypto.UnlockedSmimeKey
 import de.plmail.crypto.UserKey
 import de.plmail.crypto.UserKeys
 import de.plmail.crypto.WrappedUserKey
@@ -13,12 +16,16 @@ import de.plmail.crypto.WrappingException
 import de.plmail.jmap.methods.AddressKeyEntry
 import de.plmail.jmap.methods.ContactKeyGet
 import de.plmail.jmap.methods.ContactKeyGetResult
+import de.plmail.jmap.methods.ContactKeyLookup
 import de.plmail.jmap.methods.Keyring
 import de.plmail.jmap.methods.KeyringGet
+import de.plmail.jmap.methods.RecipientCertificate
+import de.plmail.jmap.methods.SmimeCertificateEntry
 import de.plmail.jmap.protocol.Capability
 import de.plmail.jmap.protocol.JmapError
 import de.plmail.jmap.protocol.KeysCapability
 import de.plmail.jmap.protocol.RequestBuilder
+import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
@@ -60,7 +67,7 @@ constructor(
      * every address key once per message — a request and an S2K derivation each. Kept briefly and
      * only in memory; dropped whenever the keys on the device change.
      */
-    private var unlocked: Pair<Long, List<UnlockedAddressKey>>? = null
+    private var unlocked: Pair<Long, OpenedKeys>? = null
     private val unlocking = Mutex()
 
     /**
@@ -88,6 +95,7 @@ constructor(
                     EncryptionStatus.Ready(
                         addresses = keyring.addressKeys.map { it.status(opens = null) },
                         isProtected = true,
+                        certificates = keyring.smimeCertificates.map { it.status(opens = null) },
                     )
                 }
         }
@@ -171,27 +179,33 @@ constructor(
      * else, and an [interactive] caller whose person declined, gets [KeysLocked].
      */
     suspend fun unlockedAddressKeys(interactive: Boolean = false): List<UnlockedAddressKey> =
-        unlocking.withLock {
-            unlocked
-                ?.takeIf { (at, _) -> System.currentTimeMillis() - at < UNLOCKED_FOR_MILLIS }
-                ?.let {
-                    return@withLock it.second
-                }
+        unlockedKeys(interactive).addressKeys
 
-            val keys =
+    /**
+     * Everything this device can open now: the OpenPGP address keys and the S/MIME certificates
+     * (#47), on the same terms as [unlockedAddressKeys].
+     */
+    suspend fun unlockedKeys(interactive: Boolean = false): OpenedKeys = unlocking.withLock {
+        unlocked
+            ?.takeIf { (at, _) -> System.currentTimeMillis() - at < UNLOCKED_FOR_MILLIS }
+            ?.let {
+                return@withLock it.second
+            }
+
+        val keys =
+            try {
+                freshlyUnlocked()
+            } catch (_: DeviceLockRequired) {
+                if (!interactive || !prompt.confirm()) throw KeysLocked()
                 try {
                     freshlyUnlocked()
                 } catch (_: DeviceLockRequired) {
-                    if (!interactive || !prompt.confirm()) throw KeysLocked()
-                    try {
-                        freshlyUnlocked()
-                    } catch (_: DeviceLockRequired) {
-                        throw KeysLocked()
-                    }
+                    throw KeysLocked()
                 }
+            }
 
-            keys.also { unlocked = if (it.isEmpty()) null else System.currentTimeMillis() to it }
-        }
+        keys.also { unlocked = if (it.isEmpty) null else System.currentTimeMillis() to it }
+    }
 
     /**
      * The fingerprints of the address keys this device signs with, without opening anything when
@@ -237,15 +251,19 @@ constructor(
             ContactKeyGetResult()
         }
 
-    private suspend fun freshlyUnlocked(): List<UnlockedAddressKey> =
+    private suspend fun freshlyUnlocked(): OpenedKeys =
         try {
-            val client = clients.current() ?: return emptyList()
-            val capability = client.session().keys ?: return emptyList()
-            val keyring = keyring(client) ?: return emptyList()
+            val client = clients.current() ?: return OpenedKeys()
+            val capability = client.session().keys ?: return OpenedKeys()
+            val keyring = keyring(client) ?: return OpenedKeys()
             val userKeys = vault.userKeys()
 
             withContext(Dispatchers.Default) {
-                keyring.addressKeys.mapNotNull { open(it, userKeys, capability) }
+                OpenedKeys(
+                    addressKeys = keyring.addressKeys.mapNotNull { open(it, userKeys, capability) },
+                    smimeKeys =
+                        keyring.smimeCertificates.mapNotNull { open(it, userKeys, capability) },
+                )
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
@@ -253,9 +271,9 @@ constructor(
             throw locked
         } catch (refused: JmapError.NotAuthenticated) {
             forget()
-            emptyList()
+            OpenedKeys()
         } catch (_: Exception) {
-            emptyList()
+            OpenedKeys()
         }
 
     /** Removes the keys from this device, when the person asks. The server's copies stay. */
@@ -278,16 +296,59 @@ constructor(
                     entry.status(opens = open(entry, userKeys, capability) != null)
                 }
             }
+        val certificates =
+            withContext(Dispatchers.Default) {
+                keyring.smimeCertificates.map { entry ->
+                    entry.status(opens = open(entry, userKeys, capability) != null)
+                }
+            }
 
         // Keys are stored but open none of the address keys: a reset in the
         // web app retired the user key this device holds. Asking again is the
         // way back, and saying "ready" here would be the first lie of many.
-        if (addresses.isNotEmpty() && addresses.none { it.opens == true }) {
+        val opensAnything =
+            addresses.any { it.opens == true } || certificates.any { it.opens == true }
+        if ((addresses.isNotEmpty() || certificates.isNotEmpty()) && !opensAnything) {
             return EncryptionStatus.Locked(keyring.isPassphrase, hadKeys = true)
         }
 
-        return EncryptionStatus.Ready(addresses, isProtected = vault.isProtected.first())
+        return EncryptionStatus.Ready(
+            addresses,
+            isProtected = vault.isProtected.first(),
+            certificates = certificates,
+        )
     }
+
+    private fun SmimeCertificateEntry.status(opens: Boolean?) =
+        SmimeCertificateStatus(
+            fingerprint = fingerprint,
+            addresses = addresses,
+            issuer = issuer,
+            notAfter = notAfter?.toInstantOrNull(),
+            isActive = isActive,
+            opens = opens,
+        )
+
+    /**
+     * The S/MIME certificate plMail holds for [address] (#47) — the contact's current one, or the
+     * person's own — for judging a signature inside encrypted mail. Null when there is none or the
+     * server cannot be asked.
+     */
+    suspend fun certificateFor(address: String): RecipientCertificate? =
+        try {
+            val client = clients.current()
+            if (client?.session()?.keys == null) {
+                null
+            } else {
+                val request = RequestBuilder(using = Capability.USING_KEYS)
+                val lookup = request.add(ContactKeyLookup(emails = listOf(address)))
+                client.send(request).result(lookup).forAddress(address)?.smime
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            null
+        }
 
     private fun AddressKeyEntry.status(opens: Boolean?) =
         AddressKeyStatus(
@@ -297,6 +358,31 @@ constructor(
             isActive = isActive,
             opens = opens,
         )
+
+    /** An S/MIME certificate's private key, with the user key it is wrapped under. */
+    private fun open(
+        entry: SmimeCertificateEntry,
+        userKeys: List<UserKey>,
+        capability: KeysCapability,
+    ): UnlockedSmimeKey? {
+        val userKey = userKeys.firstOrNull { it.id == entry.userKeyId } ?: return null
+
+        return try {
+            SmimeKeys.unlock(
+                certificatePem = entry.certificate,
+                chainPem = entry.chain,
+                wrappedPrivateKey = entry.privateKey,
+                userKey = userKey,
+                addresses = entry.addresses,
+                isActive = entry.isActive,
+                notBefore = entry.notBefore?.toInstantOrNull(),
+                notAfter = entry.notAfter?.toInstantOrNull(),
+                purpose = capability.purposes.smimeKey,
+            )
+        } catch (_: SmimeKeyException) {
+            null
+        }
+    }
 
     private fun open(
         entry: AddressKeyEntry,
@@ -369,8 +455,12 @@ sealed interface EncryptionStatus {
      * only after the person confirms it is them; while they have not, nothing was opened to answer
      * this, and each address key's `opens` is null.
      */
-    data class Ready(val addresses: List<AddressKeyStatus>, val isProtected: Boolean = false) :
-        EncryptionStatus
+    data class Ready(
+        val addresses: List<AddressKeyStatus>,
+        val isProtected: Boolean = false,
+        /** The person's S/MIME certificates (#47); `opens` is null as for [addresses]. */
+        val certificates: List<SmimeCertificateStatus> = emptyList(),
+    ) : EncryptionStatus
 
     /** The server could not be asked. Says nothing about the keys either way. */
     data class Unreachable(val cause: Throwable?) : EncryptionStatus
@@ -385,6 +475,33 @@ data class AddressKeyStatus(
     /** Whether the keys on this device unlock it; null when they are protected and locked. */
     val opens: Boolean?,
 )
+
+/** One of the person's S/MIME certificates as the settings screen shows it (#47). */
+data class SmimeCertificateStatus(
+    val fingerprint: String,
+    val addresses: List<String>,
+    val issuer: String?,
+    val notAfter: Instant?,
+    /** False once a newer certificate replaced it: it then only decrypts. */
+    val isActive: Boolean,
+    /** Whether the keys on this device open its private key; null when they are locked. */
+    val opens: Boolean?,
+)
+
+/** Everything the device has open: OpenPGP address keys and S/MIME certificates. */
+data class OpenedKeys(
+    val addressKeys: List<UnlockedAddressKey> = emptyList(),
+    val smimeKeys: List<UnlockedSmimeKey> = emptyList(),
+) {
+    val isEmpty: Boolean
+        get() = addressKeys.isEmpty() && smimeKeys.isEmpty()
+}
+
+/** An ATOM date-time from the server, or null when it is not one. */
+internal fun String.toInstantOrNull(): Instant? = runCatching {
+    java.time.OffsetDateTime.parse(this).toInstant()
+}
+    .getOrNull()
 
 /** What switching the protection did. */
 enum class ProtectResult {

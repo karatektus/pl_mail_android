@@ -48,7 +48,12 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.plmail.core.data.AddressKeyStatus
 import de.plmail.core.data.EncryptionStatus
+import de.plmail.core.data.SmimeCertificateStatus
 import de.plmail.core.designsystem.PlMailTheme
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 
 /**
  * End-to-end encryption on this device (#9).
@@ -271,6 +276,16 @@ private fun Ready(
         }
     }
 
+    // S/MIME (#47): what the person imported in the web app, which is also
+    // the only place to import, export or remove one.
+    Section(stringResource(R.string.encryption_certificates_heading)) {
+        if (status.certificates.isEmpty()) {
+            Explains(R.string.encryption_certificates_empty)
+        } else {
+            status.certificates.forEach { CertificateRow(it) }
+        }
+    }
+
     TextButton(onClick = { isConfirmingForget = true }, enabled = !isWorking) {
         Text(stringResource(R.string.encryption_forget))
     }
@@ -357,6 +372,57 @@ private fun Protection(
                 color = MaterialTheme.colorScheme.error,
             )
         }
+    }
+}
+
+@Composable
+private fun CertificateRow(certificate: SmimeCertificateStatus) {
+    val expired = certificate.notAfter?.isBefore(Instant.now()) == true
+
+    Column(modifier = Modifier.fillMaxWidth().padding(vertical = PlMailTheme.spacing.tiny)) {
+        Text(
+            text = certificate.addresses.joinToString(", "),
+            style = MaterialTheme.typography.bodyLarge,
+            color = PlMailTheme.colors.ink,
+        )
+
+        val details =
+            listOfNotNull(
+                certificate.issuer?.let {
+                    stringResource(R.string.encryption_certificate_issuer, it)
+                },
+                certificate.notAfter?.let {
+                    stringResource(
+                        R.string.encryption_certificate_until,
+                        DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
+                            .format(it.atZone(ZoneId.systemDefault())),
+                    )
+                },
+            )
+        if (details.isNotEmpty()) {
+            Text(
+                text = details.joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = PlMailTheme.colors.inkMuted,
+            )
+        }
+
+        Text(
+            text =
+                stringResource(
+                    when {
+                        certificate.opens == null -> R.string.encryption_key_locked
+                        certificate.opens == false -> R.string.encryption_key_does_not_open
+                        expired -> R.string.encryption_certificate_expired
+                        !certificate.isActive -> R.string.encryption_certificate_retired
+                        else -> R.string.encryption_key_unlocked
+                    }
+                ),
+            style = MaterialTheme.typography.labelMedium,
+            color =
+                if (certificate.opens != false) PlMailTheme.colors.inkSoft
+                else MaterialTheme.colorScheme.error,
+        )
     }
 }
 

@@ -255,6 +255,12 @@
     <string name="encryption_protect_explains">Fragt nach Fingerabdruck, Gesicht oder Displaysperre, wenn du eine verschlüsselte Mail öffnest, außer du hast das Telefon in den letzten 5 Minuten entsperrt. Solange deine Schlüssel gesperrt sind, werden verschlüsselte Mails nicht im Hintergrund entschlüsselt.</string>
     <string name="encryption_protect_unavailable">Richte auf diesem Gerät eine Displaysperre ein, um das zu nutzen.</string>
     <string name="encryption_protect_refused">Nichts geändert: Du hast nicht bestätigt, dass du es bist.</string>
+    <string name="encryption_certificates_heading">S/MIME-Zertifikate</string>
+    <string name="encryption_certificates_empty">Noch kein S/MIME-Zertifikat. Importiere eines in der Web-App unter Einstellungen → Verschlüsselung.</string>
+    <string name="encryption_certificate_issuer">Ausgestellt von %1$s</string>
+    <string name="encryption_certificate_until">gültig bis %1$s</string>
+    <string name="encryption_certificate_retired">Durch ein neueres Zertifikat ersetzt: öffnet ältere Mails weiterhin</string>
+    <string name="encryption_certificate_expired">Abgelaufen: öffnet ältere Mails weiterhin</string>
     <string name="encryption_forget">Schlüssel von diesem Gerät entfernen</string>
     <string name="encryption_forget_title">Schlüssel von diesem Gerät entfernen?</string>
     <string name="encryption_forget_explains">Verschlüsselte Mails lassen sich hier erst wieder öffnen, wenn du die Schlüssel per Kopplung oder mit deinem Passwort zurückholst. Auf deinem Server ändert sich nichts.</string>

@@ -352,7 +352,7 @@ constructor(
                         remoteImages = previous?.remoteImages ?: RemoteImages.BLOCKED,
                         showOriginal = previous?.showOriginal ?: false,
                         encryption =
-                            if (email.needsDecryption) {
+                            if (needsOpening(email, body?.htmlBody, body?.textBody)) {
                                 encryptions[email.uid] ?: MessageEncryption.Decrypting
                             } else {
                                 null
@@ -394,7 +394,7 @@ constructor(
             )
         }
 
-        messages.filter { it.isExpanded }.forEach { decryptIfNeeded(it.email) }
+        messages.filter { it.isExpanded }.forEach(::decryptIfNeeded)
     }
 
     /**
@@ -417,8 +417,9 @@ constructor(
      * Only when the message is opened, like marking it read: decrypting a whole conversation on the
      * way in would download every message's source for the ones nobody expands.
      */
-    private fun decryptIfNeeded(email: EmailEntity) {
-        if (!email.needsDecryption) return
+    private fun decryptIfNeeded(message: ReaderMessage) {
+        val email = message.email
+        if (!needsOpening(email, message.html, message.text)) return
         if (encryptions[email.uid] != null && encryptions[email.uid] !is MessageEncryption.Failed)
             return
 
@@ -441,7 +442,7 @@ constructor(
     fun retryDecryption(uid: String) {
         val message = _state.value.messages.firstOrNull { it.email.uid == uid } ?: return
         encryptions.remove(uid)
-        decryptIfNeeded(message.email)
+        decryptIfNeeded(message)
     }
 
     private fun updateEncryption(uid: String) {
@@ -620,7 +621,7 @@ constructor(
 
         _state.value.messages
             .firstOrNull { it.email.uid == uid && it.isExpanded }
-            ?.let { decryptIfNeeded(it.email) }
+            ?.let(::decryptIfNeeded)
     }
 
     /** Per message and per session; nothing about this is remembered for the sender yet. */
@@ -718,3 +719,17 @@ constructor(
 
 /** A downloaded file the screen is being asked to hand to another app. */
 data class OpenableFile(val file: java.io.File, val type: String)
+
+/**
+ * Whether a message has to be opened on this device to be read: encrypted end to end (#9), or
+ * S/MIME signed opaquely (#47) — the content inside the signature, where the server keeps no body
+ * for it. The second is known only once the body has been fetched and turned out empty.
+ */
+internal fun needsOpening(email: EmailEntity, html: String?, text: String?): Boolean =
+    email.needsDecryption ||
+        (email.cryptoType == OPAQUE_SIGNED_TYPE &&
+            (html != null || text != null) &&
+            html.isNullOrBlank() &&
+            text.isNullOrBlank())
+
+private const val OPAQUE_SIGNED_TYPE = "smime_signed"

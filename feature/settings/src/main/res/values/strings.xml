@@ -403,6 +403,12 @@
     <string name="encryption_protect_explains">Asks for your fingerprint, face or screen lock when you open encrypted mail, unless you unlocked the phone in the last 5 minutes. While your keys are locked, encrypted mail is not decrypted in the background.</string>
     <string name="encryption_protect_unavailable">Set a screen lock on this device to use this.</string>
     <string name="encryption_protect_refused">Nothing changed: you did not confirm it is you.</string>
+    <string name="encryption_certificates_heading">S/MIME certificates</string>
+    <string name="encryption_certificates_empty">No S/MIME certificate yet. Import one in the web app under Settings → Encryption.</string>
+    <string name="encryption_certificate_issuer">Issued by %1$s</string>
+    <string name="encryption_certificate_until">valid until %1$s</string>
+    <string name="encryption_certificate_retired">Replaced by a newer certificate: still opens older mail</string>
+    <string name="encryption_certificate_expired">Expired: still opens older mail</string>
     <string name="encryption_forget">Remove keys from this device</string>
     <string name="encryption_forget_title">Remove your keys from this device?</string>
     <string name="encryption_forget_explains">Encrypted mail cannot be opened here until you bring the keys back by pairing or with your password. Nothing changes on your server.</string>

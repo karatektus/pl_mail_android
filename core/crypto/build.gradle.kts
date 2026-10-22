@@ -13,6 +13,7 @@ plugins {
 // unlocked address key is handed to whoever decrypts or signs with it.
 dependencies {
     api(libs.pgpainless.core)
+    implementation(libs.bouncycastle.pkix)
     implementation(libs.mime4j.dom)
     implementation(libs.kotlinx.serialization.json)
 
