@@ -121,6 +121,13 @@ internal fun RecipientLockIcon(lock: RecipientLock) {
                 tint = PlMailTheme.colors.accent,
                 modifier = Modifier.size(16.dp),
             )
+        RecipientLock.HAS_CERTIFICATE ->
+            Icon(
+                Icons.Filled.Lock,
+                contentDescription = stringResource(R.string.compose_crypto_has_certificate),
+                tint = PlMailTheme.colors.accent,
+                modifier = Modifier.size(16.dp),
+            )
         RecipientLock.KEY_CHANGED ->
             Icon(
                 Icons.Filled.Warning,

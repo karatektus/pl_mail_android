@@ -258,25 +258,8 @@ object OutgoingMessages {
         protectSubject: Boolean,
     ): ByteArray {
         val boundary = boundary()
-        val out = StringBuilder()
+        val out = outerHeaders(content, protectSubject)
 
-        header(out, "From", address(content.from))
-        addressList(content.to.map(::address))?.let { header(out, "To", it) }
-        addressList(content.cc.map(::address))?.let { header(out, "Cc", it) }
-        addressList(content.bcc.map(::address))?.let { header(out, "Bcc", it) }
-        when {
-            protectSubject -> header(out, "Subject", PROTECTED_SUBJECT)
-            content.subject.isNotBlank() -> header(out, "Subject", encodedText(content.subject))
-        }
-        header(out, "Date", DateTimeFormatter.RFC_1123_DATE_TIME.format(content.date))
-        header(out, "Message-ID", content.messageId)
-        if (content.inReplyTo.isNotEmpty()) {
-            header(out, "In-Reply-To", content.inReplyTo.joinToString(" "))
-        }
-        if (content.references.isNotEmpty()) {
-            header(out, "References", folded(content.references, " "))
-        }
-        header(out, "MIME-Version", "1.0")
         header(
             out,
             "Content-Type",
@@ -300,6 +283,64 @@ object OutgoingMessages {
         out.append("--").append(boundary).append("--").append(CRLF)
 
         return out.toString().toByteArray(Charsets.UTF_8)
+    }
+
+    // ---------------------------------------------------------------- S/MIME
+
+    /**
+     * The whole message for S/MIME (#47), as the web app's `smimeEncryptEntity` builds it: the
+     * inner entity signed — `multipart/signed`, SHA-256 with RSA, the signer named by issuer and
+     * serial, its certificate and chain carried — and that signed entity enveloped with AES-256-CBC
+     * and RSA PKCS#1 v1.5 key transport, to every recipient's certificate and the sender's own.
+     * What Outlook and Thunderbird read.
+     */
+    fun sealSmime(
+        content: OutgoingContent,
+        recipients: List<String>,
+        signer: UnlockedSmimeKey,
+        protectSubject: Boolean = true,
+    ): ByteArray {
+        val signed = SmimeOutgoing.sign(entity(content, protectHeaders = protectSubject), signer)
+        val envelope = SmimeOutgoing.envelope(signed, recipients, signer)
+
+        val out = outerHeaders(content, protectSubject)
+        header(
+            out,
+            "Content-Type",
+            "application/pkcs7-mime; smime-type=enveloped-data;$CRLF name=\"smime.p7m\"",
+        )
+        header(out, "Content-Transfer-Encoding", "base64")
+        header(out, "Content-Disposition", "attachment; filename=\"smime.p7m\"")
+        header(out, "Content-Description", "S/MIME Encrypted Message")
+        out.append(CRLF)
+        out.append(base64Lines(envelope))
+
+        return out.toString().toByteArray(Charsets.UTF_8)
+    }
+
+    /** The headers plMail files a draft by: addresses, subject, date and threading. */
+    private fun outerHeaders(content: OutgoingContent, protectSubject: Boolean): StringBuilder {
+        val out = StringBuilder()
+
+        header(out, "From", address(content.from))
+        addressList(content.to.map(::address))?.let { header(out, "To", it) }
+        addressList(content.cc.map(::address))?.let { header(out, "Cc", it) }
+        addressList(content.bcc.map(::address))?.let { header(out, "Bcc", it) }
+        when {
+            protectSubject -> header(out, "Subject", PROTECTED_SUBJECT)
+            content.subject.isNotBlank() -> header(out, "Subject", encodedText(content.subject))
+        }
+        header(out, "Date", DateTimeFormatter.RFC_1123_DATE_TIME.format(content.date))
+        header(out, "Message-ID", content.messageId)
+        if (content.inReplyTo.isNotEmpty()) {
+            header(out, "In-Reply-To", content.inReplyTo.joinToString(" "))
+        }
+        if (content.references.isNotEmpty()) {
+            header(out, "References", folded(content.references, " "))
+        }
+        header(out, "MIME-Version", "1.0")
+
+        return out
     }
 
     // ---------------------------------------------------------------- helpers
@@ -369,12 +410,12 @@ object OutgoingMessages {
     private fun word(text: String): String =
         "=?utf-8?B?" + Base64.getEncoder().encodeToString(text.toByteArray(Charsets.UTF_8)) + "?="
 
-    private fun base64Lines(bytes: ByteArray): String =
+    internal fun base64Lines(bytes: ByteArray): String =
         Base64.getMimeEncoder(LINE, CRLF.toByteArray()).encodeToString(bytes).let {
             if (it.isEmpty()) "" else it + CRLF
         }
 
-    private fun boundary(): String {
+    internal fun boundary(): String {
         val bytes = ByteArray(16).also { random.nextBytes(it) }
 
         return "----=_plmail_" + bytes.joinToString("") { "%02x".format(it) }

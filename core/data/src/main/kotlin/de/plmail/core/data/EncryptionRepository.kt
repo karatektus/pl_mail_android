@@ -224,6 +224,22 @@ constructor(
                 .orEmpty()
         }
 
+    /**
+     * The fingerprints of the S/MIME certificates this device signs with (#47), on the same terms
+     * as [signingFingerprints]: without opening anything while the keys are locked.
+     */
+    suspend fun signingCertificates(): List<String> =
+        try {
+            unlockedKeys().smimeKeys.filter { it.isActive }.map { it.fingerprint }
+        } catch (_: KeysLocked) {
+            runCatching {
+                val client = clients.current() ?: return emptyList()
+                keyring(client)?.smimeCertificates?.filter { it.isActive }?.map { it.fingerprint }
+            }
+                .getOrNull()
+                .orEmpty()
+        }
+
     /** Whether the keys here are protected, for the composer and the settings screen. */
     val isProtected: Flow<Boolean>
         get() = vault.isProtected

@@ -166,6 +166,7 @@
     <string name="compose_crypto_off">Not encrypted</string>
     <string name="compose_crypto_encrypted_hint">This message will be end-to-end encrypted: only you and the people it goes to can read it.</string>
     <string name="compose_crypto_has_key">plMail has a key for this address, so mail to it can be encrypted.</string>
+    <string name="compose_crypto_has_certificate">plMail has an S/MIME certificate for this address, so mail to it can be encrypted.</string>
     <string name="compose_crypto_key_changed">A new key for this address is waiting to be accepted in Settings → Encryption. The known key is used until then.</string>
     <string name="compose_crypto_partial">%1$s cannot be reached encrypted, so this message goes out unencrypted to everybody.</string>
     <string name="compose_crypto_partial_blocked">%1$s cannot be reached encrypted. Remove them, or switch encryption off for this message.</string>

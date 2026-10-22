@@ -128,6 +128,81 @@ class SmimeMessagesTest {
         assertFalse(assertIs<InnerSignature.Certificate>(opened.signature).isIntact)
     }
 
+    // ------------------------------------------------------------- sending
+
+    @Test
+    fun `a message sealed with S-MIME opens again, signed by the person, its subject protected`() {
+        val raw =
+            OutgoingMessages.sealSmime(
+                outgoing(),
+                recipients = listOf(certificate("grace.pem")),
+                signer = own,
+            )
+        val text = raw.toString(Charsets.UTF_8)
+        val headers = text.substringBefore("\r\n\r\n")
+
+        assertTrue("\r\nSubject: ...\r\n" in headers, headers)
+        assertTrue("application/pkcs7-mime; smime-type=enveloped-data" in headers, headers)
+        assertFalse("cellar" in text)
+
+        val opened = open(raw)
+        assertEquals("Der Plan, über S/MIME", opened.subject)
+        assertTrue("<b>plan</b>" in opened.html!!)
+        assertEquals("plan.txt", opened.parts.single().name)
+
+        val signature = assertIs<InnerSignature.Certificate>(opened.signature)
+        assertTrue(signature.isIntact)
+        assertEquals(own.fingerprint, signature.fingerprint)
+    }
+
+    @Test
+    fun `the signed entity inside is what OpenSSL and Outlook expect`() {
+        val signed =
+            SmimeOutgoing.sign(
+                    OutgoingMessages.entity(outgoing(), protectHeaders = true),
+                    own,
+                )
+                .toString(Charsets.UTF_8)
+
+        assertTrue(
+            signed.startsWith(
+                "Content-Type: multipart/signed; protocol=\"application/pkcs7-signature\";\r\n micalg=sha-256;"
+            ),
+            signed.take(120),
+        )
+        assertTrue("Content-Type: application/pkcs7-signature; name=\"smime.p7s\"" in signed)
+        assertFalse(Regex("[^\r]\n").containsMatchIn(signed))
+    }
+
+    @Test
+    fun `a recipient whose certificate cannot be read stops the seal`() {
+        assertFailsWith<IllegalArgumentException> {
+            OutgoingMessages.sealSmime(
+                outgoing(),
+                recipients = listOf("not a certificate"),
+                signer = own,
+            )
+        }
+    }
+
+    private fun outgoing() =
+        OutgoingContent(
+            from = MailAddress("ada@example.org", "Ada"),
+            to = listOf(MailAddress("grace@example.net")),
+            subject = "Der Plan, über S/MIME",
+            html = "<p>The <b>plan</b> is in the cellar.</p>",
+            text = "The plan is in the cellar.",
+            files = listOf(OutgoingFile("plan.txt", "text/plain", "Step one.\n".toByteArray())),
+            messageId = "<smime@example.org>",
+            date = java.time.ZonedDateTime.now(),
+        )
+
+    private fun certificate(name: String): String =
+        SmimeMessagesTest::class.java.getResource("/crypto/smime/$name")!!.readText()
+
+    private fun open(raw: ByteArray) =
+        EncryptedMessages.open(raw, emptyList(), smimeKeys = listOf(own))
+
     // ------------------------------------------------------------- fixtures
 
     private fun open(name: String) =

@@ -90,6 +90,7 @@ data class ComposeUiState(
                 encryptionMode,
                 (draft.to + draft.cc + draft.bcc).mapNotNull { it.email },
                 recipientKeys,
+                bcc = draft.bcc.mapNotNull { it.email },
             )
 
     /** The lock on a recipient's chip, or null where encryption does not apply. */
@@ -98,9 +99,10 @@ data class ComposeUiState(
         val answer = known.byAddress[address.email?.trim()?.lowercase()] ?: return null
 
         return when {
-            answer.key == null -> null
-            answer.changed -> RecipientLock.KEY_CHANGED
-            else -> RecipientLock.HAS_KEY
+            answer.key != null && answer.changed -> RecipientLock.KEY_CHANGED
+            answer.key != null -> RecipientLock.HAS_KEY
+            answer.smime != null -> RecipientLock.HAS_CERTIFICATE
+            else -> null
         }
     }
 
@@ -206,6 +208,9 @@ enum class RecipientLock {
 
     /** It has one, and a new one is waiting to be accepted on the web; the known one is used. */
     KEY_CHANGED,
+
+    /** No OpenPGP key, but an S/MIME certificate (#47): mail to it can be encrypted that way. */
+    HAS_CERTIFICATE,
 }
 
 /**

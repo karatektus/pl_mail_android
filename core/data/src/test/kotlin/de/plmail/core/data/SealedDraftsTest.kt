@@ -35,6 +35,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -185,6 +186,115 @@ class SealedDraftsTest {
         // Written as fields, in the clear, as the person chose.
         assertTrue("numbers" in server.created.single().toString())
         assertEquals(setOf(TRASH), server.updates.getValue("101").filterValues { it }.keys)
+    }
+
+    // ------------------------------------------------------ S/MIME (#47)
+
+    @Test
+    fun `to a contact with only a certificate the draft is sealed with S-MIME, and opens with it`() =
+        runTest {
+            val server = FakeServer(smime = true)
+
+            val saved =
+                repository(server)
+                    .save(
+                        draft()
+                            .copy(sealAs = SealAs("ada@example.org", "Ada", EncryptionScheme.SMIME))
+                    )
+
+            assertTrue(saved.savedSealed)
+
+            val import = server.imports.single()
+            assertEquals(
+                setOf(GRACE_CERTIFICATE, OWN_CERTIFICATE),
+                import["fingerprints"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet(),
+            )
+            assertEquals(OWN_CERTIFICATE, import["signer"]!!.jsonPrimitive.content)
+
+            val raw = server.uploads.values.single()
+            assertTrue("smime-type=enveloped-data" in raw.toString(Charsets.UTF_8))
+
+            val opened =
+                EncryptedMessages.open(raw, emptyList(), smimeKeys = listOf(ownCertificate()))
+            assertEquals("Quarterly numbers", opened.subject)
+            assertEquals(
+                OWN_CERTIFICATE,
+                assertIs<de.plmail.crypto.InnerSignature.Certificate>(opened.signature).fingerprint,
+            )
+        }
+
+    @Test
+    fun `S-MIME is chosen only when OpenPGP cannot reach everybody, and never with Bcc`() {
+        fun recipient(email: String, key: Boolean, certificate: Boolean) =
+            de.plmail.jmap.methods.RecipientKey(
+                email = email,
+                key =
+                    if (key) de.plmail.jmap.methods.RecipientPublicKey(fingerprint = "f") else null,
+                smime =
+                    if (certificate) de.plmail.jmap.methods.RecipientCertificate(fingerprint = "c")
+                    else null,
+            )
+
+        val known =
+            RecipientKeys.Known(
+                ownKey = true,
+                ownCertificate = true,
+                byAddress =
+                    mapOf(
+                        "both@example.net" to recipient("both@example.net", true, true),
+                        "cert@example.net" to recipient("cert@example.net", false, true),
+                        "pgp@example.net" to recipient("pgp@example.net", true, false),
+                        "none@example.net" to recipient("none@example.net", false, false),
+                    ),
+            )
+
+        val bothWays = plan(EncryptionMode.AUTO, listOf("both@example.net"), known)
+        assertEquals(EncryptionScheme.PGP, bothWays.scheme)
+
+        val certificates =
+            plan(EncryptionMode.AUTO, listOf("both@example.net", "cert@example.net"), known)
+        assertTrue(certificates.encrypt)
+        assertEquals(EncryptionScheme.SMIME, certificates.scheme)
+
+        val hidden =
+            plan(
+                EncryptionMode.AUTO,
+                listOf("both@example.net", "cert@example.net"),
+                known,
+                bcc = listOf("cert@example.net"),
+            )
+        assertFalse(hidden.encrypt)
+
+        val mixed = plan(EncryptionMode.ON, listOf("cert@example.net", "pgp@example.net"), known)
+        assertEquals(EncryptionBlock.Missing(listOf("cert@example.net")), mixed.blocked)
+
+        // Without a certificate of one's own, a contact with only one is missing.
+        assertFalse(
+            plan(
+                    EncryptionMode.AUTO,
+                    listOf("cert@example.net"),
+                    known.copy(ownCertificate = false),
+                )
+                .encrypt
+        )
+    }
+
+    private fun ownCertificate(): de.plmail.crypto.UnlockedSmimeKey {
+        val entry =
+            Json.parseToJsonElement(resource("smime/smime-keyring.json").decodeToString())
+                .jsonObject["smimeCertificates"]!!
+                .jsonArray
+                .single()
+                .jsonObject
+
+        return de.plmail.crypto.SmimeKeys.unlock(
+            certificatePem = entry["certificate"]!!.jsonPrimitive.content,
+            chainPem = entry["chain"]!!.jsonPrimitive.content,
+            wrappedPrivateKey = entry["privateKey"]!!.jsonPrimitive.content,
+            userKey = UserKey(3, userKey()),
+            addresses = listOf("ada@example.org"),
+            isActive = true,
+        )
     }
 
     @Test
@@ -342,7 +452,14 @@ class SealedDraftsTest {
         Base64.getDecoder().decode(json("pairing.json")["userKey"]!!.jsonPrimitive.content)
 
     /** Answers the calls an encrypted save makes, and records what it was handed. */
-    private class FakeServer(private val refuseImport: Boolean = false) : DownloadingTransport {
+    private class FakeServer(
+        private val refuseImport: Boolean = false,
+        /**
+         * The S/MIME world (#47): the person's certificate in the keyring and named for the From
+         * address, and Grace with a certificate instead of an OpenPGP key.
+         */
+        private val smime: Boolean = false,
+    ) : DownloadingTransport {
         val uploads = linkedMapOf<String, ByteArray>()
         val imports = mutableListOf<JsonObject>()
         val created = mutableListOf<JsonObject>()
@@ -362,8 +479,7 @@ class SealedDraftsTest {
                         uploads[blobId] = request.body!!
                         """{"accountId":"$TEST_ACCOUNT_ID","blobId":"$blobId","type":"message/rfc822","size":${request.body!!.size}}"""
                     }
-                    "Keyring/get" in body ->
-                        methods("Keyring/get", resource("keyring-get.json").decodeToString())
+                    "Keyring/get" in body -> methods("Keyring/get", keyring())
                     "ContactKey/lookup" in body -> methods("ContactKey/lookup", lookup(body))
                     "Email/import" in body -> methods("Email/import", import(body))
                     "Email/set" in body -> methods("Email/set", set(body))
@@ -395,19 +511,45 @@ class SealedDraftsTest {
         private fun lookup(body: String): String {
             val emails = arguments(body)["emails"]!!.jsonArray.map { it.jsonPrimitive.content }
             val grace = json("sender.json")
+            val certificate = Json.encodeToString(String.serializer(), graceCertificate())
 
             val recipients =
                 emails.joinToString(",") { email ->
+                    val isGrace = email == "grace@example.net"
                     val key =
-                        if (email == "grace@example.net") {
+                        if (isGrace && !smime) {
                             """{"fingerprint":"$GRACE_FINGERPRINT","publicKey":${grace["publicKey"]},"pinned":false}"""
                         } else {
                             "null"
                         }
-                    """{"email":"$email","own":false,"key":$key,"changed":false,"encrypt":"auto","sign":"auto","scheme":"pgp-mime"}"""
+                    val smimeCertificate =
+                        if (isGrace && smime) {
+                            """{"fingerprint":"$GRACE_CERTIFICATE","certificate":$certificate,"verified":false}"""
+                        } else {
+                            "null"
+                        }
+                    """{"email":"$email","own":false,"key":$key,"changed":false,"encrypt":"auto","sign":"auto","scheme":"pgp-mime","smime":$smimeCertificate}"""
                 }
 
-            return """{"recipients":[$recipients],"sender":{"email":"ada@example.org","fingerprint":"$OWN_FINGERPRINT","smime":null,"keepsDecrypted":false}}"""
+            val own = if (smime) "\"$OWN_CERTIFICATE\"" else "null"
+            return """{"recipients":[$recipients],"sender":{"email":"ada@example.org","fingerprint":"$OWN_FINGERPRINT","smime":$own,"keepsDecrypted":false}}"""
+        }
+
+        private fun keyring(): String {
+            val keyring = resource("keyring-get.json").decodeToString()
+            if (!smime) return keyring
+
+            val certificates =
+                resource("smime/smime-keyring.json")
+                    .decodeToString()
+                    .substringAfter("\"smimeCertificates\":")
+                    .substringBeforeLast("}")
+            val end = keyring.lastIndexOf("}", keyring.lastIndexOf("]"))
+
+            return keyring.substring(0, end) +
+                ",\"smimeCertificates\":" +
+                certificates +
+                keyring.substring(end)
         }
 
         private fun import(body: String): String {
@@ -452,6 +594,20 @@ class SealedDraftsTest {
         const val DRAFTS = "3"
         const val TRASH = "4"
         const val OWN_FINGERPRINT = "ed079e2c13b83c85ff5c6fd7d67f3f6459d147c9"
+        val OWN_CERTIFICATE: String by lazy {
+            json("smime/smime-keyring.json")["smimeCertificates"]!!
+                .jsonArray
+                .single()
+                .jsonObject["fingerprint"]!!
+                .jsonPrimitive
+                .content
+        }
+        val GRACE_CERTIFICATE: String by lazy {
+            json("smime/grace.json")["fingerprint"]!!.jsonPrimitive.content
+        }
+
+        fun graceCertificate(): String = resource("smime/grace.pem").decodeToString()
+
         val GRACE_FINGERPRINT: String by lazy {
             json("sender.json")["fingerprint"]!!.jsonPrimitive.content.lowercase()
         }
