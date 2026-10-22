@@ -78,6 +78,10 @@ constructor(
         } catch (refused: JmapError.NotAuthenticated) {
             encryption.forget()
             0
+        } catch (_: KeysLocked) {
+            // Protected keys, and nobody here to confirm it is them: paused
+            // until the person opens encrypted mail in the app (phase 5).
+            0
         } catch (_: Exception) {
             // Unreachable, or the server is mid-restart: next sync.
             0

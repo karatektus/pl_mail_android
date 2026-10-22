@@ -54,7 +54,9 @@ constructor(
         blobId ?: return DecryptionResult.Failed(DecryptionProblem.NO_SOURCE)
 
         return try {
-            val keys = encryption.unlockedAddressKeys()
+            // Interactive: somebody is opening this message, which is the one
+            // moment protected keys may ask for the person (phase 5).
+            val keys = encryption.unlockedAddressKeys(interactive = true)
             if (keys.isEmpty()) return DecryptionResult.Failed(DecryptionProblem.NO_KEYS_HERE)
 
             val raw =
@@ -79,6 +81,8 @@ constructor(
             }
         } catch (cancellation: CancellationException) {
             throw cancellation
+        } catch (_: KeysLocked) {
+            DecryptionResult.Failed(DecryptionProblem.LOCKED)
         } catch (failed: DecryptionException) {
             DecryptionResult.Failed(
                 when (failed.reason) {
@@ -172,6 +176,9 @@ sealed interface DecryptionResult {
 enum class DecryptionProblem {
     /** This device holds no keys, or none that open: the Encryption settings are the way in. */
     NO_KEYS_HERE,
+
+    /** The keys here are protected, and the person did not confirm it is them. */
+    LOCKED,
 
     /** The device's keys do not open this message: it was encrypted to a key it does not have. */
     NOT_FOR_THESE_KEYS,

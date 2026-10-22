@@ -3,6 +3,7 @@ package de.plmail.core.datastore
 import de.plmail.crypto.UserKey
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
@@ -80,6 +81,109 @@ class KeyVaultTest {
         vault.save(listOf(UserKey(9, ByteArray(32) { 2 })))
 
         assertEquals(listOf(9L), vault.userKeys().map { it.id })
+    }
+
+    // ---------------------------------------------- protected keys (phase 5)
+
+    @Test
+    fun `protected keys need the person present, and open once they were`() = runTest {
+        val gate = LockableCipher()
+        val vault = KeyVault(store, ReversingCipher(), gate)
+        val keys = listOf(UserKey(3, ByteArray(32) { 4 }))
+
+        vault.save(keys)
+        vault.setProtected(true)
+        assertTrue(vault.isProtected.first())
+
+        gate.isUnlocked = false
+        assertFailsWith<DeviceLockRequired> { vault.userKeys() }
+        // Locked is not gone.
+        assertTrue(vault.hasKeys.first())
+
+        gate.isUnlocked = true
+        assertEquals(keys, vault.userKeys())
+    }
+
+    @Test
+    fun `switching protection seals the keys under the other key, and back`() = runTest {
+        val plain = ReversingCipher()
+        val gate = LockableCipher()
+        val vault = KeyVault(store, plain, gate)
+        val keys = listOf(UserKey(3, ByteArray(32) { 9 }))
+
+        vault.save(keys)
+        vault.setProtected(true)
+        assertEquals(1, gate.seals)
+
+        vault.setProtected(false)
+        assertFalse(vault.isProtected.first())
+        assertEquals(2, plain.seals)
+
+        // Opens without the gate again.
+        gate.isUnlocked = false
+        assertEquals(keys, vault.userKeys())
+    }
+
+    @Test
+    fun `switching while locked changes nothing`() = runTest {
+        val gate = LockableCipher(isUnlocked = false)
+        val vault = KeyVault(store, ReversingCipher(), gate)
+        val keys = listOf(UserKey(3, ByteArray(32) { 2 }))
+
+        vault.save(keys)
+
+        assertFailsWith<DeviceLockRequired> { vault.setProtected(true) }
+        assertFalse(vault.isProtected.first())
+        assertEquals(keys, vault.userKeys())
+    }
+
+    @Test
+    fun `keys that arrive while protection cannot seal are kept unprotected, and it says so`() =
+        runTest {
+            val gate = LockableCipher()
+            val vault = KeyVault(store, ReversingCipher(), gate)
+
+            vault.save(listOf(UserKey(3, ByteArray(32))))
+            vault.setProtected(true)
+
+            gate.isUnlocked = false
+            val renewed = listOf(UserKey(4, ByteArray(32) { 5 }))
+            vault.save(renewed)
+
+            assertFalse(vault.isProtected.first())
+            assertEquals(renewed, vault.userKeys())
+        }
+
+    @Test
+    fun `forgetting forgets the protection too`() = runTest {
+        val vault = KeyVault(store, ReversingCipher(), LockableCipher())
+
+        vault.save(listOf(UserKey(3, ByteArray(32))))
+        vault.setProtected(true)
+        vault.forget()
+
+        assertFalse(vault.isProtected.first())
+        assertFalse(vault.hasKeys.first())
+    }
+
+    /** The protected key: it seals and opens only while [isUnlocked]. */
+    private class LockableCipher(var isUnlocked: Boolean = true) : SecretCipher {
+        var seals = 0
+            private set
+
+        override fun seal(plaintext: String): SealedSecret {
+            if (!isUnlocked) throw DeviceLockRequired()
+            seals++
+            return SealedSecret("gated:" + plaintext.reversed())
+        }
+
+        override fun open(sealed: SealedSecret): String? {
+            if (!isUnlocked) throw DeviceLockRequired()
+            return sealed.encoded
+                .takeIf { it.startsWith("gated:") }
+                ?.removePrefix("gated:")
+                ?.reversed()
+        }
     }
 
     private class ReversingCipher(private val canOpen: Boolean = true) : SecretCipher {

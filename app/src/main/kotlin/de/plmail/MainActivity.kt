@@ -27,6 +27,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dagger.hilt.android.AndroidEntryPoint
 import de.plmail.core.data.AppLocaleOverride
+import de.plmail.core.data.DeviceUnlock
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.feature.calendar.CalendarScreen
 import de.plmail.feature.compose.ComposeHost
@@ -52,9 +53,13 @@ import de.plmail.feature.settings.SwipeScreen
 import de.plmail.notifications.NotificationRequest
 import de.plmail.notifications.RequestNotificationPermission
 import de.plmail.notifications.notificationRequest
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    /** Asks for the person when protected end-to-end keys are needed (#9, phase 5). */
+    @Inject lateinit var deviceUnlock: DeviceUnlock
 
     /**
      * The `plmail://` URI this activity was opened with, if any.
@@ -115,6 +120,8 @@ class MainActivity : ComponentActivity() {
         // rather than being inset and then jumping.
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        lifecycle.addObserver(UnlockPromptHost(this, deviceUnlock))
 
         // Only on a fresh create, and this is a fix rather than tidiness.
         //

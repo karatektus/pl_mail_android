@@ -44,7 +44,22 @@ object DataStoreModule {
     @KeyVaultCipher
     fun keyVaultCipher(): SecretCipher = KeystoreSecretCipher(alias = KEY_VAULT_ALIAS)
 
+    /**
+     * The second key, for a person who asked to confirm it is them before encrypted mail opens (#9,
+     * phase 5). Good for five minutes after a fingerprint, a face or unlocking the phone.
+     */
+    @Provides
+    @Singleton
+    @ProtectedKeyVaultCipher
+    fun protectedKeyVaultCipher(): SecretCipher =
+        KeystoreSecretCipher(
+            alias = PROTECTED_KEY_VAULT_ALIAS,
+            authentication = UserAuthentication(seconds = PROTECTED_FOR_SECONDS),
+        )
+
     private const val KEY_VAULT_ALIAS = "plmail.e2e.keys"
+    private const val PROTECTED_KEY_VAULT_ALIAS = "plmail.e2e.keys.protected"
+    private const val PROTECTED_FOR_SECONDS = 5 * 60
 
     /**
      * `Dispatchers.IO` because on a real device the cipher is the Android Keystore, and opening the

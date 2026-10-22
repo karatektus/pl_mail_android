@@ -13,6 +13,14 @@
     -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
+    <!--
+      For DeviceUnlock: asking for a fingerprint, face or the screen lock before
+      protected end-to-end keys open (#9, phase 5). Normal-protection, granted
+      at install; the prompt is only ever shown when the person opens encrypted
+      mail with that setting on.
+    -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
     <application>
         <!--
           How a downloaded attachment reaches another app.

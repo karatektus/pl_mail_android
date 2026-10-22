@@ -22,6 +22,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -34,6 +36,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -107,7 +112,12 @@ fun EncryptionScreen(onBack: () -> Unit, viewModel: EncryptionViewModel = hiltVi
                         onUnlock = viewModel::unlock,
                     )
                 is EncryptionStatus.Ready ->
-                    Ready(status, isWorking = state.isWorking, onForget = viewModel::forget)
+                    Ready(
+                        status,
+                        state = state,
+                        onProtected = viewModel::setProtected,
+                        onForget = viewModel::forget,
+                    )
             }
         }
     }
@@ -234,12 +244,26 @@ private fun Locked(
 }
 
 @Composable
-private fun Ready(status: EncryptionStatus.Ready, isWorking: Boolean, onForget: () -> Unit) {
+private fun Ready(
+    status: EncryptionStatus.Ready,
+    state: EncryptionUiState,
+    onProtected: (Boolean) -> Unit,
+    onForget: () -> Unit,
+) {
+    val isWorking = state.isWorking
     var isConfirmingForget by remember { mutableStateOf(false) }
 
     Section(stringResource(R.string.encryption_ready_heading)) {
         Explains(R.string.encryption_ready)
     }
+
+    Protection(
+        isProtected = status.isProtected,
+        canProtect = state.canProtect,
+        isWorking = isWorking,
+        wasRefused = state.protectRefused,
+        onProtected = onProtected,
+    )
 
     if (status.addresses.isNotEmpty()) {
         Section(stringResource(R.string.encryption_keys_heading)) {
@@ -272,6 +296,67 @@ private fun Ready(status: EncryptionStatus.Ready, isWorking: Boolean, onForget: 
                 }
             },
         )
+    }
+}
+
+/**
+ * Asking for the person before encrypted mail opens (#9, phase 5). Off unless they turn it on;
+ * offered only on a device with a screen lock, because that is what the key is gated on.
+ */
+@Composable
+private fun Protection(
+    isProtected: Boolean,
+    canProtect: Boolean,
+    isWorking: Boolean,
+    wasRefused: Boolean,
+    onProtected: (Boolean) -> Unit,
+) {
+    val title = stringResource(R.string.encryption_protect)
+
+    Section(stringResource(R.string.encryption_protect_heading)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f).clearAndSetSemantics {}) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = PlMailTheme.colors.ink,
+                )
+                Text(
+                    text =
+                        stringResource(
+                            if (canProtect || isProtected) R.string.encryption_protect_explains
+                            else R.string.encryption_protect_unavailable
+                        ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PlMailTheme.colors.inkMuted,
+                )
+            }
+
+            Switch(
+                checked = isProtected,
+                onCheckedChange = onProtected,
+                // Turning it off stays possible without a screen lock: the key
+                // that needs one is gone with it, and the keys must not be
+                // stranded behind it.
+                enabled = !isWorking && (canProtect || isProtected),
+                colors =
+                    SwitchDefaults.colors(
+                        checkedThumbColor = PlMailTheme.colors.onAccent,
+                        checkedTrackColor = PlMailTheme.colors.accent,
+                        uncheckedTrackColor = PlMailTheme.colors.sunken,
+                        uncheckedBorderColor = PlMailTheme.colors.line,
+                    ),
+                modifier = Modifier.semantics { contentDescription = title },
+            )
+        }
+
+        if (wasRefused) {
+            Text(
+                text = stringResource(R.string.encryption_protect_refused),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
     }
 }
 
@@ -310,13 +395,16 @@ private fun AddressKeyRow(key: AddressKeyStatus) {
             text =
                 stringResource(
                     when {
-                        !key.opens -> R.string.encryption_key_does_not_open
+                        key.opens == null -> R.string.encryption_key_locked
+                        key.opens == false -> R.string.encryption_key_does_not_open
                         !key.isActive -> R.string.encryption_key_retired
                         else -> R.string.encryption_key_unlocked
                     }
                 ),
             style = MaterialTheme.typography.labelMedium,
-            color = if (key.opens) PlMailTheme.colors.inkSoft else MaterialTheme.colorScheme.error,
+            color =
+                if (key.opens != false) PlMailTheme.colors.inkSoft
+                else MaterialTheme.colorScheme.error,
         )
     }
 }

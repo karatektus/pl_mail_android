@@ -315,6 +315,8 @@
     <string name="crypto_encrypted_kept">Encrypted on arrival · stored readable on this server</string>
     <string name="crypto_decrypting">Decrypting…</string>
     <string name="crypto_retry">Try again</string>
+    <string name="crypto_locked">Your keys are locked on this device. Confirm it is you to read this message.</string>
+    <string name="crypto_unlock">Unlock</string>
     <string name="crypto_no_keys">Your keys are not on this device. Bring them here under Encryption in the menu, then try again.</string>
     <string name="crypto_not_for_these_keys">This message was encrypted to a key you do not have here.</string>
     <string name="crypto_no_source">The original of this message is not available, so it cannot be decrypted.</string>

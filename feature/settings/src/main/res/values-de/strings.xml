@@ -249,6 +249,12 @@
     <string name="encryption_key_unlocked">Auf diesem Gerät entsperrt</string>
     <string name="encryption_key_retired">Abgelöst: öffnet weiterhin ältere Mails</string>
     <string name="encryption_key_does_not_open">Die Schlüssel auf diesem Gerät öffnen diesen nicht</string>
+    <string name="encryption_key_locked">Gesperrt, bis du bestätigst, dass du es bist</string>
+    <string name="encryption_protect_heading">Schutz auf diesem Gerät</string>
+    <string name="encryption_protect">Bestätigen, um verschlüsselte Mails zu öffnen</string>
+    <string name="encryption_protect_explains">Fragt nach Fingerabdruck, Gesicht oder Displaysperre, wenn du eine verschlüsselte Mail öffnest, außer du hast das Telefon in den letzten 5 Minuten entsperrt. Solange deine Schlüssel gesperrt sind, werden verschlüsselte Mails nicht im Hintergrund entschlüsselt.</string>
+    <string name="encryption_protect_unavailable">Richte auf diesem Gerät eine Displaysperre ein, um das zu nutzen.</string>
+    <string name="encryption_protect_refused">Nichts geändert: Du hast nicht bestätigt, dass du es bist.</string>
     <string name="encryption_forget">Schlüssel von diesem Gerät entfernen</string>
     <string name="encryption_forget_title">Schlüssel von diesem Gerät entfernen?</string>
     <string name="encryption_forget_explains">Verschlüsselte Mails lassen sich hier erst wieder öffnen, wenn du die Schlüssel per Kopplung oder mit deinem Passwort zurückholst. Auf deinem Server ändert sich nichts.</string>
