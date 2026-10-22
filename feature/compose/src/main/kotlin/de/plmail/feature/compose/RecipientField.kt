@@ -101,6 +101,8 @@ internal fun RecipientField(
      * the affordance belongs.
      */
     trailing: (@Composable () -> Unit)? = null,
+    /** What a chip shows about its address's key (#9); null shows nothing. */
+    lockOf: (EmailAddress) -> RecipientLock? = { null },
 ) {
     var typed by remember { mutableStateOf("") }
     var isFocused by remember { mutableStateOf(false) }
@@ -152,6 +154,7 @@ internal fun RecipientField(
                     selected = false,
                     onClick = { onChanged(addresses - address) },
                     label = { Text(address.display) },
+                    leadingIcon = lockOf(address)?.let { lock -> { RecipientLockIcon(lock) } },
                     trailingIcon = {
                         Icon(
                             imageVector = Icons.Filled.Close,

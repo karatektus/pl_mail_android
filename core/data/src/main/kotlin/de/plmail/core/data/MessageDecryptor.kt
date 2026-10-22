@@ -43,19 +43,23 @@ constructor(
     private val encryption: EncryptionRepository,
 ) {
 
-    suspend fun open(email: EmailEntity): DecryptionResult {
-        val blobId = email.blobId ?: return DecryptionResult.Failed(DecryptionProblem.NO_SOURCE)
+    suspend fun open(email: EmailEntity): DecryptionResult =
+        open(email.accountKey, email.blobId, email.fromAddress)
+
+    /**
+     * The same, for a message known by its blob and sender rather than by its cached row: the
+     * original a reply quotes, a draft being reopened.
+     */
+    suspend fun open(accountKey: String, blobId: String?, sender: String?): DecryptionResult {
+        blobId ?: return DecryptionResult.Failed(DecryptionProblem.NO_SOURCE)
 
         return try {
             val keys = encryption.unlockedAddressKeys()
             if (keys.isEmpty()) return DecryptionResult.Failed(DecryptionProblem.NO_KEYS_HERE)
 
             val raw =
-                blobs
-                    .file(email.accountKey, blobId, name = SOURCE_NAME, type = SOURCE_TYPE)
-                    .readBytes()
-            val sender = email.fromAddress.orEmpty()
-            val contacts = encryption.contactKeys().forAddress(sender)
+                blobs.file(accountKey, blobId, name = SOURCE_NAME, type = SOURCE_TYPE).readBytes()
+            val contacts = encryption.contactKeys().forAddress(sender.orEmpty())
             val own = keys.map { it.key.toCertificate() }
 
             withContext(Dispatchers.Default) {
@@ -244,5 +248,32 @@ class DecryptedFiles @Inject constructor(@param:ApplicationContext private val c
 
     fun clear() {
         root.deleteRecursively()
+    }
+
+    /**
+     * A file out of a decrypted message that goes into a new one: the attachments of an encrypted
+     * draft being reopened, or of encrypted mail being forwarded.
+     *
+     * Apart from the reader's, because the reader clears its own when it closes and these are read
+     * again after the composer has gone — the send queue builds the message once the screen is
+     * closed. Left for a day, then swept by the next write.
+     */
+    fun writeOutgoing(part: OpenedPart): File {
+        val outgoing = File(context.cacheDir, "blobs/outgoing")
+        val stale = System.currentTimeMillis() - OUTGOING_FOR_MILLIS
+
+        outgoing
+            .listFiles()
+            ?.filter { it.lastModified() < stale }
+            ?.forEach { it.deleteRecursively() }
+
+        val directory = File(outgoing, UUID.randomUUID().toString()).apply { mkdirs() }
+        val name = part.name?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "attachment"
+
+        return File(directory, name).apply { writeBytes(part.bytes) }
+    }
+
+    private companion object {
+        const val OUTGOING_FOR_MILLIS = 24 * 60 * 60 * 1000L
     }
 }
