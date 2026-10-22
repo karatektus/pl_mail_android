@@ -68,6 +68,8 @@ fun MailPane(
     onForward: (accountKey: String, emailId: String) -> Unit,
     openThread: ThreadTarget? = null,
     onThreadOpened: () -> Unit = {},
+    /** Saves a conversation as a note. Null where the server has no notes. */
+    onSaveAsNote: ((subject: String, mailId: String) -> Unit)? = null,
     viewModel: MailViewModel = hiltViewModel(),
 ) {
     val navigator = rememberListDetailPaneScaffoldNavigator<Nothing>()
@@ -176,6 +178,7 @@ fun MailPane(
                             subject = selectedSubject,
                             onReply = { emailId, all -> onReply(account, emailId, all) },
                             onForward = { emailId -> onForward(account, emailId) },
+                            onSaveAsNote = onSaveAsNote,
                             onAction = { action ->
                                 viewModel.apply(action, listOf(ActionTarget(account, thread)))
 

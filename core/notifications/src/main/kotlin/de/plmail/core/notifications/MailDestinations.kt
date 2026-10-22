@@ -22,4 +22,10 @@ interface MailDestinations {
 
     /** Opens the calendar, for a reminder that was tapped. */
     fun openCalendar(): PendingIntent
+
+    /**
+     * Opens one note, for a note reminder that was tapped. The calendar where nothing better
+     * exists.
+     */
+    fun openNote(id: String): PendingIntent = openCalendar()
 }

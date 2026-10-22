@@ -39,6 +39,9 @@ class PlMailApplication : Application() {
 
     @Inject lateinit var icons: LauncherIconSync
 
+    /** Redraws the notes widget when the notes change. */
+    @Inject lateinit var notesWidget: de.plmail.widget.notes.NotesWidgetSync
+
     /**
      * The third exception, and the one that has to run before everything else.
      *
@@ -62,5 +65,7 @@ class PlMailApplication : Application() {
         ProcessLifecycleOwner.get().lifecycle.addObserver(presence)
 
         icons.start()
+
+        notesWidget.start()
     }
 }

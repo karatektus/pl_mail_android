@@ -9,4 +9,6 @@
 -->
 <paths>
     <cache-path name="blobs" path="blobs/" />
+    <!-- A note shared as a picture (feature/notes NoteExport). -->
+    <cache-path name="notes" path="notes/" />
 </paths>

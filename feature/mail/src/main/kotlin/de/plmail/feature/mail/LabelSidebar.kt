@@ -28,7 +28,9 @@ import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Bedtime
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Campaign
+import androidx.compose.material.icons.outlined.Contacts
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Drafts
 import androidx.compose.material.icons.outlined.Forum
 import androidx.compose.material.icons.outlined.Inbox
@@ -168,6 +170,10 @@ fun LabelSidebar(
     onGestures: () -> Unit,
     onAccounts: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The address book. Null where the server publishes no contacts capability. */
+    onContacts: (() -> Unit)? = null,
+    /** Notes. Null where the server publishes no notes capability. */
+    onNotes: (() -> Unit)? = null,
 ) {
     // The user's sidebar density, where they have chosen one that differs from the
     // overall setting. Wrapping the whole drawer rather than its rows: the group
@@ -188,6 +194,8 @@ fun LabelSidebar(
             onEditingChange = onEditingChange,
             onImportantChange = onImportantChange,
             onCalendar = onCalendar,
+            onContacts = onContacts,
+            onNotes = onNotes,
             onPush = onPush,
             onNotifications = onNotifications,
             onDiagnostics = onDiagnostics,
@@ -213,6 +221,8 @@ private fun SidebarContent(
     onEditingChange: (Boolean) -> Unit,
     onImportantChange: (Label, Boolean) -> Unit,
     onCalendar: (() -> Unit)?,
+    onContacts: (() -> Unit)?,
+    onNotes: (() -> Unit)?,
     onPush: () -> Unit,
     onNotifications: () -> Unit,
     onDiagnostics: () -> Unit,
@@ -355,6 +365,28 @@ private fun SidebarContent(
                     onClick = open,
                     icon = Icons.Outlined.CalendarMonth,
                     text = stringResource(R.string.calendar),
+                )
+            }
+
+            // Contacts: a place, like the calendar, so it sits beside it. Null (no contacts
+            // capability) hides the entry outright.
+            onContacts?.let { open ->
+                SidebarRow(
+                    selected = false,
+                    onClick = open,
+                    icon = Icons.Outlined.Contacts,
+                    text = stringResource(R.string.contacts),
+                )
+            }
+
+            // Notes sit with the other places, and hide outright when the
+            // server has no notes capability.
+            onNotes?.let { open ->
+                SidebarRow(
+                    selected = false,
+                    onClick = open,
+                    icon = Icons.Outlined.Description,
+                    text = stringResource(R.string.notes),
                 )
             }
 

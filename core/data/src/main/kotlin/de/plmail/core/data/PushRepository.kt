@@ -575,7 +575,9 @@ constructor(
                     )
                 }
 
-                (fields["@type"] as? JsonPrimitive)?.content == ALERT_TYPE -> {
+                (fields["@type"] as? JsonPrimitive)?.content.let {
+                    it == ALERT_TYPE || it == NOTE_REMINDER_TYPE
+                } -> {
                     val title = (fields["title"] as? JsonPrimitive)?.content.orEmpty()
                     val tag = (fields["tag"] as? JsonPrimitive)?.content.orEmpty()
 
@@ -590,6 +592,7 @@ constructor(
                                 body = (fields["body"] as? JsonPrimitive)?.content.orEmpty(),
                                 tag = tag,
                                 url = (fields["url"] as? JsonPrimitive)?.content,
+                                noteId = (fields["noteId"] as? JsonPrimitive)?.content,
                             )
                         )
                     }
@@ -623,6 +626,9 @@ constructor(
         const val STATE_CHANGE_TYPE = "StateChange"
         const val VERIFICATION_TYPE = "PushVerification"
         const val ALERT_TYPE = "CalendarAlert"
+
+        /** A note's reminder (app:notes:reminders): shown like a calendar one, opening the note. */
+        const val NOTE_REMINDER_TYPE = "NoteReminder"
 
         /** The log's name for a sealed push that would not open: its real type is unknowable. */
         const val SEALED_TYPE = "sealed"

@@ -66,6 +66,7 @@
     <string name="sidebar_unpin_a11y">Zu „Labels“ verschieben</string>
     <string name="sidebar_important_empty">Tippe auf einen Stern, um ein Label hier oben zu behalten.</string>
     <string name="calendar">Kalender</string>
+    <string name="contacts">Kontakte</string>
     <string name="push">Push</string>
     <string name="notifications">Benachrichtigungen</string>
     <string name="diagnostics">Diagnose</string>
@@ -206,4 +207,6 @@
     <string name="action_queued">%1$s — hier. Ihr Server erfährt es, sobald er antwortet.</string>
     <string name="action_queued_host">%1$s — hier. %2$s erfährt es, sobald der Server antwortet.</string>
     <string name="link_no_handler">Auf diesem Gerät kann diesen Link nichts öffnen.</string>
+    <string name="notes">Notizen</string>
+    <string name="save_as_note">Als Notiz speichern</string>
 </resources>

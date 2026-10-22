@@ -93,4 +93,9 @@
         <item quantity="one">und 1 weitere wartet</item>
         <item quantity="other">und %1$d weitere warten</item>
     </plurals>
+    <string name="compose_insert_note">Notiz einfügen</string>
+    <string name="compose_note_title">Notiz einfügen</string>
+    <string name="compose_note_search">Notizen durchsuchen</string>
+    <string name="compose_note_empty">Noch keine Notizen.</string>
+    <string name="compose_note_cancel">Abbrechen</string>
 </resources>

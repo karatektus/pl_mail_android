@@ -64,7 +64,10 @@ constructor(
                 .setContentText(reminder.body.ifBlank { null })
                 .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setContentIntent(destinations.openCalendar())
+                .setContentIntent(
+                    reminder.noteId?.let { destinations.openNote(it) }
+                        ?: destinations.openCalendar()
+                )
                 .setAutoCancel(true)
                 .build()
 

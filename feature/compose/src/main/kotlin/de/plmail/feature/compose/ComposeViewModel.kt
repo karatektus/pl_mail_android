@@ -63,10 +63,51 @@ constructor(
     private val contacts: ContactSuggestions,
     private val sendQueue: SendQueue,
     private val scheduled: ScheduledSends,
+    private val notesRepository: de.plmail.core.data.NotesRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ComposeUiState())
     val state: StateFlow<ComposeUiState> = _state.asStateFlow()
+
+    private val _hasNotes = MutableStateFlow(false)
+
+    /** Whether the server keeps notes, which decides whether "Insert note" is offered. */
+    val hasNotes: StateFlow<Boolean> = _hasNotes.asStateFlow()
+
+    init {
+        viewModelScope.launch { _hasNotes.value = notesRepository.isAvailable() }
+    }
+
+    /** The user's notes (not in the bin), freshest first, for "Insert note". */
+    suspend fun notes(): List<de.plmail.jmap.methods.NoteObject> {
+        runCatching { notesRepository.refresh() }
+        return notesRepository.notes.value.filterNot { it.trashed }
+    }
+
+    /** A note as message HTML: its title in bold, then its text or its checklist. */
+    fun noteHtml(note: de.plmail.jmap.methods.NoteObject): String = buildString {
+        fun esc(s: String) =
+            s.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+        if (note.title.isNotBlank()) append("<p><b>").append(esc(note.title)).append("</b></p>")
+        if (note.items.isNotEmpty()) {
+            append("<ul>")
+            note.items.forEach {
+                append("<li>")
+                    .append(if (it.done) "☑ " else "☐ ")
+                    .append(esc(it.text))
+                    .append("</li>")
+            }
+            append("</ul>")
+        } else {
+            note.body.split('\n').forEach { line ->
+                val clean = line.replace("**", "").replace("__", "").removePrefix("# ")
+                append("<p>").append(if (clean.isBlank()) "<br>" else esc(clean)).append("</p>")
+            }
+        }
+    }
 
     private var autosave: Job? = null
     private var opened = false

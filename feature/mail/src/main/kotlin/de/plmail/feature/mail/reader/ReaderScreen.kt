@@ -118,6 +118,11 @@ fun ReaderScreen(
     onMove: () -> Unit = {},
     /** Goes to a label's own list, from a chip under the subject. */
     onOpenLabel: (Label) -> Unit = {},
+    /**
+     * Saves this conversation as a note, with its subject as the title and a link back to the mail.
+     * Null where the server has no notes, which hides the menu entry.
+     */
+    onSaveAsNote: ((subject: String, mailId: String) -> Unit)? = null,
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -216,6 +221,13 @@ fun ReaderScreen(
                     onAction = onAction,
                     onLabel = onLabel,
                     onMove = onMove,
+                    onSaveAsNote =
+                        onSaveAsNote?.let { save ->
+                            {
+                                val mailId = state.messages.lastOrNull()?.email?.uid
+                                if (mailId != null) save(state.subject.orEmpty(), mailId)
+                            }
+                        },
                 )
             },
             snackbarHost = { SnackbarHost(snackbars) },
@@ -431,6 +443,7 @@ private fun ReaderBar(
     onAction: (MailAction) -> Unit,
     onLabel: () -> Unit,
     onMove: () -> Unit,
+    onSaveAsNote: (() -> Unit)? = null,
 ) {
     var isMenuOpen by remember { mutableStateOf(false) }
     var isSnoozeOpen by remember { mutableStateOf(false) }
@@ -539,6 +552,15 @@ private fun ReaderBar(
                         onClick = {
                             isMenuOpen = false
                             isSnoozeOpen = true
+                        },
+                    )
+                }
+                onSaveAsNote?.let { save ->
+                    DropdownMenuItem(
+                        text = { Text(stringResource(R.string.save_as_note)) },
+                        onClick = {
+                            isMenuOpen = false
+                            save()
                         },
                     )
                 }

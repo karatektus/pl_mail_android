@@ -43,6 +43,9 @@ object Capability {
      */
     const val INBOX_TABS = "urn:plmail:params:jmap:inboxtabs"
 
+    /** Keep-style notes: `Note/get` and `Note/set`, per user. Absent on a server without them. */
+    const val NOTES = "urn:plmail:params:jmap:notes"
+
     /** The usual declaration for a mail request. */
     val USING_MAIL = listOf(CORE, MAIL)
 
@@ -67,6 +70,9 @@ object Capability {
      * declares [USING_MAIL] and does not call these methods at all.
      */
     val USING_INBOX_TABS = listOf(CORE, MAIL, INBOX_TABS)
+
+    /** For `Note/get` and `Note/set`. Per user, so no mail capability is involved. */
+    val USING_NOTES = listOf(CORE, NOTES)
 
     /** For `Appearance/get` and `Appearance/set`. Per user, so no mail capability is involved. */
     val USING_APPEARANCE = listOf(CORE, APPEARANCE)

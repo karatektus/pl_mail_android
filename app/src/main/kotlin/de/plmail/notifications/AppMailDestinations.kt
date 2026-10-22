@@ -11,6 +11,7 @@ import dagger.hilt.components.SingletonComponent
 import de.plmail.CalendarActivity
 import de.plmail.MainActivity
 import de.plmail.core.notifications.MailDestinations
+import de.plmail.widget.notes.NotesWidgetIntents
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,6 +46,14 @@ constructor(@param:ApplicationContext private val context: Context) : MailDestin
             Intent(context, CalendarActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+    override fun openNote(id: String): PendingIntent =
+        PendingIntent.getActivity(
+            context,
+            ("note/$id").hashCode(),
+            NotesWidgetIntents.open(context, id),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 

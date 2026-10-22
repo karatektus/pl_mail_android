@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -102,12 +103,14 @@ fun ComposeScreen(
     viewModel: ComposeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val hasNotes by viewModel.hasNotes.collectAsStateWithLifecycle()
     val strings = composeStrings()
     val snackbars = remember { SnackbarHostState() }
     val body = rememberRichTextState()
 
     var isChoosingWhen by remember { mutableStateOf(false) }
     var isPickingExactTime by remember { mutableStateOf(false) }
+    var isPickingNote by remember { mutableStateOf(false) }
 
     // Open, until the message itself is being written. Saveable because a
     // rotation must not throw the user back to four rows of header over three
@@ -194,6 +197,7 @@ fun ComposeScreen(
                         canSchedule = state.canScheduleSend,
                         onSendLater = { isChoosingWhen = true },
                         onDiscard = { viewModel.discard(onClose) },
+                        onInsertNote = if (hasNotes) ({ isPickingNote = true }) else null,
                     )
 
                     // Anchored under the overflow button it was opened from, so
@@ -215,6 +219,19 @@ fun ComposeScreen(
             }
 
             return@Scaffold
+        }
+
+        if (isPickingNote) {
+            NotePickerDialog(
+                load = viewModel::notes,
+                onPick = { note ->
+                    isPickingNote = false
+                    // Appended at the end: the editor has no "insert HTML here" call that is
+                    // stable across its versions, and the end is where a P.S. goes anyway.
+                    body.setHtml(body.toHtml() + viewModel.noteHtml(note))
+                },
+                onDismiss = { isPickingNote = false },
+            )
         }
 
         if (isPickingExactTime) {
@@ -540,6 +557,8 @@ private fun OverflowMenu(
     canSchedule: Boolean,
     onSendLater: () -> Unit,
     onDiscard: () -> Unit,
+    /** One of the user's notes, into the message as text. Null on a server without notes. */
+    onInsertNote: (() -> Unit)? = null,
 ) {
     var isOpen by remember { mutableStateOf(false) }
 
@@ -558,6 +577,17 @@ private fun OverflowMenu(
                 onClick = {
                     isOpen = false
                     onSendLater()
+                },
+            )
+        }
+
+        if (onInsertNote != null) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.compose_insert_note)) },
+                leadingIcon = { Icon(Icons.Outlined.Description, contentDescription = null) },
+                onClick = {
+                    isOpen = false
+                    onInsertNote()
                 },
             )
         }

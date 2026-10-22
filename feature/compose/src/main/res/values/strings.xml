@@ -157,4 +157,9 @@
         <item quantity="one">and 1 more waiting</item>
         <item quantity="other">and %1$d more waiting</item>
     </plurals>
+    <string name="compose_insert_note">Insert note</string>
+    <string name="compose_note_title">Insert a note</string>
+    <string name="compose_note_search">Search notes</string>
+    <string name="compose_note_empty">No notes yet.</string>
+    <string name="compose_note_cancel">Cancel</string>
 </resources>

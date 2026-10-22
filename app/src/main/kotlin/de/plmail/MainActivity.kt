@@ -36,8 +36,11 @@ import de.plmail.feature.compose.ScheduledSendsBar
 import de.plmail.feature.compose.SendStatusHost
 import de.plmail.feature.compose.ShareIntake
 import de.plmail.feature.compose.SharedMessage
+import de.plmail.feature.contacts.ContactsScreen
 import de.plmail.feature.mail.MailShell
 import de.plmail.feature.mail.ThreadTarget
+import de.plmail.feature.notes.NoteSeed
+import de.plmail.feature.notes.NotesScreen
 import de.plmail.feature.onboarding.OnboardingScreen
 import de.plmail.feature.search.SearchScreen
 import de.plmail.feature.settings.AccountsScreen
@@ -69,6 +72,9 @@ class MainActivity : ComponentActivity() {
      * pairing code.
      */
     private var pendingLink by mutableStateOf<String?>(null)
+
+    /** A tap on the notes widget or a note reminder: a note to open, or a new one to start. */
+    private var pendingNotesWidget by mutableStateOf<NoteSeed?>(null)
 
     /**
      * What another app shared, if this launch came from a share sheet or a `mailto:`.
@@ -145,6 +151,8 @@ class MainActivity : ComponentActivity() {
                     onNotificationHandled = { pendingNotification = null },
                     share = pendingShare,
                     onShareHandled = { pendingShare = null },
+                    notesWidget = pendingNotesWidget,
+                    onNotesWidgetHandled = { pendingNotesWidget = null },
                 )
             }
         }
@@ -182,6 +190,8 @@ class MainActivity : ComponentActivity() {
         // activity in the meantime, and during onboarding what happens is a
         // pairing link arriving through this very method.
         ShareIntake.read(intent)?.let { pendingShare = it }
+
+        de.plmail.widget.notes.NotesWidgetIntents.read(intent)?.let { pendingNotesWidget = it }
     }
 
     private companion object {
@@ -205,10 +215,14 @@ private fun PlMailApp(
     onNotificationHandled: () -> Unit,
     share: SharedMessage?,
     onShareHandled: () -> Unit,
+    notesWidget: NoteSeed?,
+    onNotesWidgetHandled: () -> Unit,
     viewModel: MainViewModel = hiltViewModel(),
 ) {
     val connection by viewModel.connection.collectAsStateWithLifecycle()
     val hasCalendar by viewModel.hasCalendar.collectAsStateWithLifecycle()
+    val hasContacts by viewModel.hasContacts.collectAsStateWithLifecycle()
+    val hasNotes by viewModel.hasNotes.collectAsStateWithLifecycle()
 
     // Search and compose live here rather than inside the mail shell because
     // they are their own feature modules: :feature:mail depending on either
@@ -226,6 +240,10 @@ private fun PlMailApp(
     var isSettingGestures by rememberSaveable { mutableStateOf(false) }
     var isManagingAccounts by rememberSaveable { mutableStateOf(false) }
     var isCalendaring by rememberSaveable { mutableStateOf(false) }
+    var isContacting by rememberSaveable { mutableStateOf(false) }
+    var isNoting by rememberSaveable { mutableStateOf(false) }
+    // A note to open on arrival: "Save as note" from a mail, or a widget tap.
+    var pendingNote by remember { mutableStateOf<NoteSeed?>(null) }
     var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
 
     // A conversation picked from a search result. It goes through the same
@@ -304,6 +322,15 @@ private fun PlMailApp(
                 // bytes are copied out of a grant that is about to expire, and
                 // it happens with the intent's task still alive, which is the
                 // only window in which it is legal.
+                // A tap on the notes widget opens Notes on that note, or on a new one.
+                LaunchedEffect(notesWidget) {
+                    val request = notesWidget ?: return@LaunchedEffect
+                    isSearching = false
+                    pendingNote = request
+                    isNoting = true
+                    onNotesWidgetHandled()
+                }
+
                 LaunchedEffect(share) {
                     val message = share ?: return@LaunchedEffect
 
@@ -343,6 +370,8 @@ private fun PlMailApp(
                             openThread != null -> Screen.MAIL
                             isManagingAccounts -> Screen.ACCOUNTS
                             isCalendaring -> Screen.CALENDAR
+                            isContacting -> Screen.CONTACTS
+                            isNoting -> Screen.NOTES
                             isAdjustingAppearance -> Screen.APPEARANCE
                             isSettingGestures -> Screen.GESTURES
                             isReadingPushLog -> Screen.PUSH_LOG
@@ -363,6 +392,8 @@ private fun PlMailApp(
                         when (screen) {
                             Screen.ACCOUNTS -> isManagingAccounts = false
                             Screen.CALENDAR -> isCalendaring = false
+                            Screen.CONTACTS -> isContacting = false
+                            Screen.NOTES -> isNoting = false
                             Screen.APPEARANCE -> isAdjustingAppearance = false
                             Screen.GESTURES -> isSettingGestures = false
                             // The log closes back onto the push screen it was
@@ -386,6 +417,36 @@ private fun PlMailApp(
                         // whether the calendar or the mail is on screen, the
                         // same way it does for every other swapped screen here.
                         CalendarScreen(onBack = { isCalendaring = false })
+                    } else if (screen == Screen.CONTACTS) {
+                        // The contacts module owns its own detail, editor and
+                        // duplicates screens and its own back between them;
+                        // what :app decides is only whether contacts or mail
+                        // is on screen, the same way it does for the calendar.
+                        ContactsScreen(onBack = { isContacting = false })
+                    } else if (screen == Screen.NOTES) {
+                        // Notes own their editor and its back; what :app adds is
+                        // the bridge notes cannot build themselves: opening the
+                        // area a link points into.
+                        NotesScreen(
+                            onBack = { isNoting = false },
+                            seed = pendingNote,
+                            onSeedHandled = { pendingNote = null },
+                            onOpenLink = { link ->
+                                when (link.type) {
+                                    "event" ->
+                                        if (hasCalendar) {
+                                            isNoting = false
+                                            isCalendaring = true
+                                        }
+                                    "contact" ->
+                                        if (hasContacts) {
+                                            isNoting = false
+                                            isContacting = true
+                                        }
+                                    else -> Unit
+                                }
+                            },
+                        )
                     } else if (screen == Screen.APPEARANCE) {
                         AppearanceScreen(onBack = { isAdjustingAppearance = false })
                     } else if (screen == Screen.GESTURES) {
@@ -431,6 +492,33 @@ private fun PlMailApp(
                             // calendar, rather than a control that opens an
                             // empty one.
                             onCalendar = if (hasCalendar) ({ isCalendaring = true }) else null,
+                            // Contacts: null hides the drawer entry
+                            // outright, which is what an instance publishing no
+                            // contacts capability has to look like.
+                            onContacts = if (hasContacts) ({ isContacting = true }) else null,
+                            onNotes = if (hasNotes) ({ isNoting = true }) else null,
+                            onSaveAsNote =
+                                if (hasNotes) {
+                                    { subject, mailId ->
+                                        pendingNote =
+                                            NoteSeed(
+                                                title = subject,
+                                                links =
+                                                    listOf(
+                                                        de.plmail.jmap.methods.NoteLink(
+                                                            type =
+                                                                de.plmail.jmap.methods.NoteLink
+                                                                    .MAIL,
+                                                            id = mailId,
+                                                            title = subject.ifBlank { null },
+                                                        )
+                                                    ),
+                                            )
+                                        isNoting = true
+                                    }
+                                } else {
+                                    null
+                                },
                             onCompose = { composing = ComposeRequest.New },
                             onReply = { accountKey, emailId, all ->
                                 composing = ComposeRequest.Reply(accountKey, emailId, all)
@@ -514,6 +602,8 @@ private val ThreadTargetSaver =
 private enum class Screen {
     MAIL,
     CALENDAR,
+    CONTACTS,
+    NOTES,
     SEARCH,
     DIAGNOSTICS,
     PUSH,

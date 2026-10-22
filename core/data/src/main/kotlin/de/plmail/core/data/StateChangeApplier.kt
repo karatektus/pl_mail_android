@@ -40,6 +40,11 @@ constructor(
      * Defaulted to nothing for the tests that are about mail and not about tabs.
      */
     private val tabs: InboxTabRefresh = InboxTabRefresh {},
+    /**
+     * What refreshes the calendar (and redraws its home-screen widgets) when a push says it
+     * changed, e.g. an edit on the web. Bound in `:app`; empty in tests about mail.
+     */
+    private val refreshers: Set<@JvmSuppressWildcards BackgroundRefresh> = emptySet(),
 ) {
 
     /**
@@ -73,7 +78,15 @@ constructor(
         // notification, for a table that fits in a screenful.
         val accounts = database.accounts().all()
 
+        val other = changed.values.flatMap { it.keys }.toSet() intersect BackgroundRefresh.ALL
+        if (other.isNotEmpty()) {
+            refreshers.forEach { runCatching { it.refresh(other) } }
+        }
+
         changed.forEach { (accountId, states) ->
+            // Only calendar or notes news: no mail to fetch for it.
+            if (states.keys.all { it in BackgroundRefresh.ALL }) return@forEach
+
             accounts
                 .filter { it.accountId == accountId }
                 .forEach { account ->

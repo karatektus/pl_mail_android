@@ -8,4 +8,25 @@
     -->
 
     <string name="calendar_app_name">plMail Kalender</string>
+
+    <!-- Home-screen calendar widgets. -->
+    <string name="calendar_month_widget_label">Kalender (Monat)</string>
+    <string name="calendar_month_widget_description">Monatsansicht mit deinen Terminen</string>
+    <string name="calendar_agenda_widget_label">Kalender (Agenda)</string>
+    <string name="calendar_agenda_widget_description">Anstehende Termine, der nächste zuerst</string>
+    <string name="calendar_widget_empty">Nichts steht an</string>
+    <string name="calendar_widget_all_day">Ganztägig</string>
+    <string name="calendar_widget_reminder">Erinnerung gesetzt</string>
+    <string name="calendar_widget_repeats">Wiederholt sich</string>
+    <string name="calendar_widget_linked">Mit einer E-Mail oder Notiz verknüpft</string>
+    <string name="notes_widget_new">Neue Notiz</string>
+    <string name="notes_widget_label">Notizen</string>
+    <string name="notes_widget_description">Deine Notizen und Listen, angeheftete zuerst</string>
+    <string name="notes_widget_empty">Noch keine Notizen. Tippen, um eine zu schreiben.</string>
+    <string name="notes_widget_offline">Notizen konnten nicht geladen werden. Tippen, um sie zu öffnen.</string>
+    <string name="notes_widget_untitled">Leere Notiz</string>
+    <plurals name="notes_widget_more">
+        <item quantity="one">+ %d weiterer</item>
+        <item quantity="other">+ %d weitere</item>
+    </plurals>
 </resources>

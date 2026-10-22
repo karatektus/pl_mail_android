@@ -115,6 +115,10 @@ data class Session(
     fun supportsInboxTabs(id: AccountId): Boolean =
         account(id)?.accountCapabilities?.containsKey(Capability.INBOX_TABS) == true
 
+    /** Whether this server serves Keep-style notes (`Note/get`, `Note/set`). */
+    val supportsNotes: Boolean
+        get() = capabilities.containsKey(Capability.NOTES)
+
     /** Whether this server exposes calendars at all. */
     val supportsCalendars: Boolean
         get() = capabilities.containsKey(Capability.CALENDARS)

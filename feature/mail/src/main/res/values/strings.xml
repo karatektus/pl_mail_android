@@ -95,6 +95,7 @@
       one. Only drawn where the server publishes a calendar at all.
     -->
     <string name="calendar">Calendar</string>
+    <string name="contacts">Contacts</string>
     <string name="push">Push</string>
     <!--
       "Notifications", not "Notification settings": the drawer's other entries
@@ -301,4 +302,6 @@
     <string name="action_queued_host">%1$s here. %2$s will be told when it answers.</string>
     <!-- A phone with no browser, or a tel: link on a tablet. Rare, and not a crash. -->
     <string name="link_no_handler">Nothing on this device can open that link.</string>
+    <string name="notes">Notes</string>
+    <string name="save_as_note">Save as note</string>
 </resources>

@@ -415,3 +415,46 @@ change-log rows but has no push drain behind it: the console fires neither `kern
 the worker events the drain hangs off, so the immediate push is skipped and the next `/changes` is
 what reports the send. A send made from the console therefore looks like a dropped push and is not
 one.
+
+## Contacts (address book)
+
+**`Contact/query`, `Contact/get`, `Contact/set`, `Contact/referenceEmails`, `Contact/duplicates`,
+`Contact/merge`, `Contact/mergeUndo`, under `urn:plmail:params:jmap:contacts`.** The full address
+book, per user (not per mail account): contacts are owned by the plMail user, so `accountId` on
+these calls is the session's `primaryAccounts["urn:plmail:params:jmap:contacts"]`, falling back to
+the primary mail account — `Session.primaryContactsAccount` already encodes this.
+
+- `Contact/query {accountId, filter?: {text?, tag?}, sort?: "name"|"recent", position?, limit?}` →
+  `{ids[]}`. `text` matches name, company, emails, phones and notes.
+- `Contact/get {accountId, ids, properties?}` → `{list: ContactObject[], notFound[]}`.
+  ContactObject: `{id, displayName, givenName, familyName, nickname, company, jobTitle, notes,
+  tags[], photoUrl (absolute, authenticated URL|null), emails[]:{email,label,isPrimary},
+  phones[]:{phone,label,isPrimary}, addresses[]:{label,street,city,region,postcode,country},
+  updatedAt}`.
+- `Contact/set {accountId, create?: {clientId: object}, update?: {id: patch}, destroy?: [ids]}`
+  → `{created:{clientId:{id}}, updated:{id:null}, destroyed:[ids], notCreated/notUpdated/
+  notDestroyed}`. Update is a patch; `emails`/`phones`/`addresses` are replace-all when the key is
+  present. `destroy` is a soft delete (90-day trash). `photoBlobId` in create/update references a
+  photo upload (consume-once); explicit `null` clears the photo.
+- Photo upload: `POST /jmap/contacts/photo` (multipart, field `photo`, jpg/png/webp ≤ 5 MB) →
+  `{blobId}`, same bearer auth as the JMAP calls. Photo download is an authorized GET of
+  `photoUrl` — never hand the URL to an image loader; the credential travels the authorized path.
+- `Contact/referenceEmails {accountId, contactId, limit?}` → `{list: [{id, subject,
+  from:{name,email}, date, mailbox, isStarred}]}` newest first — every non-deleted message to/from
+  the contact (inbox, sent, drafts, trash, labels, starred).
+- `Contact/duplicates {accountId}` → `{pairs: [{ids:[a,b], confidence, reasons[],
+  autoMergeable}]}`. Tiers are the server's: same normalized email 100, same normalized phone 95,
+  name+company 85, nickname variants 70–84, fuzzy 60–69. Shared inboxes (`info@`, `support@`,
+  `noreply@`) are never auto-mergeable.
+- `Contact/merge {accountId, keepId, mergeIds[]}` → `{mergeRecordId}`; `Contact/mergeUndo
+  {accountId, mergeRecordId}` → `{}` (valid 90 days).
+
+**Client action (done in `feature/contacts/`):** protocol models + `JmapMethod` subclasses in
+`core/jmap` (`contacts/`, `methods/ContactMethods.kt`), thin `ContactsRepository` in `core/data`
+(live-queried, in-memory LRU photo cache keyed by `photoUrl`), `feature/contacts`
+module (list/search, detail with REFERENCE EMAILS, editor with dynamic rows and gallery photo
+pick, duplicates with keep-picker/merge/undo), capability-gated drawer entry beside Calendar.
+**Not yet wired:** tapping a reference email does not open the thread in the mail module
+(the row has the email id; resolving it to `(accountKey, threadId)` for `MailPane` is a
+follow-up), and `Contact/autocomplete` does not yet prefer address-book hits (server-side
+ranking change, see the contract).

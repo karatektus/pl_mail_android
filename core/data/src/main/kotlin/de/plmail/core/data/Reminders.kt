@@ -14,7 +14,14 @@ package de.plmail.core.data
  * - [url] is the web app's path for the day, kept for whatever opens the calendar at a date later;
  *   nothing follows it today.
  */
-data class Reminder(val title: String, val body: String, val tag: String, val url: String? = null)
+data class Reminder(
+    val title: String,
+    val body: String,
+    val tag: String,
+    val url: String? = null,
+    /** Set for a note's reminder (`NoteReminder`): which note a tap opens. */
+    val noteId: String? = null,
+)
 
 /**
  * Told when a reminder arrives.

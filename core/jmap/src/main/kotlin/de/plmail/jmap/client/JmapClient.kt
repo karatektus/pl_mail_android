@@ -268,6 +268,68 @@ class JmapClient(
      */
     suspend fun <T> withPermit(body: suspend () -> T): T = gate?.withPermit(body) ?: body()
 
+    /**
+     * Sends [request] to one of the server's own non-JMAP endpoints (a contact photo, a note's
+     * pictures) with this connection's credential attached, inside a concurrency permit.
+     *
+     * Refuses any URL that is not on the same origin as the session's apiUrl, so the credential can
+     * never be handed to a third-party host even if a capability object were tampered with.
+     */
+    suspend fun authorized(request: HttpRequest): HttpResponse {
+        requireSameOrigin(request.url)
+        return withPermit {
+            transport.send(
+                request.copy(
+                    headers = request.headers + ("Authorization" to credential.authorizationHeader)
+                )
+            )
+        }
+    }
+
+    /** Streams an authorized GET of [url] into [sink]; returns bytes written. */
+    suspend fun authorizedDownload(url: String, sink: java.io.OutputStream): Long {
+        requireSameOrigin(url)
+        val transport =
+            transport as? DownloadingTransport
+                ?: throw IllegalStateException("This transport cannot stream a download.")
+
+        return withPermit {
+            transport.download(
+                HttpRequest(
+                    url = url,
+                    method = "GET",
+                    headers = mapOf("Authorization" to credential.authorizationHeader),
+                )
+            ) { body ->
+                if (!body.isSuccess) {
+                    throw JmapError.RequestRejected(
+                        type = "notFound",
+                        status = body.status,
+                        detail = "The server would not hand over that file.",
+                    )
+                }
+                body.bytes.copyTo(sink)
+            }
+        }
+    }
+
+    private suspend fun requireSameOrigin(url: String) {
+        fun origin(u: String): String {
+            val uri = java.net.URI(u)
+            val port = if (uri.port == -1) "" else ":${uri.port}"
+            return "${uri.scheme?.lowercase()}://${uri.host?.lowercase()}$port"
+        }
+        val expected = origin(session().apiUrl)
+        if (origin(url) != expected) {
+            throw JmapError.RequestRejected(
+                type = "forbidden",
+                status = 0,
+                detail =
+                    "Refusing to send credentials to ${origin(url)}; this server is $expected.",
+            )
+        }
+    }
+
     /** Holds a permit for as long as a long-lived connection is open. */
     suspend fun reservePermit(): RequestGate.Reservation? = gate?.reserve()
 

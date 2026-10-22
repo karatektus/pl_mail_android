@@ -1,5 +1,6 @@
 package de.plmail.core.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -487,6 +488,10 @@ data class CalendarEventEntity(
      * recurrence.
      */
     val recurrenceOverrides: String? = null,
+    /** Whether the event has reminders (`alerts`), for the agenda widget's bell. */
+    @ColumnInfo(defaultValue = "0") val hasAlerts: Boolean = false,
+    /** The server's `isLinked`: the event was taken from an email. The widget's link icon. */
+    @ColumnInfo(defaultValue = "0") val isLinked: Boolean = false,
 )
 
 /**

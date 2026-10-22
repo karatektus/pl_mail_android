@@ -220,6 +220,15 @@ internal fun EventDetailScreen(
                     )
                 }
 
+            // Notes about this event, and a way to add one. The id is the event's,
+            // not the occurrence's, so a note on a weekly meeting shows on every
+            // week of it. Draws nothing on a server without notes.
+            de.plmail.feature.notes.LinkedNotesSection(
+                type = de.plmail.jmap.methods.NoteLink.EVENT,
+                id = row.eventId,
+                title = row.title,
+            )
+
             WriteNote(state.outcome)
         }
     }
