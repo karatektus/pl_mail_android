@@ -1,0 +1,29 @@
+From: Grace Hopper <grace@example.net>
+To: Ada Lovelace <ada@example.org>
+Subject: Plain subject
+MIME-Version: 1.0
+Content-Type: multipart/encrypted; protocol="application/pgp-encrypted"; boundary="outer"
+
+This is an OpenPGP/MIME encrypted message (RFC 4880 and 3156)
+--outer
+Content-Type: application/pgp-encrypted
+Content-Description: PGP/MIME version identification
+
+Version: 1
+
+--outer
+Content-Type: application/octet-stream; name="encrypted.asc"
+Content-Description: OpenPGP encrypted message
+Content-Disposition: inline; filename="encrypted.asc"
+
+-----BEGIN PGP MESSAGE-----
+
+wV4DWC05dQZjqiMSAQdAyhm+HtH7SZnk3/R3in4pjOQlfLywU0/XKUC0iFC2
+oiAw2bt7JOxrDKn2mBAbUQ1dBwqJ5zTTUtPIF9iPKdplATpShS/RXss6hSsN
+GXmKDQvp0nYBRB8usX42Rt6xy9qiI/2TdPAdmd/Qq2Q+o5Hez3HBuB9niXQ3
+wdBNptgaZ+srbK14YM0I2g/rEPgawIzgLUVOmmWD45BAL+PPdw0mS9ogHq4Q
+S+f0gIGzlLp/k4dsuKhlzzDsuf3ojIdxNp5ukzKG9ITXXE59
+=S3Lp
+-----END PGP MESSAGE-----
+
+--outer--

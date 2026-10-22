@@ -84,7 +84,35 @@ data class Email(
      * the name.
      */
     val replyFrom: Identity? = null,
+    /**
+     * plMail's end-to-end encryption properties (#9). `cryptoType` is `pgp_encrypted`,
+     * `pgp_inline_encrypted`, `pgp_signed`, `pgp_inline_signed`, `smime_encrypted`, `smime_signed`
+     * or null for plain mail.
+     */
+    val cryptoType: String? = null,
+    /**
+     * Whether the message is end-to-end encrypted. Its bodies are then empty and its preview blank:
+     * the text exists only inside the blob, for a device with the keys.
+     */
+    val encrypted: Boolean = false,
+    /**
+     * The server's verdict on a signed-only message: `valid`, `untrusted`, `invalid`,
+     * `unknown_key`, `key_changed`, or null while unchecked. Always null for encrypted mail, whose
+     * signature is inside the ciphertext where the server cannot see it.
+     */
+    val signatureState: String? = null,
+    /** Who signed: a lower-case PGP fingerprint, or the address on an S/MIME certificate. */
+    val signer: String? = null,
+    /**
+     * Whether a client has handed the server a decrypted copy, so the bodies are readable here like
+     * any other message's. The mail is still end-to-end encrypted in transit.
+     */
+    val decryptedOnServer: Boolean = false,
 ) {
+    /** Whether the text has to be decrypted on this device to be read. */
+    val needsDecryption: Boolean
+        get() = encrypted && !decryptedOnServer
+
     val mailboxes: List<MailboxId>
         get() = mailboxIds.filterValues { it }.keys.map(::MailboxId)
 

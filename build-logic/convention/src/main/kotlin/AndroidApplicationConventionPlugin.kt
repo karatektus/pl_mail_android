@@ -158,6 +158,10 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     setOf(
                         "/META-INF/{AL2.0,LGPL2.1}",
                         "/META-INF/LICENSE*",
+                        // Build metadata both mime4j jars carry (#9); nothing reads
+                        // it at runtime, and two copies of it fail the merge.
+                        "/META-INF/DEPENDENCIES",
+                        "/META-INF/NOTICE*",
                     )
             }
 

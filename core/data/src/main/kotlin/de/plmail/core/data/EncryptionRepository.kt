@@ -10,6 +10,8 @@ import de.plmail.crypto.UserKeys
 import de.plmail.crypto.WrappedUserKey
 import de.plmail.crypto.WrappingException
 import de.plmail.jmap.methods.AddressKeyEntry
+import de.plmail.jmap.methods.ContactKeyGet
+import de.plmail.jmap.methods.ContactKeyGetResult
 import de.plmail.jmap.methods.Keyring
 import de.plmail.jmap.methods.KeyringGet
 import de.plmail.jmap.protocol.Capability
@@ -20,6 +22,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /**
@@ -40,6 +44,16 @@ import kotlinx.coroutines.withContext
 class EncryptionRepository
 @Inject
 constructor(private val clients: AccountClients, private val vault: KeyVault) {
+
+    /**
+     * The address keys last unlocked, and when.
+     *
+     * Reading a conversation of encrypted messages would otherwise fetch the keyring and unlock
+     * every address key once per message — a request and an S2K derivation each. Kept briefly and
+     * only in memory; dropped whenever the keys on the device change.
+     */
+    private var unlocked: Pair<Long, List<UnlockedAddressKey>>? = null
+    private val unlocking = Mutex()
 
     /**
      * Where this device stands, read fresh from the server and the vault.
@@ -101,11 +115,12 @@ constructor(private val clients: AccountClients, private val vault: KeyVault) {
             if (opened.isEmpty()) return UnlockResult.WrongSecret
 
             vault.save(opened)
+            unlocked = null
             UnlockResult.Unlocked
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (refused: JmapError.NotAuthenticated) {
-            vault.forget()
+            forget()
             UnlockResult.Failed(refused)
         } catch (failed: Exception) {
             UnlockResult.Failed(failed)
@@ -117,7 +132,42 @@ constructor(private val clients: AccountClients, private val vault: KeyVault) {
      * For the phases that decrypt and sign; phase 1 only uses it through [status]. Empty when the
      * device holds no keys or the server is out of reach.
      */
-    suspend fun unlockedAddressKeys(): List<UnlockedAddressKey> =
+    suspend fun unlockedAddressKeys(): List<UnlockedAddressKey> = unlocking.withLock {
+        unlocked
+            ?.takeIf { (at, _) -> System.currentTimeMillis() - at < UNLOCKED_FOR_MILLIS }
+            ?.let {
+                return@withLock it.second
+            }
+
+        freshlyUnlocked().also { keys ->
+            unlocked = if (keys.isEmpty()) null else System.currentTimeMillis() to keys
+        }
+    }
+
+    /**
+     * The keys plMail holds for other people, from `ContactKey/get`; empty when there are none or
+     * the server cannot be asked. For checking the signature inside an encrypted message.
+     */
+    suspend fun contactKeys(): ContactKeyGetResult =
+        try {
+            val client = clients.current()
+            if (client?.session()?.keys == null) {
+                ContactKeyGetResult()
+            } else {
+                val request = RequestBuilder(using = Capability.USING_KEYS)
+                val get = request.add(ContactKeyGet())
+                client.send(request).result(get)
+            }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (refused: JmapError.NotAuthenticated) {
+            forget()
+            ContactKeyGetResult()
+        } catch (_: Exception) {
+            ContactKeyGetResult()
+        }
+
+    private suspend fun freshlyUnlocked(): List<UnlockedAddressKey> =
         try {
             val client = clients.current() ?: return emptyList()
             val capability = client.session().keys ?: return emptyList()
@@ -130,14 +180,17 @@ constructor(private val clients: AccountClients, private val vault: KeyVault) {
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (refused: JmapError.NotAuthenticated) {
-            vault.forget()
+            forget()
             emptyList()
         } catch (_: Exception) {
             emptyList()
         }
 
     /** Removes the keys from this device, when the person asks. The server's copies stay. */
-    suspend fun forget() = vault.forget()
+    suspend fun forget() {
+        unlocked = null
+        vault.forget()
+    }
 
     private suspend fun describe(
         keyring: Keyring,
@@ -207,7 +260,7 @@ constructor(private val clients: AccountClients, private val vault: KeyVault) {
         } catch (refused: JmapError.NotAuthenticated) {
             // The documented rule: an app password the server refuses takes
             // the keys with it. A revoked device must not keep reading mail.
-            vault.forget()
+            forget()
             EncryptionStatus.Unreachable(refused)
         } catch (failed: Exception) {
             EncryptionStatus.Unreachable(failed)
@@ -217,6 +270,9 @@ constructor(private val clients: AccountClients, private val vault: KeyVault) {
         WrappedUserKey(it.id, it.wrapped, it.isActive)
     }
 }
+
+/** How long unlocked address keys are kept in memory between reads. */
+private const val UNLOCKED_FOR_MILLIS = 5 * 60 * 1000L
 
 /** Where end-to-end encryption stands on this device. */
 sealed interface EncryptionStatus {

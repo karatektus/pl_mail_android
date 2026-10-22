@@ -304,4 +304,33 @@
     <string name="action_queued_host">%1$s here. %2$s will be told when it answers.</string>
     <!-- A phone with no browser, or a tel: link on a tablet. Rare, and not a crash. -->
     <string name="link_no_handler">Nothing on this device can open that link.</string>
+
+    <!--
+      End-to-end encryption in the reader (#9). The web app's wording
+      (message.crypto.* in the server's translations), so a message reads the
+      same on both.
+    -->
+    <string name="crypto_preview">Encrypted message</string>
+    <string name="crypto_encrypted">End-to-end encrypted</string>
+    <string name="crypto_encrypted_kept">Encrypted on arrival · stored readable on this server</string>
+    <string name="crypto_decrypting">Decrypting…</string>
+    <string name="crypto_retry">Try again</string>
+    <string name="crypto_no_keys">Your keys are not on this device. Bring them here under Encryption in the menu, then try again.</string>
+    <string name="crypto_not_for_these_keys">This message was encrypted to a key you do not have here.</string>
+    <string name="crypto_no_source">The original of this message is not available, so it cannot be decrypted.</string>
+    <string name="crypto_unreachable">Your server could not be reached to decrypt this message.</string>
+    <string name="crypto_failed">This message could not be decrypted.</string>
+    <string name="crypto_inner_valid">Signed inside the encryption, with your own key or one you verified</string>
+    <string name="crypto_inner_untrusted">Signed inside the encryption — intact, but nobody has confirmed the key %1$s</string>
+    <string name="crypto_inner_unknown_key">Signed with key %1$s, which plMail does not know yet</string>
+    <string name="crypto_inner_key_changed">Signed with key %1$s — not the key plMail knows for this sender</string>
+    <string name="crypto_inner_invalid">The signature inside does not match</string>
+    <string name="crypto_inner_unchecked">Signed inside the encryption; the signature has not been checked</string>
+    <string name="crypto_signed_valid">Signed, and the signature checks out</string>
+    <string name="crypto_signed_untrusted">Signed — the message is intact, but nothing confirms who signed it</string>
+    <string name="crypto_signed_invalid">The signature does not match — this message was changed or is not from the sender</string>
+    <string name="crypto_signed_unknown_key">Signed with a key plMail does not know yet</string>
+    <string name="crypto_signed_key_changed">Signed with a different key than the one plMail knows for this sender</string>
+    <string name="crypto_signed_pending">Signed — checking the signature…</string>
+    <string name="crypto_signer">Signed by %1$s</string>
 </resources>

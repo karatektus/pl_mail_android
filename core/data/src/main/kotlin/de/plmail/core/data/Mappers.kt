@@ -144,8 +144,11 @@ internal fun Email.asNewMessage(accountKey: String, accountName: String): NewMes
         // a bug rather than as mail from someone anonymous.
         sender = sender?.display?.takeIf { it.isNotBlank() } ?: sender?.email.orEmpty(),
         subject = subject?.takeIf { it.isNotBlank() },
-        preview = preview,
+        // Blank for encrypted mail anyway; cleared regardless, so nothing the
+        // server ever put there could reach the shade.
+        preview = if (needsDecryption) "" else preview,
         receivedAt = receivedAt.toEpochMillis() ?: System.currentTimeMillis(),
+        isEncrypted = needsDecryption,
     )
 }
 
@@ -182,6 +185,11 @@ fun Email.toEntity(accountKey: String): EmailEntity {
         // Only the true entries: JMAP's map form is `{"42": true}`, and a key
         // whose value is false is not a membership.
         mailboxIds = mailboxes.joinToString(",") { it.value },
+        cryptoType = cryptoType,
+        isEncrypted = encrypted,
+        signatureState = signatureState,
+        signer = signer,
+        decryptedOnServer = decryptedOnServer,
     )
 }
 
@@ -285,6 +293,7 @@ fun MailThread.toEntity(
         isUnread = messages.any { !it.isSeen },
         isFlagged = messages.any { it.isFlagged },
         hasAttachment = messages.any { it.hasAttachment },
+        isEncrypted = newest?.isEncrypted == true,
         snoozedUntil = snoozedUntil.toEpochMillis(),
         // Straight off the wire, unresolved and unsubstituted. The server has
         // already folded the conversation's messages most-recent-wins, so

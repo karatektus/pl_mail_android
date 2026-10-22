@@ -59,6 +59,13 @@ richEditor = "1.0.0"
 # is the layer the app would otherwise have to write itself -- encrypt, sign,
 # verify, unlock a key -- where the mistakes in OpenPGP are made.
 pgpainless = "2.0.4"
+# Reading the MIME message inside an encrypted one (#9). The server parses
+# every other message; the inside of an end-to-end encrypted one only ever
+# exists on the device. mime4j is what Thunderbird for Android parses with.
+mime4j = "0.8.15"
+# Sanitising decrypted HTML, which -- unlike every other body -- the server's
+# MailBodySanitizer has never seen.
+jsoup = "1.23.2"
 
 # Testing
 junit5 = "6.1.2"
@@ -130,6 +137,8 @@ coil-network-okhttp = { group = "io.coil-kt.coil3", name = "coil-network-okhttp"
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver3-junit5", version.ref = "okhttp" }
 
+mime4j-dom = { group = "org.apache.james", name = "apache-mime4j-dom", version.ref = "mime4j" }
+jsoup = { group = "org.jsoup", name = "jsoup", version.ref = "jsoup" }
 pgpainless-core = { group = "org.pgpainless", name = "pgpainless-core", version.ref = "pgpainless" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 kotlinx-coroutines-core = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }

@@ -20,6 +20,10 @@ dependencies {
     // in room-ktx.
     implementation(libs.androidx.room.ktx)
     implementation(projects.core.datastore)
+    // The decrypted-message model (OpenedMessage) crosses into the reader.
+    api(projects.core.crypto)
+    // Sanitising decrypted HTML: see DecryptedHtml.
+    implementation(libs.jsoup)
     // ContextCompat.checkSelfPermission, for the composer's optional read of the
     // device address book. Nothing here demands the permission; it asks whether
     // it already has it.

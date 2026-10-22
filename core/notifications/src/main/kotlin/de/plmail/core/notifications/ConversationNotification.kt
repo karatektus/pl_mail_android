@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import de.plmail.core.data.NewMessage
+import de.plmail.crypto.EncryptedMessages
 
 /**
  * One conversation, as it sits in the shade.
@@ -29,45 +30,65 @@ internal fun conversationNotification(
 ): Notification {
     val notificationId = notificationId(message)
     val sender = Person.Builder().setName(message.sender).build()
+    val encrypted = context.getString(R.string.encrypted_message)
+    // The outer subject of an encrypted message is often only the placeholder
+    // its client put there ("..."); the real one is inside, out of reach here.
+    val subject =
+        if (message.isEncrypted && EncryptedMessages.isPlaceholderSubject(message.subject)) {
+            encrypted
+        } else {
+            message.subject ?: context.getString(R.string.no_subject)
+        }
 
     val style =
         messagingStyle(context)
-            .setConversationTitle(message.subject ?: context.getString(R.string.no_subject))
-            .addMessage(message.preview, message.receivedAt, sender)
+            .setConversationTitle(subject)
+            .addMessage(
+                if (message.isEncrypted) encrypted else message.preview,
+                message.receivedAt,
+                sender,
+            )
 
-    return NotificationCompat.Builder(context, channelId)
-        .setSmallIcon(R.drawable.ic_notification_mail)
-        .setStyle(style)
-        .setContentTitle(message.sender)
-        .setContentText(message.subject ?: context.getString(R.string.no_subject))
-        .setWhen(message.receivedAt)
-        .setShowWhen(true)
-        .setCategory(NotificationCompat.CATEGORY_EMAIL)
-        .setGroup(group)
-        .setAutoCancel(true)
-        .setContentIntent(destinations.openConversation(message.accountKey, message.threadId))
-        // Dismissing one conversation must not leave the account's summary
-        // behind with nothing under it, which is what happens if nobody
-        // tidies up -- see NotificationActions.
-        .setDeleteIntent(NotificationActions.dismissed(context, message.accountKey, notificationId))
-        .addAction(
-            NotificationCompat.Action.Builder(
-                    R.drawable.ic_notification_archive,
-                    context.getString(R.string.action_archive),
-                    NotificationActions.archive(context, message, notificationId),
-                )
-                .build()
-        )
-        .addAction(
-            NotificationCompat.Action.Builder(
-                    R.drawable.ic_notification_read,
-                    context.getString(R.string.action_mark_read),
-                    NotificationActions.markRead(context, message, notificationId),
-                )
-                .build()
-        )
-        .addAction(inlineReplyAction(context, message))
-        .build()
+    val builder =
+        NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_notification_mail)
+            .setStyle(style)
+            .setContentTitle(message.sender)
+            .setContentText(if (message.isEncrypted) encrypted else subject)
+            .setWhen(message.receivedAt)
+            .setShowWhen(true)
+            .setCategory(NotificationCompat.CATEGORY_EMAIL)
+            .setGroup(group)
+            .setAutoCancel(true)
+            .setContentIntent(destinations.openConversation(message.accountKey, message.threadId))
+            // Dismissing one conversation must not leave the account's summary
+            // behind with nothing under it, which is what happens if nobody
+            // tidies up -- see NotificationActions.
+            .setDeleteIntent(
+                NotificationActions.dismissed(context, message.accountKey, notificationId)
+            )
+            .addAction(
+                NotificationCompat.Action.Builder(
+                        R.drawable.ic_notification_archive,
+                        context.getString(R.string.action_archive),
+                        NotificationActions.archive(context, message, notificationId),
+                    )
+                    .build()
+            )
+            .addAction(
+                NotificationCompat.Action.Builder(
+                        R.drawable.ic_notification_read,
+                        context.getString(R.string.action_mark_read),
+                        NotificationActions.markRead(context, message, notificationId),
+                    )
+                    .build()
+            )
+
+    // Answering from the shade sends in the clear, and an encrypted
+    // conversation is the one place that must not happen by accident.
+    if (!message.isEncrypted) builder.addAction(inlineReplyAction(context, message))
+
+    return builder.build()
 }
 
 /**

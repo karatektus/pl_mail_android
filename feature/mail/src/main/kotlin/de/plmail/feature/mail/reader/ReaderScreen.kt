@@ -282,6 +282,7 @@ fun ReaderScreen(
                             savePicker.launch(attachment.name ?: DEFAULT_SAVE_NAME)
                         },
                         onShowSource = { viewModel.showSource(message) },
+                        onRetryDecryption = { viewModel.retryDecryption(message.email.uid) },
                         onSwipe = { next -> (if (next) onNext else onPrevious)?.invoke() },
                     )
                 }
@@ -580,6 +581,7 @@ private fun Message(
     onOpenAttachment: (AttachmentEntity) -> Unit,
     onSaveAttachment: (AttachmentEntity) -> Unit,
     onShowSource: () -> Unit,
+    onRetryDecryption: () -> Unit,
     onSwipe: (next: Boolean) -> Unit,
 ) {
     val context = LocalContext.current
@@ -648,7 +650,15 @@ private fun Message(
                 )
                 if (!message.isExpanded) {
                     Text(
-                        text = message.email.preview,
+                        // An encrypted message's preview is blank by design: its
+                        // text is only inside the ciphertext. Saying so beats a
+                        // line that looks like a message with nothing in it.
+                        text =
+                            if (message.email.needsDecryption && message.email.preview.isBlank()) {
+                                stringResource(R.string.crypto_preview)
+                            } else {
+                                message.email.preview
+                            },
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.inkMuted,
                         maxLines = 1,
@@ -673,6 +683,13 @@ private fun Message(
         }
 
         if (!message.isExpanded) return@Column
+
+        CryptoBanner(message = message, onRetry = onRetryDecryption)
+
+        // An encrypted message that has not opened (yet) has nothing else to
+        // show: the banner says why, and the empty-body sentences below would
+        // describe the ciphertext's blank stand-in rather than the mail.
+        if (body == null && message.encryption != null) return@Column
 
         if (body == null) {
             // Two different facts, and telling them apart is the whole point of
@@ -699,7 +716,7 @@ private fun Message(
             // content. An undownloaded message has no attachments to show
             // either way: they arrive with the body.
             Attachments(
-                attachments = message.attachments,
+                attachments = message.shownAttachments,
                 busy = busyAttachments,
                 onOpen = onOpenAttachment,
                 onSave = onSaveAttachment,
@@ -737,12 +754,17 @@ private fun Message(
         // paper reaches the card's edge. Padding here would open a strip of card
         // colour between the two that the sender's own background stops short
         // of -- the band this card exists to remove.
+        // A decrypted message's `cid:` images come out of memory, from inside
+        // the encryption; nothing else in the reader resolves them yet.
+        val inline = (message.encryption as? MessageEncryption.Opened)?.content?.inlineImages
+
         MessageWebView(
             body = body,
             style = style,
             palette = palette,
             remoteImages = message.remoteImages,
             modifier = Modifier.fillMaxWidth(),
+            inlineImage = { cid -> inline?.get(cid)?.let { InlineImage(it.bytes, it.type) } },
             onLink = context::openLink,
             onSwipe = onSwipe,
         )
@@ -755,7 +777,7 @@ private fun Message(
         // two verbs a thumb apart is a choice the reader was being asked to
         // make between identical options.
         Attachments(
-            attachments = message.attachments,
+            attachments = message.shownAttachments,
             busy = busyAttachments,
             onOpen = onOpenAttachment,
             onSave = onSaveAttachment,

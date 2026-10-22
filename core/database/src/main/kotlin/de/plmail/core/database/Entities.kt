@@ -255,6 +255,11 @@ data class ThreadEntity(
      * separator is safe for the same reason it is there: these are server-issued ids.
      */
     val labelKeys: String = "",
+    /**
+     * Whether the newest message is end-to-end encrypted (#9) — the lock on the row. The newest, as
+     * in the web app, because that is the message the row's preview and sender describe.
+     */
+    val isEncrypted: Boolean = false,
 )
 
 @Entity(
@@ -292,7 +297,23 @@ data class EmailEntity(
     val hasAttachment: Boolean = false,
     /** Mailbox (binding) ids, comma-separated. */
     val mailboxIds: String = "",
-)
+    /**
+     * End-to-end encryption (#9), as the server reports it: `Email.cryptoType`, `encrypted`,
+     * `signatureState`, `signer`, `decryptedOnServer`. Server facts like every column here — the
+     * decrypted text is never stored, only that there is some to decrypt.
+     */
+    val cryptoType: String? = null,
+    val isEncrypted: Boolean = false,
+    val signatureState: String? = null,
+    val signer: String? = null,
+    val decryptedOnServer: Boolean = false,
+) {
+    /**
+     * Whether the text has to be decrypted on this device: encrypted, and no readable copy kept.
+     */
+    val needsDecryption: Boolean
+        get() = isEncrypted && !decryptedOnServer
+}
 
 /**
  * Bodies live in their own table so a list query never loads a 400KB HTML string into memory, and
