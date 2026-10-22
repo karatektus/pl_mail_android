@@ -921,7 +921,7 @@ internal fun ComposeDraft.sealedFor(plan: EncryptionPlan, identity: SendIdentity
     when {
         !plan.encrypt -> copy(sealAs = null)
         identity == null -> null
-        else -> copy(sealAs = SealAs(identity.email, identity.name))
+        else -> copy(sealAs = SealAs(identity.email, identity.name, plan.scheme))
     }
 
 /**

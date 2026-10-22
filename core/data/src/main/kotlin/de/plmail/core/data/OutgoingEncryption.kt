@@ -58,14 +58,19 @@ constructor(
         // Without opening protected keys: nobody is asked to confirm it is them
         // for typing an address.
         val fingerprints = encryption.signingFingerprints()
-        if (fingerprints.isEmpty()) return RecipientKeys.Unavailable
+        val certificates = encryption.signingCertificates()
+        if (fingerprints.isEmpty() && certificates.isEmpty()) return RecipientKeys.Unavailable
 
         val answer = lookup(client, AccountId(accountId), from, addresses, lookUp)
         val signer = answer.sender?.fingerprint
+        val certificate = answer.sender?.smime
 
         return RecipientKeys.Known(
             ownKey = signer != null && fingerprints.any { it.equals(signer, ignoreCase = true) },
             byAddress = answer.recipients.associateBy { it.email.lowercase() },
+            ownCertificate =
+                certificate != null &&
+                    certificates.any { it.equals(certificate, ignoreCase = true) },
         )
     }
 
@@ -99,6 +104,10 @@ constructor(
         val recipients = (draft.to + draft.cc + draft.bcc).mapNotNull { it.email?.trim() }
         val answer = lookup(client, accountId, from.email, recipients, lookUp = false)
 
+        if (from.scheme == EncryptionScheme.SMIME) {
+            return sealSmime(draft, from, files, recipients, answer)
+        }
+
         val missing = recipients.filter { answer.forAddress(it)?.key == null }
         if (missing.isNotEmpty()) throw EncryptionRefused.Missing(missing.distinct())
 
@@ -115,22 +124,7 @@ constructor(
         val publicKeys =
             recipients.mapNotNull { answer.forAddress(it)?.key }.distinctBy { it.fingerprint }
 
-        val html = draft.bodyHtml
-        val content =
-            OutgoingContent(
-                from = MailAddress(from.email, from.name),
-                to = draft.to.toMailAddresses(),
-                cc = draft.cc.toMailAddresses(),
-                bcc = draft.bcc.toMailAddresses(),
-                subject = draft.subject,
-                html = html,
-                text = DecryptedHtml.toText(html),
-                files = files,
-                messageId = OutgoingMessages.messageId(from.email),
-                date = ZonedDateTime.now(),
-                inReplyTo = draft.inReplyTo.orEmpty().map(::bracketed),
-                references = draft.references.orEmpty().map(::bracketed),
-            )
+        val content = content(draft, from, files)
 
         return withContext(Dispatchers.Default) {
             val raw =
@@ -158,6 +152,75 @@ constructor(
             )
         }
     }
+
+    /**
+     * The S/MIME branch of [seal] (#47): every recipient's current certificate and the sender's
+     * own, signed with the certificate the server names for the From address — the one it checks
+     * the import's `signer` against.
+     */
+    private suspend fun sealSmime(
+        draft: ComposeDraft,
+        from: SealAs,
+        files: List<OutgoingFile>,
+        recipients: List<String>,
+        answer: ContactKeyLookupResult,
+    ): SealedMessage {
+        val missing = recipients.filter { answer.forAddress(it)?.smime == null }
+        if (missing.isNotEmpty()) throw EncryptionRefused.Missing(missing.distinct())
+
+        val keys =
+            try {
+                encryption.unlockedKeys(interactive = true).smimeKeys
+            } catch (_: KeysLocked) {
+                throw EncryptionRefused.Locked
+            }
+        val named = answer.sender?.smime
+        val signer =
+            keys.firstOrNull { it.fingerprint.equals(named, ignoreCase = true) }
+                ?: keys.firstOrNull { it.servesAt(from.email) }
+                ?: throw EncryptionRefused.NoOwnCertificate
+
+        val certificates =
+            recipients.mapNotNull { answer.forAddress(it)?.smime }.distinctBy { it.fingerprint }
+        val content = content(draft, from, files)
+
+        return withContext(Dispatchers.Default) {
+            val raw =
+                try {
+                    OutgoingMessages.sealSmime(content, certificates.map { it.certificate }, signer)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (_: Exception) {
+                    // A certificate that cannot be read, or is not RSA.
+                    throw EncryptionRefused.Unusable
+                }
+
+            SealedMessage(
+                raw = raw,
+                fingerprints =
+                    (certificates.map { it.fingerprint } + signer.fingerprint)
+                        .map { it.lowercase() }
+                        .distinct(),
+                signer = signer.fingerprint.lowercase(),
+            )
+        }
+    }
+
+    private fun content(draft: ComposeDraft, from: SealAs, files: List<OutgoingFile>) =
+        OutgoingContent(
+            from = MailAddress(from.email, from.name),
+            to = draft.to.toMailAddresses(),
+            cc = draft.cc.toMailAddresses(),
+            bcc = draft.bcc.toMailAddresses(),
+            subject = draft.subject,
+            html = draft.bodyHtml,
+            text = DecryptedHtml.toText(draft.bodyHtml),
+            files = files,
+            messageId = OutgoingMessages.messageId(from.email),
+            date = ZonedDateTime.now(),
+            inReplyTo = draft.inReplyTo.orEmpty().map(::bracketed),
+            references = draft.references.orEmpty().map(::bracketed),
+        )
 
     private suspend fun lookup(
         client: JmapClient,
@@ -192,7 +255,18 @@ constructor(
 }
 
 /** The address an encrypted message is written from: the composer knows it, the draft keeps it. */
-data class SealAs(val email: String, val name: String? = null)
+data class SealAs(
+    val email: String,
+    val name: String? = null,
+    /** OpenPGP, or S/MIME when that is what every recipient can be reached with (#47). */
+    val scheme: EncryptionScheme = EncryptionScheme.PGP,
+)
+
+/** How a message is end-to-end encrypted. */
+enum class EncryptionScheme {
+    PGP,
+    SMIME,
+}
 
 internal class SealedMessage(
     val raw: ByteArray,
@@ -212,6 +286,12 @@ sealed class EncryptionRefused(message: String) : IllegalStateException(message)
     object NoOwnKey :
         EncryptionRefused(
             "You have no key for this From address, so nothing can be signed or encrypted from it."
+        )
+
+    object NoOwnCertificate :
+        EncryptionRefused(
+            "You have no S/MIME certificate for this From address, so this message cannot be " +
+                "signed or encrypted with S/MIME."
         )
 
     object Unusable : EncryptionRefused("The message could not be encrypted. Nothing was sent.")
@@ -239,6 +319,8 @@ sealed interface RecipientKeys {
         val ownKey: Boolean,
         /** By lower-cased address. An address missing here has not been asked about yet. */
         val byAddress: Map<String, RecipientKey>,
+        /** Whether the From address has an S/MIME certificate this device opens (#47). */
+        val ownCertificate: Boolean = false,
     ) : RecipientKeys
 }
 
@@ -255,6 +337,8 @@ data class EncryptionPlan(
     /** Whether encryption applies to this message at all; the composer shows nothing otherwise. */
     val available: Boolean = false,
     val encrypt: Boolean = false,
+    /** How, when [encrypt]: OpenPGP unless S/MIME is the way every recipient can be reached. */
+    val scheme: EncryptionScheme = EncryptionScheme.PGP,
     /** Recipients that have not been asked about yet: nothing is decided while there are any. */
     val pending: Boolean = false,
     val blocked: EncryptionBlock? = null,
@@ -283,18 +367,26 @@ sealed interface EncryptionBlock {
 }
 
 /**
- * The web app's decision (`#plan()` in `assets/controllers/compose/encryption_controller.js`), for
- * PGP only. [keys] is null until the server has been asked.
- * - **On**: encrypted; blocked while a recipient has no key.
- * - **Auto**: encrypted when every recipient has a key and nobody is set to `never`. When some have
- *   a key and others do not, the message goes out unencrypted and the composer says for whom — or
- *   is blocked, when one of the recipients is set to `always`.
+ * The web app's decision (`#plan()` in `assets/controllers/compose/encryption_controller.js`).
+ * [keys] is null until the server has been asked. "Reachable" means with OpenPGP when every
+ * recipient has a key, otherwise with S/MIME when every recipient has a certificate, the sender has
+ * one and there is no Bcc (#47).
+ * - **On**: encrypted; blocked while recipients are not reachable — the shorter list is named.
+ * - **Auto**: encrypted when every recipient is reachable and nobody is set to `never`. When some
+ *   are and others are not, the message goes out unencrypted and the composer says for whom — or is
+ *   blocked, when one of the recipients is set to `always`.
  * - **Off**: not encrypted.
  *
  * The person's "block partial encryption" setting is not published over JMAP, so here only a
  * recipient set to `always` blocks. Signing without encrypting is not offered yet.
  */
-fun plan(mode: EncryptionMode, addresses: List<String>, keys: RecipientKeys?): EncryptionPlan {
+fun plan(
+    mode: EncryptionMode,
+    addresses: List<String>,
+    keys: RecipientKeys?,
+    /** The Bcc recipients among [addresses]: S/MIME is not used with any. */
+    bcc: List<String> = emptyList(),
+): EncryptionPlan {
     val known =
         when (keys) {
             // Not asked yet: nothing shown, nothing decided.
@@ -315,7 +407,28 @@ fun plan(mode: EncryptionMode, addresses: List<String>, keys: RecipientKeys?): E
     val wanted = addresses.map { it.trim().lowercase() }.filter { it.isNotEmpty() }.distinct()
     val pending = wanted.any { it !in known.byAddress }
     val answers = wanted.mapNotNull { known.byAddress[it] }
-    val missing = answers.filter { it.key == null }.map { it.email }
+    val pgpMissing = answers.filter { it.key == null }.map { it.email }
+    val smimeMissing = answers.filter { it.smime == null }.map { it.email }
+    val hasBcc = bcc.any { it.isNotBlank() }
+
+    // OpenPGP whenever everyone has a key; S/MIME when everyone has a
+    // certificate, the sender has one too and nobody is in Bcc (S/MIME names
+    // every recipient in the envelope).
+    val scheme =
+        when {
+            wanted.isNotEmpty() && pgpMissing.isEmpty() && known.ownKey -> EncryptionScheme.PGP
+            known.ownCertificate && !hasBcc && wanted.isNotEmpty() && smimeMissing.isEmpty() ->
+                EncryptionScheme.SMIME
+            else -> null
+        }
+    // Who to name when neither works: the shorter list, as the web app does.
+    val missing =
+        when {
+            scheme != null -> emptyList()
+            known.ownCertificate && !hasBcc && smimeMissing.size < pgpMissing.size -> smimeMissing
+            else -> pgpMissing
+        }
+    val canSign = known.ownKey || known.ownCertificate
 
     return when (mode) {
         EncryptionMode.OFF -> EncryptionPlan(available = true, pending = pending)
@@ -323,34 +436,28 @@ fun plan(mode: EncryptionMode, addresses: List<String>, keys: RecipientKeys?): E
             EncryptionPlan(
                 available = true,
                 encrypt = true,
+                scheme = scheme ?: EncryptionScheme.PGP,
                 pending = pending,
                 blocked =
                     when {
-                        !known.ownKey -> EncryptionBlock.NoOwnKey
+                        scheme != null -> null
+                        !canSign -> EncryptionBlock.NoOwnKey
+                        wanted.isNotEmpty() && pgpMissing.isEmpty() -> EncryptionBlock.NoOwnKey
                         missing.isNotEmpty() -> EncryptionBlock.Missing(missing)
                         else -> null
                     },
             )
         EncryptionMode.AUTO -> {
-            val encrypt =
-                known.ownKey &&
-                    wanted.isNotEmpty() &&
-                    !pending &&
-                    missing.isEmpty() &&
-                    answers.none { it.refusesEncryption }
+            val encrypt = scheme != null && !pending && answers.none { it.refusesEncryption }
+            val reachable = answers.any { it.key != null || it.smime != null }
             val partial =
-                if (
-                    !encrypt &&
-                        known.ownKey &&
-                        missing.isNotEmpty() &&
-                        answers.any { it.key != null }
-                )
-                    missing
+                if (!encrypt && canSign && missing.isNotEmpty() && reachable) missing
                 else emptyList()
 
             EncryptionPlan(
                 available = true,
                 encrypt = encrypt,
+                scheme = scheme ?: EncryptionScheme.PGP,
                 pending = pending,
                 blocked =
                     EncryptionBlock.Partial(partial).takeIf {

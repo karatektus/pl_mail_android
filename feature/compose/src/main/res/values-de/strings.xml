@@ -99,6 +99,7 @@
     <string name="compose_crypto_off">Nicht verschlüsselt</string>
     <string name="compose_crypto_encrypted_hint">Diese Nachricht wird Ende-zu-Ende verschlüsselt: Nur du und die Empfänger können sie lesen.</string>
     <string name="compose_crypto_has_key">plMail kennt einen Schlüssel für diese Adresse, Mails an sie lassen sich also verschlüsseln.</string>
+    <string name="compose_crypto_has_certificate">plMail hat ein S/MIME-Zertifikat für diese Adresse, Mail dorthin lässt sich also verschlüsseln.</string>
     <string name="compose_crypto_key_changed">Für diese Adresse wartet ein neuer Schlüssel unter Einstellungen → Verschlüsselung darauf, angenommen zu werden. Bis dahin wird der bekannte verwendet.</string>
     <string name="compose_crypto_partial">%1$s ist nicht verschlüsselt erreichbar, deshalb geht diese Nachricht unverschlüsselt an alle.</string>
     <string name="compose_crypto_partial_blocked">%1$s ist nicht verschlüsselt erreichbar. Entferne die Adresse oder schalte die Verschlüsselung für diese Nachricht aus.</string>
