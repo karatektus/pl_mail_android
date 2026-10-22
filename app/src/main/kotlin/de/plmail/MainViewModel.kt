@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.data.CalendarRepository
+import de.plmail.core.data.ContactsRepository
 import de.plmail.core.data.PushTransportManager
 import de.plmail.core.data.SyncWorker
 import de.plmail.core.datastore.CredentialStore
@@ -40,6 +41,7 @@ class MainViewModel
 constructor(
     credentials: CredentialStore,
     calendar: CalendarRepository,
+    contacts: ContactsRepository,
     private val pushTransports: PushTransportManager,
     private val shared: SharedAttachmentStore,
     @param:ApplicationContext private val context: Context,
@@ -69,6 +71,21 @@ constructor(
     val hasCalendar: StateFlow<Boolean> =
         calendar
             .isAvailable()
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = false,
+            )
+
+    /**
+     * Whether the connected server publishes the contacts capability, which decides whether the
+     * drawer offers Contacts. Same shape as the calendar: the entry appears once there is evidence
+     * for it, and an instance without the extension looks like a product with no contacts rather
+     * than a feature that failed to load.
+     */
+    val hasContacts: StateFlow<Boolean> =
+        credentials.connection
+            .map { stored -> stored != null && contacts.isAvailable() }
             .stateIn(
                 scope = viewModelScope,
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),

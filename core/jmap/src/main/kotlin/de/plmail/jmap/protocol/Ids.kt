@@ -102,6 +102,19 @@ value class BlobId(val value: String) {
 }
 
 /**
+ * A contact in the address book (`Contact/query|get|set`, under `urn:plmail:params:jmap:contacts`).
+ *
+ * The server's own id space — small integers rendered as strings — shared by
+ * `Contact/referenceEmails`, `Contact/duplicates`, `Contact/merge` and `Contact/mergeUndo`. Never
+ * parse it.
+ */
+@JvmInline
+@Serializable
+value class ContactId(val value: String) {
+    override fun toString(): String = value
+}
+
+/**
  * A server state token.
  *
  * Compared, never interpreted. The one value worth naming is [INITIAL]: plMail shares a single

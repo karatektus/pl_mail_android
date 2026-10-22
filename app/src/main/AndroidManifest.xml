@@ -337,6 +337,52 @@
         </activity-alias>
 
         <!--
+          HOME-SCREEN CALENDAR WIDGETS (Glance).
+
+          Two widgets, one month grid and one agenda, reading the calendar cache
+          straight from Room through a Hilt entry point — so they render even
+          when the app process was not running. Every tap opens CalendarActivity
+          (singleTask: a tap can never stack a second calendar). A calendar sync
+          re-renders both through CalendarSyncedReceiver below; the 30-minute
+          updatePeriodMillis in the provider XMLs covers the rest.
+
+          exported="false" on all three: the launcher talks to widget receivers
+          through AppWidgetManager, not through intents, and the sync broadcast
+          is an internal nudge — nothing here is a public entry point.
+        -->
+        <receiver
+            android:name=".widget.calendar.CalendarMonthWidgetReceiver"
+            android:exported="false"
+            android:label="@string/calendar_month_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/calendar_month_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.calendar.CalendarAgendaWidgetReceiver"
+            android:exported="false"
+            android:label="@string/calendar_agenda_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/calendar_agenda_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.calendar.CalendarSyncedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="de.plmail.feature.calendar.action.CALENDAR_SYNCED" />
+            </intent-filter>
+        </receiver>
+
+        <!--
           THE LAUNCHER ICON, one alias per icon the user can pick.
 
           The user picks the icon on the web in two steps: a motif — the pl

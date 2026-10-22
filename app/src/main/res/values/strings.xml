@@ -11,4 +11,15 @@
       about twelve characters before it ellipsises.
     -->
     <string name="calendar_app_name">plMail Calendar</string>
+
+    <!-- Home-screen calendar widgets. -->
+    <string name="calendar_month_widget_label">Calendar month</string>
+    <string name="calendar_month_widget_description">Month grid with your events</string>
+    <string name="calendar_agenda_widget_label">Calendar agenda</string>
+    <string name="calendar_agenda_widget_description">Upcoming events, soonest first</string>
+    <string name="calendar_widget_empty">Nothing coming up</string>
+    <string name="calendar_widget_all_day">All day</string>
+    <string name="calendar_widget_reminder">Reminder set</string>
+    <string name="calendar_widget_repeats">Repeats</string>
+    <string name="calendar_widget_linked">Taken from an email</string>
 </resources>

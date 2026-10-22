@@ -54,6 +54,8 @@ fun MailShell(
     onAccounts: () -> Unit,
     /** Null where this install has no calendar. See [LabelSidebar]. */
     onCalendar: (() -> Unit)?,
+    /** The address book. Null where the server publishes no contacts capability. */
+    onContacts: (() -> Unit)? = null,
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
@@ -159,6 +161,13 @@ fun MailShell(
                 },
                 onCalendar =
                     onCalendar?.let { open ->
+                        {
+                            scope.launch { drawer.close() }
+                            open()
+                        }
+                    },
+                onContacts =
+                    onContacts?.let { open ->
                         {
                             scope.launch { drawer.close() }
                             open()

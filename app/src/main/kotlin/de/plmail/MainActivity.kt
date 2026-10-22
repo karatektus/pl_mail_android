@@ -36,6 +36,7 @@ import de.plmail.feature.compose.ScheduledSendsBar
 import de.plmail.feature.compose.SendStatusHost
 import de.plmail.feature.compose.ShareIntake
 import de.plmail.feature.compose.SharedMessage
+import de.plmail.feature.contacts.ContactsScreen
 import de.plmail.feature.mail.MailShell
 import de.plmail.feature.mail.ThreadTarget
 import de.plmail.feature.onboarding.OnboardingScreen
@@ -209,6 +210,7 @@ private fun PlMailApp(
 ) {
     val connection by viewModel.connection.collectAsStateWithLifecycle()
     val hasCalendar by viewModel.hasCalendar.collectAsStateWithLifecycle()
+    val hasContacts by viewModel.hasContacts.collectAsStateWithLifecycle()
 
     // Search and compose live here rather than inside the mail shell because
     // they are their own feature modules: :feature:mail depending on either
@@ -226,6 +228,7 @@ private fun PlMailApp(
     var isSettingGestures by rememberSaveable { mutableStateOf(false) }
     var isManagingAccounts by rememberSaveable { mutableStateOf(false) }
     var isCalendaring by rememberSaveable { mutableStateOf(false) }
+    var isContacting by rememberSaveable { mutableStateOf(false) }
     var composing by rememberSaveable(stateSaver = ComposeRequestSaver) { mutableStateOf(null) }
 
     // A conversation picked from a search result. It goes through the same
@@ -343,6 +346,7 @@ private fun PlMailApp(
                             openThread != null -> Screen.MAIL
                             isManagingAccounts -> Screen.ACCOUNTS
                             isCalendaring -> Screen.CALENDAR
+                            isContacting -> Screen.CONTACTS
                             isAdjustingAppearance -> Screen.APPEARANCE
                             isSettingGestures -> Screen.GESTURES
                             isReadingPushLog -> Screen.PUSH_LOG
@@ -363,6 +367,7 @@ private fun PlMailApp(
                         when (screen) {
                             Screen.ACCOUNTS -> isManagingAccounts = false
                             Screen.CALENDAR -> isCalendaring = false
+                            Screen.CONTACTS -> isContacting = false
                             Screen.APPEARANCE -> isAdjustingAppearance = false
                             Screen.GESTURES -> isSettingGestures = false
                             // The log closes back onto the push screen it was
@@ -386,6 +391,12 @@ private fun PlMailApp(
                         // whether the calendar or the mail is on screen, the
                         // same way it does for every other swapped screen here.
                         CalendarScreen(onBack = { isCalendaring = false })
+                    } else if (screen == Screen.CONTACTS) {
+                        // The contacts module owns its own detail, editor and
+                        // duplicates screens and its own back between them;
+                        // what :app decides is only whether contacts or mail
+                        // is on screen, the same way it does for the calendar.
+                        ContactsScreen(onBack = { isContacting = false })
                     } else if (screen == Screen.APPEARANCE) {
                         AppearanceScreen(onBack = { isAdjustingAppearance = false })
                     } else if (screen == Screen.GESTURES) {
@@ -431,6 +442,10 @@ private fun PlMailApp(
                             // calendar, rather than a control that opens an
                             // empty one.
                             onCalendar = if (hasCalendar) ({ isCalendaring = true }) else null,
+                            // Contacts: null hides the drawer entry
+                            // outright, which is what an instance publishing no
+                            // contacts capability has to look like.
+                            onContacts = if (hasContacts) ({ isContacting = true }) else null,
                             onCompose = { composing = ComposeRequest.New },
                             onReply = { accountKey, emailId, all ->
                                 composing = ComposeRequest.Reply(accountKey, emailId, all)
@@ -514,6 +529,7 @@ private val ThreadTargetSaver =
 private enum class Screen {
     MAIL,
     CALENDAR,
+    CONTACTS,
     SEARCH,
     DIAGNOSTICS,
     PUSH,

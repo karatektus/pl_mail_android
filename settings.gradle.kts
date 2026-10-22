@@ -66,3 +66,5 @@ include(":feature:search")
 include(":feature:settings")
 
 include(":feature:calendar")
+
+include(":feature:contacts")

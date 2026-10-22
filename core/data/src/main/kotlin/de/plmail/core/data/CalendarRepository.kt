@@ -1009,6 +1009,9 @@ constructor(
                 isRecurring = existing.isRecurring,
                 sequence = existing.sequence,
                 recurrenceOverrides = existing.recurrenceOverrides,
+                // An edit here does not touch reminders or where the event came from.
+                hasAlerts = existing.hasAlerts,
+                isLinked = existing.isLinked,
             )
 
         suspend fun restore() {
@@ -1359,6 +1362,9 @@ constructor(
                 "sequence",
                 "locations",
                 "recurrenceOverrides",
+                // The agenda widget's bell and link icons.
+                "alerts",
+                "isLinked",
             )
     }
 }
@@ -1519,6 +1525,8 @@ private fun CalendarEvent.toEntity(accountKey: String) =
             recurrenceOverrides
                 .takeIf { it.isNotEmpty() }
                 ?.let { Json.encodeToString(JsonObject.serializer(), JsonObject(it)) },
+        hasAlerts = alerts.isNotEmpty(),
+        isLinked = isLinked,
     )
 
 /**
@@ -1685,6 +1693,8 @@ private fun EventDraft.toEntity(
     isRecurring: Boolean,
     sequence: Int,
     recurrenceOverrides: String? = null,
+    hasAlerts: Boolean = false,
+    isLinked: Boolean = false,
 ) =
     CalendarEventEntity(
         uid = uid,
@@ -1707,6 +1717,8 @@ private fun EventDraft.toEntity(
         isRecurring = isRecurring,
         sequence = sequence,
         recurrenceOverrides = recurrenceOverrides,
+        hasAlerts = hasAlerts,
+        isLinked = isLinked,
     )
 
 /**

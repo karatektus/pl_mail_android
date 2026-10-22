@@ -49,6 +49,8 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
         fun appearance(): AppearanceRepository
 
         fun bodies(): BodyPrefetcher
+
+        fun refreshers(): Set<@JvmSuppressWildcards BackgroundRefresh>
     }
 
     override suspend fun doWork(): Result {
@@ -77,6 +79,10 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
         // be noticed. It swallows its own failures and never decides the run's
         // result: a sync is not worth retrying over a colour.
         dependencies.appearance().refresh()
+
+        // The calendar too, so its widgets are current even when push is not set
+        // up or a change was missed.
+        dependencies.refreshers().forEach { runCatching { it.refresh(BackgroundRefresh.ALL) } }
 
         // Last, and never able to change the result. This is the one place with
         // the time to spend on bodies: nobody is watching a spinner, and the mail

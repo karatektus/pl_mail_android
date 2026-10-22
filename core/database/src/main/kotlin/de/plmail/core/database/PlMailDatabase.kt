@@ -8,12 +8,13 @@ import androidx.room.RoomDatabase
 /**
  * The local cache.
  *
- * **Version 9**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
+ * **Version 10**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
  * `labelKeys`; version 3 gave `MailboxEntity` a `color` and `ThreadEntity` a `category`; version 4
  * added the three calendar tables; version 5 gave `IdentityEntity` its `htmlSignature`; version 6
  * gave `ThreadEntity` its `isNew`, version 7 its `isInInbox`, version 8 gave `AccountEntity` the
  * two calendar sync cursors, and version 9 added the reader's inbox tabs — `InboxTabEntity`,
- * `ThreadEntity.inboxTab` and `AccountEntity.inboxTabState`, one bump for the three. Rather than
+ * `ThreadEntity.inboxTab` and `AccountEntity.inboxTabState`, one bump for the three, and version 10
+ * gave `CalendarEventEntity` its `hasAlerts` and `isLinked` for the agenda widget. Rather than
  * writing a migration each bump deliberately falls through to dropping the database and syncing
  * again — which is exactly what the schema's central constraint was for. Every row here is
  * reconstructible from the server (see `Entities.kt`), so the cost of the drop is one page of mail
@@ -69,7 +70,7 @@ import androidx.room.RoomDatabase
             CalendarOccurrenceEntity::class,
             InboxTabEntity::class,
         ],
-    version = 9,
+    version = 10,
     exportSchema = true,
 )
 abstract class PlMailDatabase : RoomDatabase() {

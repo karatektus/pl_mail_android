@@ -66,6 +66,7 @@
     <string name="sidebar_unpin_a11y">Zu „Labels“ verschieben</string>
     <string name="sidebar_important_empty">Tippe auf einen Stern, um ein Label hier oben zu behalten.</string>
     <string name="calendar">Kalender</string>
+    <string name="contacts">Kontakte</string>
     <string name="push">Push</string>
     <string name="notifications">Benachrichtigungen</string>
     <string name="diagnostics">Diagnose</string>
