@@ -1,6 +1,7 @@
 package de.plmail.core.data
 
 import androidx.paging.ExperimentalPagingApi
+import androidx.paging.InvalidatingPagingSourceFactory
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -447,6 +448,10 @@ constructor(
             )
         }
 
+        // Invalidated by the mediator after each write, not only by Room: see
+        // FeedMediator.onWritten for the first page this used to lose (#41).
+        val pages = InvalidatingPagingSourceFactory { database.feed().pagingSource(feedId) }
+
         return Pager(
                 config =
                     PagingConfig(
@@ -463,8 +468,9 @@ constructor(
                         sources = sources,
                         onFailures = { failed -> _failures.update { failed } },
                         onRowsHeld = { held -> mediatorRowCounts.tryEmit(feedId to held) },
+                        onWritten = pages::invalidate,
                     ),
-                pagingSourceFactory = { database.feed().pagingSource(feedId) },
+                pagingSourceFactory = pages,
             )
             .flow
     }

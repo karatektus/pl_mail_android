@@ -175,6 +175,50 @@ class FeedMediatorTest {
         assertEquals(1, database.feed().count(inbox))
     }
 
+    /**
+     * #41: the list is told to re-read once the rows are in the table, whatever Room's own observer
+     * saw. A source that queried just before the commit and registered just after it never heard
+     * about it, and showed "Fetching your mail…" over a full table until the app restarted.
+     */
+    @Test
+    fun `the list is told to re-read after the rows are committed, not before`() = runTest {
+        database.seedAccount()
+        val heldWhenTold = mutableListOf<Int>()
+
+        val result =
+            FeedMediator(
+                    feedId = inbox,
+                    database = database,
+                    sources = listOf(OneRow(sortDate = 9_000)),
+                    onWritten = {
+                        kotlinx.coroutines.runBlocking {
+                            heldWhenTold += database.feed().count(inbox)
+                        }
+                    },
+                )
+                .load(LoadType.REFRESH, state())
+
+        assertTrue(result is RemoteMediator.MediatorResult.Success)
+        assertEquals(listOf(1), heldWhenTold)
+    }
+
+    /** A pull that wrote nothing has nothing to re-read, and an error is not a write. */
+    @Test
+    fun `a cancelled pull does not ask the list to re-read`() = runTest {
+        database.seedAccount()
+        var told = 0
+
+        FeedMediator(
+                feedId = inbox,
+                database = database,
+                sources = listOf(Cancelling),
+                onWritten = { told++ },
+            )
+            .load(LoadType.REFRESH, state())
+
+        assertEquals(0, told)
+    }
+
     // -- helpers -----------------------------------------------------------
 
     private fun mediator(
