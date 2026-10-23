@@ -310,6 +310,59 @@ class OnboardingViewModelTest {
         assertTrue(vault.userKeys().isEmpty())
     }
 
+    /**
+     * #2: a code whose address does not answer, then the address corrected and an app password
+     * pasted. "Connect" signs in where the form says, rather than pairing at the scanned address
+     * once more.
+     */
+    @Test
+    fun `what is typed after a scan wins over the scanned invitation`() = runTest {
+        val asked = mutableListOf<String>()
+        val viewModel = viewModel {
+            JmapTransport { request ->
+                asked += request.url
+                if (request.url.startsWith("https://lan.local")) {
+                    throw JmapError.Unreachable("lan.local", null)
+                }
+
+                HttpResponse(200, emptyMap(), sessionJson.encodeToByteArray())
+            }
+        }
+
+        viewModel.invitationReceived("plmail://pair?host=https%3A%2F%2Flan.local&code=abc")
+        advanceUntilIdle()
+        assertIs<JmapError.Unreachable>(viewModel.state.value.failure)
+
+        asked.clear()
+        viewModel.addressChanged("https://mail.example.com")
+        viewModel.appPasswordChanged(secret)
+        viewModel.connect()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.isPairing)
+        assertTrue(asked.isNotEmpty())
+        assertTrue(
+            asked.all { it.startsWith("https://mail.example.com") && !it.endsWith("/device/pair") },
+            "asked $asked",
+        )
+        val step = assertIs<OnboardingStep.Confirm>(viewModel.state.value.step)
+        assertEquals("https://mail.example.com", step.server.address.display)
+        assertEquals(secret, step.server.credential.secret)
+    }
+
+    /** The field echoing the address the scan put there is not an edit. */
+    @Test
+    fun `an invitation survives the form repeating what it already holds`() = runTest {
+        val viewModel =
+            pairing(redeemed = """{"secret":"$secret","username":"someone@example.com"}""")
+
+        viewModel.invitationReceived("plmail://pair?host=https%3A%2F%2Fnas.local&code=abc")
+        viewModel.addressChanged("https://nas.local")
+        viewModel.appPasswordChanged("")
+
+        assertTrue(viewModel.state.value.isPairing)
+    }
+
     private fun pairing(redeemed: String): OnboardingViewModel = viewModel {
         JmapTransport { request ->
             val body = if (request.url.endsWith("/device/pair")) redeemed else sessionJson
