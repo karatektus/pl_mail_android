@@ -554,6 +554,10 @@ constructor(
                     results.resultOrNull(tabs)?.let {
                         mail.replaceInboxTabs(accountKey, it.list, it.state)
                     }
+
+                    // And which of them hold mail, now that both the tabs and
+                    // the Inbox binding are known (#52).
+                    database.probeInboxTabs(client, accountKey, accountId)
                 }
             }
                 // This account just answered two methods, which is the whole of

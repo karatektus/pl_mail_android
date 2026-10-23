@@ -127,15 +127,21 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
         tabs: List<de.plmail.jmap.mail.InboxTab>,
         state: String?,
     ) {
-        val fresh = tabs.map { it.toEntity(accountKey) }
-
         database.withTransaction {
-            val stale =
-                database.inboxTabs().forAccount(accountKey).map { it.uid } -
-                    fresh.map { it.uid }.toSet()
+            val existing = database.inboxTabs().forAccount(accountKey).associateBy { it.uid }
+
+            // What the server last said about each tab's mail is kept across a
+            // re-read: it is asked again right after, and a tab that blinked out
+            // of the sidebar in between would be a sidebar that jumps (#52).
+            val fresh = tabs.map {
+                it.toEntity(accountKey).let { tab ->
+                    tab.copy(hasMail = existing[tab.uid]?.hasMail ?: false)
+                }
+            }
+            val stale = existing.keys - fresh.map { it.uid }.toSet()
 
             database.inboxTabs().upsert(fresh)
-            database.inboxTabs().delete(stale)
+            database.inboxTabs().delete(stale.toList())
             database.accounts().setInboxTabState(accountKey, state)
         }
     }

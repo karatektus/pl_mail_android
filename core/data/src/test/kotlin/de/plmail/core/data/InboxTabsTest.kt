@@ -12,6 +12,9 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -323,6 +326,70 @@ class InboxTabsTest {
 
         assertEquals("t3", database.accounts().byUid(testAccountKey)?.inboxTabState)
         assertEquals(listOf("primary"), repository.strip.first().map { it.key })
+    }
+
+    // -- #52: tabs whose mail is only on the server -------------------------
+
+    /**
+     * A tab a filter on the web filled, with none of its mail on this device and none arriving: the
+     * server says it holds mail, so the sidebar lists it, and it can be opened.
+     */
+    @Test
+    fun `a tab with mail only on the server is listed, asked in the same request`() = runTest {
+        database.seedAccount()
+        database.seedTabs(own = listOf("c12" to "Shipping", "c13" to "Empty"))
+        database.accounts().setInboxTabState(testAccountKey, "t1")
+
+        val transport =
+            serving(session = TABBED_SESSION) { body ->
+                // One answer per probe, in the call ids the request used: mail
+                // in c12, none in c13.
+                val calls =
+                    SESSION_JSON.parseToJsonElement(body)
+                        .jsonObject["methodCalls"]!!
+                        .jsonArray
+                        .map { it.jsonArray }
+                        .filter { it[0].jsonPrimitive.content == "Email/query" }
+                        .joinToString("") { call ->
+                            val callId = call[2].jsonPrimitive.content
+                            val ids = if ("\"c12\"" in call[1].toString()) "[\"e1\"]" else "[]"
+                            """,["Email/query",{"accountId":"$TEST_ACCOUNT_ID","queryState":"q","position":0,"ids":$ids},"$callId"]"""
+                        }
+
+                """{"sessionState":"s","methodResponses":[
+                  ["InboxTab/changes",{"accountId":"$TEST_ACCOUNT_ID","oldState":"t1",
+                    "newState":"t2","hasMoreChanges":false,
+                    "created":[],"updated":[],"destroyed":[]},"c0"]$calls]}"""
+            }
+
+        repository(transport).refresh(testAccountKey)
+
+        assertEquals(1, transport.requests.count { it.url.endsWith("/jmap/api") })
+        val populated = CategoryDigest(database).populated.first()
+        assertTrue("c12" in populated, populated.toString())
+        assertTrue("c13" !in populated, populated.toString())
+    }
+
+    /** Re-reading the tabs keeps what the server last said, so the sidebar does not jump. */
+    @Test
+    fun `re-reading the tabs keeps what the server said about their mail`() = runTest {
+        database.seedAccount()
+        database.seedTabs(own = listOf("c12" to "Shipping"))
+        database.inboxTabs().setHasMail(StoreKey.objectKey(testAccountKey, "c12"), true)
+
+        MailRepository(database)
+            .replaceInboxTabs(
+                testAccountKey,
+                listOf(
+                    de.plmail.jmap.mail.InboxTab(id = "primary", builtIn = "primary"),
+                    de.plmail.jmap.mail.InboxTab(id = "c12", name = "Shipping", sortOrder = 1),
+                ),
+                state = "t2",
+            )
+
+        assertTrue(
+            database.inboxTabs().forAccount(testAccountKey).single { it.tabId == "c12" }.hasMail
+        )
     }
 
     /** An older server: no request for a method it has never heard of, and the five as before. */

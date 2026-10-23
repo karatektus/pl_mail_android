@@ -47,6 +47,9 @@ import androidx.room.RoomDatabase
  * being harmless, not for skipping it — the schema still changed, and `MigrationTest` compares the
  * entity against the exported description rather than against what the data cost.
  *
+ * Version 11 is `InboxTabEntity.hasMail` (#52), which the next tab refresh asks the server for
+ * again; the drop costs the first page of each list and nothing else.
+ *
  * The exported schemas are still checked in and `MigrationTest` still validates them, because that
  * is what catches an entity and its exported description drifting apart — a drift which, on the day
  * somebody *does* need a real migration, would be written against a schema that was never true.
@@ -71,7 +74,7 @@ import androidx.room.RoomDatabase
             CalendarOccurrenceEntity::class,
             InboxTabEntity::class,
         ],
-    version = 10,
+    version = 11,
     exportSchema = true,
 )
 abstract class PlMailDatabase : RoomDatabase() {

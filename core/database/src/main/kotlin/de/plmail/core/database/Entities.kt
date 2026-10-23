@@ -611,4 +611,13 @@ data class InboxTabEntity(
     /** False for a built-in the reader switched off on the web. Never drawn in the strip. */
     val isEnabled: Boolean = true,
     val sortOrder: Int = 0,
+    /**
+     * Whether the server says this tab holds inbox mail (#52), from an `Email/query` with `limit:
+     * 1` after the tabs were read.
+     *
+     * The sidebar lists a tab while it holds mail, as the web does. The cache alone cannot answer
+     * that: it only holds a tab's conversations once the tab was opened, or once new mail arrived
+     * in it, so a tab filled by a filter on the web was never listed, and so could never be opened.
+     */
+    val hasMail: Boolean = false,
 )
