@@ -782,4 +782,7 @@ interface InboxTabDao {
 
     @Query("DELETE FROM inbox_tabs WHERE accountKey = :accountKey")
     suspend fun deleteForAccount(accountKey: String)
+
+    @Query("UPDATE inbox_tabs SET hasMail = :hasMail WHERE uid = :uid")
+    suspend fun setHasMail(uid: String, hasMail: Boolean)
 }
