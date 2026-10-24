@@ -20,6 +20,7 @@ import androidx.compose.material3.adaptive.navigation.NavigableListDetailPaneSca
 import androidx.compose.material3.adaptive.navigation.rememberListDetailPaneScaffoldNavigator
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -196,22 +197,27 @@ fun MailPane(
                         NothingSelected()
                     } else {
                         // Indices into what Paging has loaded, placeholders included,
-                        // so they are the same indices `threads[i]` takes.
-                        val rows =
-                            threads.itemSnapshotList.map { row ->
-                                row?.let { ActionTarget(it.accountKey, it.threadId) }
+                        // so they are the same indices `threads[i]` takes. Derived
+                        // rather than read here (#34): the snapshot changes with every
+                        // page loaded and every row rewritten, and reading it in this
+                        // composition recomposed the reader for each of those although
+                        // the open row and its neighbours stayed where they were.
+                        val neighbours by
+                            remember(threads, account, thread) {
+                                derivedStateOf {
+                                    neighboursOf(threads.itemSnapshotList, account, thread)
+                                }
                             }
-                        val here = ActionTarget(account, thread)
-                        val nextAt = neighbourIndex(rows, here, next = true)
-                        val previousAt = neighbourIndex(rows, here, next = false)
+                        val nextAt = neighbours?.next
+                        val previousAt = neighbours?.previous
 
                         // Read through LazyPagingItems rather than off the snapshot,
                         // because a read is what tells Paging where the user is. The
                         // list stops reading once the reader covers it, so without
                         // this a run of swipes reaches the last loaded row and stops
                         // there, with more mail on the server than on the device.
-                        val at = rows.indexOf(here)
-                        LaunchedEffect(at) { if (at >= 0) threads[at] }
+                        val at = neighbours?.at
+                        LaunchedEffect(at) { if (at != null) threads[at] }
 
                         // A fresh reader per conversation: its list's scroll offset,
                         // the attachment being saved and its snackbars are about the
