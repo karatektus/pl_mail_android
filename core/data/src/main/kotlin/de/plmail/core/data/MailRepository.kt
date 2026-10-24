@@ -340,6 +340,33 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
     }
 
     /**
+     * Stores the Thread state a page was read at, under [recordEmailState]'s rules: set once, then
+     * moved only by delta sync, and a blank one ignored.
+     */
+    suspend fun recordThreadState(accountKey: String, state: String) {
+        if (state.isBlank()) return
+
+        database.accounts().setThreadStateIfAbsent(accountKey, state)
+    }
+
+    /**
+     * Takes conversations the server destroyed off the device (#59): the rows and every list entry
+     * pointing at them.
+     *
+     * Their messages are not touched here. Each one was either destroyed too, which `Email/changes`
+     * reports and delta sync deletes, or moved into another conversation — a merge — which it
+     * reports as updated and re-fetches under its new thread.
+     */
+    suspend fun forgetThreads(accountKey: String, threadIds: List<String>) {
+        if (threadIds.isEmpty()) return
+
+        database.withTransaction {
+            database.feed().clearThreads(accountKey, threadIds)
+            database.threads().delete(threadIds.map { StoreKey.objectKey(accountKey, it) })
+        }
+    }
+
+    /**
      * Recomputes one conversation's labels from the messages the cache now holds.
      *
      * For the local half of applying a label. `MailActions` writes the binding onto the message

@@ -176,10 +176,13 @@ class AccountPagerTest {
     fun `a page reports the state it was read at, which is what changes resumes from`() = runTest {
         val transport = transport(queryIds = listOf("1"), getOrder = listOf("1"))
 
-        var seen: String? = null
-        pager(transport) { _, _, state -> seen = state }.page(null, emptySet(), 10)
+        var seen: PageStates? = null
+        pager(transport) { _, _, states -> seen = states }.page(null, emptySet(), 10)
 
-        assertEquals("e", seen, "without this there is no cursor and delta sync never runs")
+        assertEquals("e", seen?.email, "without this there is no cursor and delta sync never runs")
+        // And the conversations' own, which is where Thread/changes resumes
+        // from: the only way the phone learns a conversation is gone (#59).
+        assertEquals("t", seen?.thread)
     }
 
     /**
@@ -225,7 +228,7 @@ class AccountPagerTest {
 
     private fun pager(
         transport: RecordingTransport,
-        onPage: suspend (List<Email>, List<MailThread>, String) -> Unit = { _, _, _ -> },
+        onPage: suspend (List<Email>, List<MailThread>, PageStates) -> Unit = { _, _, _ -> },
     ) =
         AccountPager(
             accountKey = "https://nas.local/13",

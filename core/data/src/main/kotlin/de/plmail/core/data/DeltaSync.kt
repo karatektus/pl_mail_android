@@ -7,6 +7,7 @@ import de.plmail.core.datastore.NotifiedMessageStore
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.EmailChanges
 import de.plmail.jmap.methods.EmailGet
+import de.plmail.jmap.methods.ThreadChanges
 import de.plmail.jmap.methods.ThreadGet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.EmailId
@@ -136,7 +137,14 @@ constructor(
         val since = account.emailState ?: return SyncResult.NeedsRepage
 
         return try {
-            val outcome = run(client, AccountId(account.accountId), accountKey, StateToken(since))
+            val outcome =
+                run(
+                    client,
+                    AccountId(account.accountId),
+                    accountKey,
+                    StateToken(since),
+                    account.threadState?.let(::StateToken),
+                )
 
             // The schedule lives on the server now, and `EmailSubmission` is one
             // of the four types push announces -- so this is the path a hold
@@ -157,8 +165,10 @@ constructor(
             outcome
         } catch (resync: JmapError) {
             if (resync.requiresResync) {
-                // The one condition that justifies discarding a cursor.
-                database.accounts().setEmailState(accountKey, null)
+                // The one condition that justifies discarding a cursor. Both,
+                // whichever of the two the server could not answer from: the
+                // re-page that follows records them again from one page.
+                discardCursors(accountKey)
 
                 // Signalled as well as stored. The null cursor is what a list
                 // built *after* this reads; a list already on screen was built
@@ -177,13 +187,28 @@ constructor(
         }
     }
 
+    /**
+     * One account's changes, round by round.
+     *
+     * `Thread/changes` travels in the same request as `Email/changes` (#59), so the common case
+     * still costs one request. It is there for one answer only: the conversations the server
+     * destroyed. `Email/changes` cannot say that — when mail is erased it reports the messages, and
+     * when conversations are merged it reports them as moved — and without it the conversation
+     * stayed in every list it was in, for good. Its created and updated ids need nothing: every
+     * conversation that gains or changes a message arrives through the Emails' hydration.
+     *
+     * Asked only once a page has given [threadSince]. An account paged before the cursor existed
+     * gets one on its next page, and until then syncs as it always did.
+     */
     private suspend fun run(
         client: JmapClient,
         accountId: AccountId,
         accountKey: String,
         since: StateToken,
+        threadSince: StateToken?,
     ): SyncResult {
         var cursor = since
+        var threadCursor = threadSince
         var fetched = 0
         var destroyed = 0
         var rounds = 0
@@ -191,7 +216,10 @@ constructor(
         while (true) {
             val request = RequestBuilder()
             val changes = request.add(EmailChanges(accountId, cursor))
-            val result = client.send(request).result(changes)
+            val threadChanges = threadCursor?.let { request.add(ThreadChanges(accountId, it)) }
+            val results = client.send(request)
+            val result = results.result(changes)
+            val threadResult = threadChanges?.let { results.result(it) }
 
             if (result.destroyed.isNotEmpty()) {
                 database
@@ -203,19 +231,28 @@ constructor(
 
             fetched += hydrate(client, accountId, accountKey, result.changed)
 
+            // After the hydration, so a merge has already re-filed the messages
+            // under the conversation they joined before the one they left goes.
+            threadResult?.let { threads ->
+                mail.forgetThreads(accountKey, threads.destroyed.map { it.value })
+                destroyed += threads.destroyed.size
+            }
+
             cursor = StateToken(result.newState)
+            threadCursor = threadResult?.let { StateToken(it.newState) }
 
             // Written every round rather than at the end: a sync interrupted
             // by the process dying should resume from where it got to, not
             // replay every change it had already applied.
             database.accounts().setEmailState(accountKey, cursor.value)
+            threadCursor?.let { database.accounts().setThreadState(accountKey, it.value) }
 
-            if (!result.hasMoreChanges) break
+            if (!result.hasMoreChanges && threadResult?.hasMoreChanges != true) break
 
             if (++rounds >= MAX_ROUNDS) {
                 // Further than this and a full re-page is cheaper than
                 // continuing to walk the log.
-                database.accounts().setEmailState(accountKey, null)
+                discardCursors(accountKey)
                 repages.repage(accountKey)
 
                 return SyncResult.NeedsRepage
@@ -224,6 +261,11 @@ constructor(
 
         return if (fetched == 0 && destroyed == 0) SyncResult.UpToDate
         else SyncResult.Updated(fetched, destroyed)
+    }
+
+    private suspend fun discardCursors(accountKey: String) {
+        database.accounts().setEmailState(accountKey, null)
+        database.accounts().setThreadState(accountKey, null)
     }
 
     /**
