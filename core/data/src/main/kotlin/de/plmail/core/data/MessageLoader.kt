@@ -4,9 +4,11 @@ import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.EmailGet
+import de.plmail.jmap.methods.ThreadGet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.EmailId
 import de.plmail.jmap.protocol.RequestBuilder
+import de.plmail.jmap.protocol.ThreadId
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.flow.first
@@ -32,11 +34,17 @@ constructor(
 ) {
 
     /**
-     * Downloads the bodies for one conversation, skipping anything already cached.
+     * Downloads one conversation as the server holds it: the messages the device has never seen,
+     * and the bodies of those it has, skipping anything already cached.
      *
-     * Returns silently when there is nothing to do or no connection: the reader shows what it has
-     * either way, and a thread whose bodies are already on disk must not cost a round trip every
-     * time it is opened.
+     * **Every message, not only the cached ones (#62).** A list page is collapsed to one message
+     * per conversation, so a thread paged in from the list arrives as its newest message alone, and
+     * nothing else ever fetched the rest: a conversation of four opened as one, under its last
+     * reply's subject. So the conversation is asked what it holds — one `Thread/get` per open,
+     * which is the price of knowing — and the `Email/get` that follows asks for the members the
+     * device lacks along with the bodies it lacks, or is not sent at all when there are none.
+     *
+     * Returns silently when there is no connection: the reader shows what it has either way.
      */
     suspend fun loadBodies(accountKey: String, threadId: String) {
         val stored = database.emails().inThread(accountKey, threadId)
@@ -72,8 +80,6 @@ constructor(
         // precisely the one being reread.
         if (held.isNotEmpty()) database.emails().touchBodies(held.map { it.uid }, now)
 
-        if (missing.isEmpty()) return
-
         val connection = credentials.connection.first() ?: return
         val account = database.accounts().byUid(accountKey) ?: return
 
@@ -84,12 +90,26 @@ constructor(
                 transport = transports.create(connection.address, connection.pinnedKey),
             )
 
+        val accountId = AccountId(account.accountId)
+
+        val members = RequestBuilder()
+        val threadGet = members.add(ThreadGet(accountId, ids = listOf(ThreadId(threadId))))
+        val threads = client.send(members).result(threadGet).list
+
+        // Null when the server no longer has the conversation -- merged into
+        // another, or erased -- and then the bodies are all there is to fetch.
+        val onServer = threads.firstOrNull()?.emailIds.orEmpty().map { it.value }
+        val known = stored.map { it.emailId }.toSet()
+        val wanted = (missing.map { it.emailId } + onServer.filterNot { it in known }).distinct()
+
+        if (wanted.isEmpty()) return
+
         val request = RequestBuilder()
         val get =
             request.add(
                 EmailGet(
-                    accountId = AccountId(account.accountId),
-                    ids = missing.map { EmailId(it.emailId) },
+                    accountId = accountId,
+                    ids = wanted.map(::EmailId),
                     properties = EmailGet.READER_PROPERTIES,
                     fetchTextBodyValues = true,
                     // NOTE the capitalisation inside EmailGet: fetchHTMLBodyValues.
@@ -102,8 +122,10 @@ constructor(
         val emails = client.send(request).result(get).list
 
         // Through the repository, so bodies and attachments are written the same
-        // way a sync writes them and the thread summary is recomputed once.
-        mail.storeEmails(accountKey, emails, fetchedAt = now)
+        // way a sync writes them and the thread summary is recomputed once --
+        // with the conversation as the server just described it, so its row
+        // counts the messages that have only now arrived.
+        mail.storeEmails(accountKey, emails, threads, fetchedAt = now)
 
         // A message with neither text nor html stores no body row, so without
         // this it is "missing a body" again the next time the thread is opened --
