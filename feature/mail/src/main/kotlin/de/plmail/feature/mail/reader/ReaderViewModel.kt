@@ -182,6 +182,15 @@ data class ReaderUiState(
      * opens, which reads as a tap that did not register.
      */
     val failure: ReaderFailure? = null,
+    /**
+     * The message the reader starts at: the first one that was unread when the conversation was
+     * first drawn, or null to start at the top (#58).
+     *
+     * Decided once, on the first rebuild that has messages, and carried after that. Reading marks
+     * the message read, and a start recomputed from the next rebuild would move the list on to the
+     * next unread one while the user is reading this one.
+     */
+    val firstUnread: String? = null,
 )
 
 /** One message's RFC822 source, as the sheet shows it. */
@@ -215,8 +224,9 @@ private const val STOP_TIMEOUT_MILLIS = 5_000L
 /**
  * One conversation, opened.
  *
- * The newest message is expanded and the rest are collapsed, because a thread of thirty is a wall
- * of quoted text otherwise and the newest is nearly always the reason it was opened.
+ * The unread messages and the newest are expanded and the rest are collapsed, because a thread of
+ * thirty is a wall of quoted text otherwise, and what arrived since the last visit is the reason it
+ * was opened (#58).
  */
 @HiltViewModel
 class ReaderViewModel
@@ -347,7 +357,7 @@ constructor(
                         email = email,
                         html = body?.htmlBody,
                         text = body?.textBody,
-                        isExpanded = previous?.isExpanded ?: (email.uid == newest?.uid),
+                        isExpanded = startsExpanded(email, newest?.uid, previous?.isExpanded),
                         attachments = mail.attachments(email.uid),
                         remoteImages = previous?.remoteImages ?: RemoteImages.BLOCKED,
                         showOriginal = previous?.showOriginal ?: false,
@@ -391,6 +401,10 @@ constructor(
                 busyAttachments = current.busyAttachments,
                 source = current.source,
                 failure = current.failure,
+                // Decided by the first rebuild with something to show: a
+                // conversation opened from a notification may have nothing
+                // cached, and its first rebuild is the one after the download.
+                firstUnread = startAt(current.messages, messages, current.firstUnread),
             )
         }
 
