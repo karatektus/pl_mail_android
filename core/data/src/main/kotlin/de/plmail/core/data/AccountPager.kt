@@ -31,13 +31,15 @@ class AccountPager(
     /** The list being paged — an inbox, a label, a search. Null pages everything. */
     private val filter: EmailFilter? = null,
     /**
-     * Receives the page, the conversations it belongs to, *and* the Email state it was read at.
+     * Receives the page, the conversations it belongs to, *and* the states it was read at.
      *
-     * The state is what `Email/changes` resumes from, and a page is the only place it can be
-     * learned: `Email/get` reports the state its answer reflects. Without recording it here there
-     * is no cursor, delta sync has nothing to resume from, and every push arrives and does nothing.
+     * The states are what `Email/changes` and `Thread/changes` resume from, and a page is the only
+     * place they can be learned: `Email/get` and `Thread/get` report the state their answer
+     * reflects. Without recording them here there is no cursor, delta sync has nothing to resume
+     * from, and every push arrives and does nothing.
      */
-    private val onPage: suspend (List<Email>, List<MailThread>, String) -> Unit = { _, _, _ -> },
+    private val onPage: suspend (List<Email>, List<MailThread>, PageStates) -> Unit = { _, _, _ ->
+    },
 ) : FeedSource {
 
     override suspend fun page(
@@ -92,7 +94,8 @@ class AccountPager(
         // these are looked up by id when the rows are summarised -- and the ids
         // to order by are the *thread* ids, which this call never asked for
         // directly.
-        onPage(messages, results.result(threads).list, getResult.state)
+        val threadResult = results.result(threads)
+        onPage(messages, threadResult.list, PageStates(getResult.state, threadResult.state))
 
         val rows =
             messages
@@ -147,3 +150,8 @@ class AccountPager(
                 .format(this)
     }
 }
+
+/**
+ * The `Email/get` and `Thread/get` states a page was read at: the cursors delta sync starts from.
+ */
+data class PageStates(val email: String, val thread: String)

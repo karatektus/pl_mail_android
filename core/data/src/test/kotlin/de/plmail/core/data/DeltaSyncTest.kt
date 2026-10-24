@@ -1,9 +1,12 @@
 package de.plmail.core.data
 
 import de.plmail.core.database.PlMailDatabase
+import de.plmail.core.database.StoreKey
 import de.plmail.jmap.client.HttpResponse
 import de.plmail.jmap.testing.RecordingTransport
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -77,6 +80,107 @@ class DeltaSyncTest {
             "and the cursor moved, so the next sync resumes rather than replays",
         )
     }
+
+    /**
+     * #59: a conversation the server destroyed leaves every list it was in.
+     *
+     * `Email/changes` reports the erased message and nothing about its conversation, so before
+     * `Thread/changes` was asked the row stayed in the inbox for good, joined on a thread nothing
+     * would ever delete.
+     */
+    @Test
+    fun `a conversation the server destroyed leaves every list`() = runTest {
+        database.seedAccount(emailState = "s5", threadState = "h5")
+        database.seedInbox()
+        database.seedThread("t1")
+        database.seedThread("t2")
+        database.seedEntry(Feed.UNIFIED_INBOX.id, "t1")
+        database.seedEntry(Feed.UNIFIED_INBOX.id, "t2")
+        database.seedEntry("label.work", "t1")
+
+        val transport = destroying(thread = "t1", email = "10")
+        val result = syncStack(database, transport).sync(testAccountKey)
+
+        assertEquals(SyncResult.Updated(fetched = 0, destroyed = 2), result)
+        assertEquals(
+            listOf("unified.inbox#https://nas.local/13#t2"),
+            database.entryIds(Feed.UNIFIED_INBOX.id),
+        )
+        assertEquals(emptyList(), database.entryIds("label.work"), "from every list, not one")
+        assertNull(database.threads().byUid(StoreKey.objectKey(testAccountKey, "t1")))
+        assertNotNull(database.threads().byUid(StoreKey.objectKey(testAccountKey, "t2")))
+
+        val account = database.accounts().byUid(testAccountKey)
+        assertEquals("s6", account?.emailState)
+        assertEquals("h6", account?.threadState, "and the conversations' cursor moved too")
+        assertEquals(
+            1,
+            transport.requests.count { it.url.endsWith("/jmap/api") },
+            "asked in the same request as Email/changes",
+        )
+    }
+
+    /** No cursor yet: the account was paged before there was one, and syncs as it always did. */
+    @Test
+    fun `without a thread cursor only Email changes is asked`() = runTest {
+        database.seedAccount(emailState = "s5", threadState = null)
+        database.seedInbox()
+        database.seedCursor(Feed.UNIFIED_INBOX.id)
+
+        val transport = arrivingMessage()
+        syncStack(database, transport).sync(testAccountKey)
+
+        val asked = transport.requests.mapNotNull { it.body?.decodeToString() }
+        assertTrue(asked.none { it.contains("Thread/changes") }, asked.toString())
+    }
+
+    /** The conversations' log can run out as the messages' can, and is recovered the same way. */
+    @Test
+    fun `a thread log the server cannot answer from discards both cursors`() = runTest {
+        database.seedAccount(emailState = "s5", threadState = "h5")
+        database.seedInbox()
+
+        val transport = RecordingTransport { request ->
+            val body =
+                if (request.url.endsWith("/.well-known/jmap")) TEST_SESSION
+                else
+                    """
+                    {"sessionState":"s","methodResponses":[
+                      ["Email/changes",
+                       {"accountId":"$TEST_ACCOUNT_ID","oldState":"s5","newState":"s5",
+                        "hasMoreChanges":false,"created":[],"updated":[],"destroyed":[]},"c0"],
+                      ["error",{"type":"cannotCalculateChanges"},"c1"]]}
+                    """
+
+            HttpResponse(200, mapOf("Content-Type" to "application/json"), body.encodeToByteArray())
+        }
+
+        val result = syncStack(database, transport).sync(testAccountKey)
+
+        assertEquals(SyncResult.NeedsRepage, result)
+        val account = database.accounts().byUid(testAccountKey)
+        assertNull(account?.emailState)
+        assertNull(account?.threadState)
+    }
+
+    /** One erased message and the conversation it was the last of, in one answer. */
+    private fun destroying(thread: String, email: String): RecordingTransport =
+        RecordingTransport { request ->
+            val body =
+                if (request.url.endsWith("/.well-known/jmap")) TEST_SESSION
+                else
+                    """
+                {"sessionState":"s","methodResponses":[
+                  ["Email/changes",
+                   {"accountId":"$TEST_ACCOUNT_ID","oldState":"s5","newState":"s6",
+                    "hasMoreChanges":false,"created":[],"updated":[],"destroyed":["$email"]},"c0"],
+                  ["Thread/changes",
+                   {"accountId":"$TEST_ACCOUNT_ID","oldState":"h5","newState":"h6",
+                    "hasMoreChanges":false,"created":[],"updated":[],"destroyed":["$thread"]},"c1"]]}
+                """
+
+            HttpResponse(200, mapOf("Content-Type" to "application/json"), body.encodeToByteArray())
+        }
 
     private val session =
         """

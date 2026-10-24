@@ -436,14 +436,15 @@ constructor(
                 accountId = accountId,
                 client = client,
                 filter = filter,
-                onPage = { emails, threads, state ->
+                onPage = { emails, threads, states ->
                     mail.storeEmails(accountKey, emails, threads, fetchedAt = now())
 
-                    // The cursor delta sync resumes from. Recorded here
-                    // because a page is the only place it is reported, and
-                    // without it every push triggers a sync that finds no
+                    // The cursors delta sync resumes from. Recorded here
+                    // because a page is the only place they are reported, and
+                    // without them every push triggers a sync that finds no
                     // cursor and gives up.
-                    mail.recordEmailState(accountKey, state)
+                    mail.recordEmailState(accountKey, states.email)
+                    mail.recordThreadState(accountKey, states.thread)
                 },
             )
         }

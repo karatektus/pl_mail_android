@@ -76,6 +76,8 @@ internal val inboxLabelKey: String = StoreKey.objectKey(testAccountKey, INBOX_MA
 internal suspend fun PlMailDatabase.seedAccount(
     accountKey: String = testAccountKey,
     emailState: String? = "s5",
+    /** Null by default: a canned transport then has only `Email/changes` to answer. */
+    threadState: String? = null,
 ) {
     accounts()
         .upsert(
@@ -86,6 +88,7 @@ internal suspend fun PlMailDatabase.seedAccount(
                     accountId = TEST_ACCOUNT_ID,
                     name = "someone@example.com",
                     emailState = emailState,
+                    threadState = threadState,
                 )
             )
         )
