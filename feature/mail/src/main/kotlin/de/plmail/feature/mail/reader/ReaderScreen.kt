@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -129,6 +130,24 @@ fun ReaderScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val header by viewModel.header.collectAsStateWithLifecycle()
+
+    // Opens at the first message that was unread (#58), once. The subject row
+    // is item 0, so a message's item is its index plus one. Keyed on the uid,
+    // which the view model decides once per conversation, so a rebuild once
+    // bodies arrive does not pull the list back while it is being read. Only
+    // into this conversation: the view model outlives a swipe, and until it has
+    // opened the next one its state still holds the last.
+    val listState = rememberLazyListState()
+    val firstUnread = state.firstUnread
+    LaunchedEffect(firstUnread) {
+        val at =
+            state.messages.indexOfFirst {
+                it.email.uid == firstUnread &&
+                    it.email.accountKey == accountKey &&
+                    it.email.threadId == threadId
+            }
+        if (at >= 0) listState.scrollToItem(at + 1)
+    }
 
     // The *app's* scheme, never the system's. `isSystemInDarkTheme()` was here
     // and it is wrong in both directions once there are six themes: Nord on a
@@ -241,10 +260,11 @@ fun ReaderScreen(
             },
         ) { insets ->
             LazyColumn(
+                state = listState,
                 modifier =
                     Modifier.fillMaxSize()
                         .padding(insets)
-                        .swipeBetweenConversations(onNext = onNext, onPrevious = onPrevious)
+                        .swipeBetweenConversations(onNext = onNext, onPrevious = onPrevious),
             ) {
                 // The subject, on the page rather than in the bar. In the bar it
                 // had one line between the back arrow and the actions, which on
