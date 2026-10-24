@@ -157,4 +157,25 @@
         <item quantity="one">and 1 more waiting</item>
         <item quantity="other">and %1$d more waiting</item>
     </plurals>
+    <!--
+      End-to-end encryption (#9), in the web app's words where it has them
+      (compose.crypto.* in translations/messages.en.yaml).
+    -->
+    <string name="compose_encrypt">Encrypt message</string>
+    <string name="compose_crypto_on">Encrypted</string>
+    <string name="compose_crypto_off">Not encrypted</string>
+    <string name="compose_crypto_encrypted_hint">This message will be end-to-end encrypted: only you and the people it goes to can read it.</string>
+    <string name="compose_crypto_has_key">plMail has a key for this address, so mail to it can be encrypted.</string>
+    <string name="compose_crypto_has_certificate">plMail has an S/MIME certificate for this address, so mail to it can be encrypted.</string>
+    <string name="compose_crypto_key_changed">A new key for this address is waiting to be accepted in Settings → Encryption. The known key is used until then.</string>
+    <string name="compose_crypto_partial">%1$s cannot be reached encrypted, so this message goes out unencrypted to everybody.</string>
+    <string name="compose_crypto_partial_blocked">%1$s cannot be reached encrypted. Remove them, or switch encryption off for this message.</string>
+    <string name="compose_crypto_missing">There is no key for %1$s. Remove them, or switch encryption off for this message.</string>
+    <string name="compose_crypto_no_own_key">You have no key for this From address, so nothing can be signed or encrypted from it.</string>
+    <string name="compose_crypto_no_keys_here">Your keys are not on this device. Bring them here under Encryption in the menu, or switch encryption off for this message.</string>
+    <string name="compose_crypto_keys_locked">Your keys are locked on this device. Confirm it is you, or switch encryption off for this message.</string>
+    <string name="compose_crypto_unchecked">The recipients\' keys could not be checked, so nothing was sent. Try again.</string>
+    <string name="compose_crypto_original_not_decrypted">The encrypted message could not be decrypted here, so it is not quoted.</string>
+    <string name="compose_crypto_sealed_on_web">This draft was encrypted in the browser, and only a browser where your keys are open can read it.</string>
+    <string name="compose_crypto_draft_not_decrypted">This draft is encrypted, and your keys are not on this device.</string>
 </resources>

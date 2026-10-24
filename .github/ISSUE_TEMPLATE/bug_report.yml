@@ -27,7 +27,7 @@ body:
       id: version
       attributes:
           label: App version
-          description: Android Settings → Apps → plMail, or the release you installed (`v0.0.31`).
+          description: Android Settings → Apps → plMail, or the release you installed (`v0.4.0`).
       validations:
           required: true
     - type: dropdown

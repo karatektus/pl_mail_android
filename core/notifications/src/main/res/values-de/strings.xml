@@ -5,6 +5,7 @@
 
     <string name="notification_you">Ich</string>
     <string name="no_subject">(kein Betreff)</string>
+    <string name="encrypted_message">Verschlüsselte Nachricht</string>
 
     <string name="action_archive">Archivieren</string>
     <string name="action_mark_read">Als gelesen markieren</string>

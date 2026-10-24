@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.ConnectionAttempt
 import de.plmail.core.data.ServerConnector
 import de.plmail.core.datastore.CredentialStore
+import de.plmail.core.datastore.KeyVault
 import de.plmail.core.datastore.ServerConnection
 import de.plmail.jmap.client.Credential
 import de.plmail.jmap.client.PairingInvitation
@@ -35,6 +36,7 @@ class OnboardingViewModel
 constructor(
     private val connector: ServerConnector,
     private val credentials: CredentialStore,
+    private val keys: KeyVault,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(OnboardingUiState())
@@ -44,6 +46,8 @@ constructor(
     private var invitation: PairingInvitation? = null
 
     fun addressChanged(text: String) {
+        if (text != _state.value.address) forgetInvitation()
+
         _state.update {
             it.copy(
                 address = text,
@@ -58,7 +62,26 @@ constructor(
     }
 
     fun appPasswordChanged(text: String) {
-        _state.update { it.copy(appPassword = text.trim(), failure = null) }
+        val password = text.trim()
+        if (password != _state.value.appPassword) forgetInvitation()
+
+        _state.update { it.copy(appPassword = password, failure = null) }
+    }
+
+    /**
+     * Lets the form take over from a scanned invitation (#2).
+     *
+     * A scan fills the address in and connects on its own. When that fails — a code with an address
+     * that does not answer from here, say — the form is what the user turns to, and what they type
+     * is what they mean: kept, the invitation went on winning in [connect], and "Connect" with a
+     * corrected address and a pasted app password tried the scanned address again. Any edit drops
+     * it; scanning again brings a fresh one.
+     */
+    private fun forgetInvitation() {
+        if (invitation == null) return
+
+        invitation = null
+        _state.update { it.copy(isPairing = false) }
     }
 
     /**
@@ -160,6 +183,14 @@ constructor(
         if (step !is OnboardingStep.Confirm) return
 
         viewModelScope.launch {
+            // The keys first. Saving the connection is what moves the app off
+            // this screen, and the scope this runs in goes with it.
+            //
+            // Replaces whatever an earlier pairing left: none, when this one
+            // brought none, because a device paired again may be paired to
+            // somebody else.
+            keys.save(step.server.pairedKeys)
+
             credentials.save(
                 ServerConnection(
                     address = step.server.address,

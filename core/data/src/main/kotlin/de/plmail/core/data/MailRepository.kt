@@ -127,15 +127,21 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
         tabs: List<de.plmail.jmap.mail.InboxTab>,
         state: String?,
     ) {
-        val fresh = tabs.map { it.toEntity(accountKey) }
-
         database.withTransaction {
-            val stale =
-                database.inboxTabs().forAccount(accountKey).map { it.uid } -
-                    fresh.map { it.uid }.toSet()
+            val existing = database.inboxTabs().forAccount(accountKey).associateBy { it.uid }
+
+            // What the server last said about each tab's mail is kept across a
+            // re-read: it is asked again right after, and a tab that blinked out
+            // of the sidebar in between would be a sidebar that jumps (#52).
+            val fresh = tabs.map {
+                it.toEntity(accountKey).let { tab ->
+                    tab.copy(hasMail = existing[tab.uid]?.hasMail ?: false)
+                }
+            }
+            val stale = existing.keys - fresh.map { it.uid }.toSet()
 
             database.inboxTabs().upsert(fresh)
-            database.inboxTabs().delete(stale)
+            database.inboxTabs().delete(stale.toList())
             database.accounts().setInboxTabState(accountKey, state)
         }
     }
@@ -331,6 +337,33 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
         if (state.isBlank()) return
 
         database.accounts().setEmailStateIfAbsent(accountKey, state)
+    }
+
+    /**
+     * Stores the Thread state a page was read at, under [recordEmailState]'s rules: set once, then
+     * moved only by delta sync, and a blank one ignored.
+     */
+    suspend fun recordThreadState(accountKey: String, state: String) {
+        if (state.isBlank()) return
+
+        database.accounts().setThreadStateIfAbsent(accountKey, state)
+    }
+
+    /**
+     * Takes conversations the server destroyed off the device (#59): the rows and every list entry
+     * pointing at them.
+     *
+     * Their messages are not touched here. Each one was either destroyed too, which `Email/changes`
+     * reports and delta sync deletes, or moved into another conversation — a merge — which it
+     * reports as updated and re-fetches under its new thread.
+     */
+    suspend fun forgetThreads(accountKey: String, threadIds: List<String>) {
+        if (threadIds.isEmpty()) return
+
+        database.withTransaction {
+            database.feed().clearThreads(accountKey, threadIds)
+            database.threads().delete(threadIds.map { StoreKey.objectKey(accountKey, it) })
+        }
     }
 
     /**

@@ -24,6 +24,12 @@ data class NewMessage(
     val subject: String?,
     val preview: String,
     val receivedAt: Long,
+    /**
+     * End-to-end encrypted and not readable on the server (#9). The notification then says
+     * "Encrypted message" and nothing else — the documented rule for clients — and offers no reply
+     * from the shade, which could only answer in the clear.
+     */
+    val isEncrypted: Boolean = false,
 )
 
 /**

@@ -43,6 +43,14 @@ object Capability {
      */
     const val INBOX_TABS = "urn:plmail:params:jmap:inboxtabs"
 
+    /**
+     * End-to-end encryption (#9): `Keyring/get`, the `ContactKey` and `DecryptedMail` methods, and
+     * the constants an app needs to open what the browser wrapped — the KDF's info string and the
+     * purpose of every wrapping. Per user at the top level; each account's entry says only whether
+     * the account keeps decrypted copies of encrypted mail.
+     */
+    const val KEYS = "urn:plmail:params:jmap:keys"
+
     /** The usual declaration for a mail request. */
     val USING_MAIL = listOf(CORE, MAIL)
 
@@ -67,6 +75,9 @@ object Capability {
      * declares [USING_MAIL] and does not call these methods at all.
      */
     val USING_INBOX_TABS = listOf(CORE, MAIL, INBOX_TABS)
+
+    /** For `Keyring/get`. Per user like appearance, so no mail capability is involved. */
+    val USING_KEYS = listOf(CORE, KEYS)
 
     /** For `Appearance/get` and `Appearance/set`. Per user, so no mail capability is involved. */
     val USING_APPEARANCE = listOf(CORE, APPEARANCE)

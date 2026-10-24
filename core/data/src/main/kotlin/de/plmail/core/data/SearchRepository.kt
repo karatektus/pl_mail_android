@@ -1,6 +1,7 @@
 package de.plmail.core.data
 
 import androidx.paging.ExperimentalPagingApi
+import androidx.paging.InvalidatingPagingSourceFactory
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -186,6 +187,8 @@ constructor(
 
         _skipped.value = skippedAccounts
 
+        val pages = InvalidatingPagingSourceFactory { database.feed().pagingSource(Feed.SEARCH.id) }
+
         emitAll(
             Pager(
                     config =
@@ -203,8 +206,10 @@ constructor(
                             // The table holds the last query's results, which are
                             // not an answer to this one.
                             cachedRowsAnswerThis = false,
+                            // See FeedMediator.onWritten (#41).
+                            onWritten = pages::invalidate,
                         ),
-                    pagingSourceFactory = { database.feed().pagingSource(Feed.SEARCH.id) },
+                    pagingSourceFactory = pages,
                 )
                 .flow
         )

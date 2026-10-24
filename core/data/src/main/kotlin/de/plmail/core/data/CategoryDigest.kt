@@ -83,6 +83,11 @@ class CategoryDigest @Inject constructor(private val database: PlMailDatabase) {
      * Which tab a conversation holds is [tabKeyOf]'s answer — the reader's own tab where they filed
      * it, Primary for a category they switched off — so a tab is populated on the phone exactly
      * when it is on the web.
+     *
+     * The cache is one half of the answer and the server the other (#52): a tab is also populated
+     * when the server last said it holds inbox mail ([InboxTabEntity.hasMail]). The cache alone
+     * only knows a tab once it was opened or new mail arrived in it, and a tab that is never listed
+     * can never be opened.
      */
     val populated: Flow<Set<String>> =
         combine(database.threads().observeTabPlacements(), tabRows) { rows, tabs ->
@@ -90,7 +95,9 @@ class CategoryDigest @Inject constructor(private val database: PlMailDatabase) {
 
                 rows.mapNotNullTo(mutableSetOf()) {
                     tabKeyOf(it.inboxTab, it.category, placed[it.accountKey])
-                } + MailCategory.PRIMARY.wire
+                } +
+                    tabs.filter { it.isEnabled && it.hasMail }.map { it.tabId } +
+                    MailCategory.PRIMARY.wire
             }
             .distinctUntilChanged()
 

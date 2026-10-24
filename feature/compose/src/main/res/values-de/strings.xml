@@ -93,4 +93,22 @@
         <item quantity="one">und 1 weitere wartet</item>
         <item quantity="other">und %1$d weitere warten</item>
     </plurals>
+    <!-- Ende-zu-Ende-Verschlüsselung (#9), im Wortlaut der Web-App, wo sie einen hat. -->
+    <string name="compose_encrypt">Nachricht verschlüsseln</string>
+    <string name="compose_crypto_on">Verschlüsselt</string>
+    <string name="compose_crypto_off">Nicht verschlüsselt</string>
+    <string name="compose_crypto_encrypted_hint">Diese Nachricht wird Ende-zu-Ende verschlüsselt: Nur du und die Empfänger können sie lesen.</string>
+    <string name="compose_crypto_has_key">plMail kennt einen Schlüssel für diese Adresse, Mails an sie lassen sich also verschlüsseln.</string>
+    <string name="compose_crypto_has_certificate">plMail hat ein S/MIME-Zertifikat für diese Adresse, Mail dorthin lässt sich also verschlüsseln.</string>
+    <string name="compose_crypto_key_changed">Für diese Adresse wartet ein neuer Schlüssel unter Einstellungen → Verschlüsselung darauf, angenommen zu werden. Bis dahin wird der bekannte verwendet.</string>
+    <string name="compose_crypto_partial">%1$s ist nicht verschlüsselt erreichbar, deshalb geht diese Nachricht unverschlüsselt an alle.</string>
+    <string name="compose_crypto_partial_blocked">%1$s ist nicht verschlüsselt erreichbar. Entferne die Adresse oder schalte die Verschlüsselung für diese Nachricht aus.</string>
+    <string name="compose_crypto_missing">Für %1$s gibt es keinen Schlüssel. Entferne die Adresse oder schalte die Verschlüsselung für diese Nachricht aus.</string>
+    <string name="compose_crypto_no_own_key">Für diese Absenderadresse hast du keinen Schlüssel, also lässt sich von ihr aus nichts signieren oder verschlüsseln.</string>
+    <string name="compose_crypto_no_keys_here">Deine Schlüssel sind nicht auf diesem Gerät. Hol sie im Menü unter Verschlüsselung hierher oder schalte die Verschlüsselung für diese Nachricht aus.</string>
+    <string name="compose_crypto_keys_locked">Deine Schlüssel sind auf diesem Gerät gesperrt. Bestätige, dass du es bist, oder schalte die Verschlüsselung für diese Nachricht aus.</string>
+    <string name="compose_crypto_unchecked">Die Schlüssel der Empfänger ließen sich nicht prüfen, deshalb wurde nichts gesendet. Versuche es noch einmal.</string>
+    <string name="compose_crypto_original_not_decrypted">Die verschlüsselte Nachricht ließ sich hier nicht entschlüsseln, deshalb wird sie nicht zitiert.</string>
+    <string name="compose_crypto_sealed_on_web">Dieser Entwurf wurde im Browser verschlüsselt, lesen kann ihn nur ein Browser mit deinen geöffneten Schlüsseln.</string>
+    <string name="compose_crypto_draft_not_decrypted">Dieser Entwurf ist verschlüsselt, und deine Schlüssel sind nicht auf diesem Gerät.</string>
 </resources>

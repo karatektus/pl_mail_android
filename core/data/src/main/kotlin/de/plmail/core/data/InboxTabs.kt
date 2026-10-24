@@ -5,12 +5,19 @@ import de.plmail.core.database.InboxTabEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
 import de.plmail.core.database.ThreadEntity
+import de.plmail.jmap.client.JmapClient
+import de.plmail.jmap.mail.EmailFilter
 import de.plmail.jmap.mail.InboxTab
+import de.plmail.jmap.methods.EmailQuery
+import de.plmail.jmap.methods.EmailQueryResult
 import de.plmail.jmap.methods.InboxTabChanges
 import de.plmail.jmap.methods.InboxTabGet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.Capability
 import de.plmail.jmap.protocol.JmapError
+import de.plmail.jmap.protocol.MailboxId
+import de.plmail.jmap.protocol.MethodHandle
+import de.plmail.jmap.protocol.MethodResults
 import de.plmail.jmap.protocol.RequestBuilder
 import de.plmail.jmap.protocol.StateToken
 import javax.inject.Inject
@@ -236,13 +243,19 @@ constructor(
             try {
                 val request = RequestBuilder(using = Capability.USING_INBOX_TABS)
                 val handle = request.add(InboxTabChanges(accountId, StateToken(since)))
-                val changes = client.send(request).result(handle)
+                // Whether each tab holds mail, in the same request (#52): the
+                // tabs are the cached ones, which is what they still are when
+                // the answer is "nothing changed".
+                val probes = database.addTabProbes(request, accountKey, accountId)
+                val results = client.send(request)
+                val changes = results.result(handle)
 
                 // The common answer, and the reason this asks /changes first: one
                 // request that says "nothing", rather than re-reading every tab
                 // on every push that happened to name the type.
                 if (changes.isEmpty) {
                     database.accounts().setInboxTabState(accountKey, changes.newState)
+                    database.applyTabProbes(results, probes)
                     return
                 }
             } catch (resync: JmapError) {
@@ -258,6 +271,7 @@ constructor(
         val result = client.send(request).result(handle)
 
         mail.replaceInboxTabs(accountKey, result.list, result.state)
+        database.probeInboxTabs(client, accountKey, accountId)
     }
 
     private fun List<InboxTabEntity>.toStrip(): List<MailTab> = filter {
@@ -266,6 +280,69 @@ constructor(
         .sortedBy { it.sortOrder }
         .map { it.toMailTab() }
 }
+
+/**
+ * Asks whether each of an account's enabled tabs holds inbox mail (#52): one `Email/query` per tab,
+ * the conditions its list pages with, `limit: 1`. Primary is not asked; it is always listed.
+ *
+ * Added to [request] so the question can ride along with another one; [applyTabProbes] stores the
+ * answers. At most [MAX_TAB_PROBES], so the request stays inside the call limit a server sets.
+ */
+internal suspend fun PlMailDatabase.addTabProbes(
+    request: RequestBuilder,
+    accountKey: String,
+    accountId: AccountId,
+): Map<String, MethodHandle<EmailQueryResult>> {
+    val inbox =
+        mailboxes().byRole(accountKey, INBOX_ROLE)?.let {
+            EmailFilter.InMailbox(MailboxId(it.mailboxId))
+        }
+
+    return inboxTabs()
+        .forAccount(accountKey)
+        .filter { it.isEnabled && it.tabId != MailCategory.PRIMARY.wire }
+        .take(MAX_TAB_PROBES)
+        .associate { tab ->
+            val inTab = EmailFilter.ThreadInboxTab(tab.tabId)
+            val filter = inbox?.let { EmailFilter.And(listOf(it, inTab)) } ?: inTab
+
+            tab.uid to
+                request.add(
+                    EmailQuery(accountId, filter = filter, limit = 1, collapseThreads = true)
+                )
+        }
+}
+
+/** Stores what [addTabProbes] asked. A query that failed leaves its tab as it was. */
+internal suspend fun PlMailDatabase.applyTabProbes(
+    results: MethodResults,
+    probes: Map<String, MethodHandle<EmailQueryResult>>,
+) {
+    probes.forEach { (uid, handle) ->
+        results.resultOrNull(handle)?.let { inboxTabs().setHasMail(uid, it.ids.isNotEmpty()) }
+    }
+}
+
+/** [addTabProbes] as a request of its own, for after the tabs were read. Never throws. */
+internal suspend fun PlMailDatabase.probeInboxTabs(
+    client: JmapClient,
+    accountKey: String,
+    accountId: AccountId,
+) {
+    runCatching {
+        val request = RequestBuilder(using = Capability.USING_INBOX_TABS)
+        val probes = addTabProbes(request, accountKey, accountId)
+        if (probes.isEmpty()) return
+
+        applyTabProbes(client.send(request), probes)
+    }
+        .onFailure { if (it is kotlinx.coroutines.CancellationException) throw it }
+}
+
+/** One under the 16 calls a request may carry by default: room for the call it rides with. */
+private const val MAX_TAB_PROBES = 15
+
+private const val INBOX_ROLE = "inbox"
 
 internal fun InboxTabEntity.toMailTab(): MailTab =
     MailTab(

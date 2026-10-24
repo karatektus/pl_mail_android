@@ -10,14 +10,20 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.data.ActionOutcome
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.BlobStore
+import de.plmail.core.data.DecryptedContent
+import de.plmail.core.data.DecryptedFiles
+import de.plmail.core.data.DecryptionProblem
+import de.plmail.core.data.DecryptionResult
 import de.plmail.core.data.LabelRepository
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
+import de.plmail.core.data.MessageDecryptor
 import de.plmail.core.data.MessageLoader
 import de.plmail.core.database.AttachmentEntity
 import de.plmail.core.database.EmailEntity
 import de.plmail.core.database.StoreKey
+import de.plmail.crypto.EncryptedMessages
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -36,6 +42,33 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Where decrypting one end-to-end encrypted message stands. */
+sealed interface MessageEncryption {
+    data object Decrypting : MessageEncryption
+
+    data class Opened(val content: DecryptedContent) : MessageEncryption
+
+    data class Failed(val problem: DecryptionProblem) : MessageEncryption
+}
+
+/**
+ * The reader's own uids for the parts of a decrypted message, so they can be told from cached ones.
+ */
+internal object DecryptedParts {
+    private const val PREFIX = "decrypted:"
+
+    fun uid(emailUid: String, index: Int): String = "$PREFIX$index:$emailUid"
+
+    /** The message and part index a [uid] names, or null for an ordinary attachment. */
+    fun parse(uid: String): Pair<String, Int>? {
+        if (!uid.startsWith(PREFIX)) return null
+        val rest = uid.removePrefix(PREFIX)
+        val index = rest.substringBefore(':').toIntOrNull() ?: return null
+
+        return rest.substringAfter(':') to index
+    }
+}
+
 /** One message as the reader shows it. */
 data class ReaderMessage(
     val email: EmailEntity,
@@ -48,6 +81,11 @@ data class ReaderMessage(
     val remoteImages: RemoteImages = RemoteImages.BLOCKED,
     /** Set when the user has asked to see a transformed message as it was sent. */
     val showOriginal: Boolean = false,
+    /**
+     * Where decrypting this message stands, for an end-to-end encrypted one (#9); null for any
+     * other. The decrypted content lives here, in memory, and nowhere else.
+     */
+    val encryption: MessageEncryption? = null,
 ) {
     /**
      * The document to render, or null when there is nothing to render.
@@ -61,8 +99,37 @@ data class ReaderMessage(
      */
     val body: String?
         get() =
-            html?.takeIf { it.isNotBlank() }
-                ?: text?.takeIf { it.isNotBlank() }?.let { "<pre>$it</pre>" }
+            when {
+                // Decrypted HTML is sanitised on the way in (DecryptedHtml) and
+                // plain text escaped, because no server has seen either.
+                encryption is MessageEncryption.Opened -> encryption.content.html
+                email.needsDecryption -> null
+                else ->
+                    html?.takeIf { it.isNotBlank() }
+                        ?: text?.takeIf { it.isNotBlank() }?.let { "<pre>$it</pre>" }
+            }
+
+    /**
+     * The files to list under the body: the server's, or — for a decrypted message — the parts
+     * inside the encryption, as rows the attachment list already knows how to draw. Their uids are
+     * the reader's own ([DecryptedParts]) and never reach the cache.
+     */
+    val shownAttachments: List<AttachmentEntity>
+        get() =
+            (encryption as? MessageEncryption.Opened)?.content?.attachments?.mapIndexed {
+                index,
+                part ->
+                AttachmentEntity(
+                    uid = DecryptedParts.uid(email.uid, index),
+                    emailUid = email.uid,
+                    accountKey = email.accountKey,
+                    partId = index.toString(),
+                    blobId = "",
+                    name = part.name,
+                    type = part.type,
+                    size = part.bytes.size.toLong(),
+                )
+            } ?: attachments
 
     /**
      * Whether a body was ever fetched for this message, as opposed to one that was and is empty.
@@ -115,6 +182,15 @@ data class ReaderUiState(
      * opens, which reads as a tap that did not register.
      */
     val failure: ReaderFailure? = null,
+    /**
+     * The message the reader starts at: the first one that was unread when the conversation was
+     * first drawn, or null to start at the top (#58).
+     *
+     * Decided once, on the first rebuild that has messages, and carried after that. Reading marks
+     * the message read, and a start recomputed from the next rebuild would move the list on to the
+     * next unread one while the user is reading this one.
+     */
+    val firstUnread: String? = null,
 )
 
 /** One message's RFC822 source, as the sheet shows it. */
@@ -148,8 +224,9 @@ private const val STOP_TIMEOUT_MILLIS = 5_000L
 /**
  * One conversation, opened.
  *
- * The newest message is expanded and the rest are collapsed, because a thread of thirty is a wall
- * of quoted text otherwise and the newest is nearly always the reason it was opened.
+ * The unread messages and the newest are expanded and the rest are collapsed, because a thread of
+ * thirty is a wall of quoted text otherwise, and what arrived since the last visit is the reason it
+ * was opened (#58).
  */
 @HiltViewModel
 class ReaderViewModel
@@ -159,6 +236,8 @@ constructor(
     private val actions: MailActions,
     private val loader: MessageLoader,
     private val blobs: BlobStore,
+    private val decryptor: MessageDecryptor,
+    private val decryptedFiles: DecryptedFiles,
     labels: LabelRepository,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -177,6 +256,15 @@ constructor(
 
     /** Which conversation is open, as the key the cache files it under. */
     private val opened = MutableStateFlow<OpenedThread?>(null)
+
+    /**
+     * Decrypted messages and decryptions under way, by message uid (#9).
+     *
+     * Held here, for the life of the reader, and never written down: the documented rule for
+     * clients is that decrypted text does not go to disk unencrypted. Reopening the conversation
+     * decrypts again, from the ciphertext the blob cache does keep.
+     */
+    private val encryptions = mutableMapOf<String, MessageEncryption>()
 
     /**
      * The heading's facts, live — see [ReaderHeaderState] for why this is not part of [state].
@@ -269,12 +357,25 @@ constructor(
                         email = email,
                         html = body?.htmlBody,
                         text = body?.textBody,
-                        isExpanded = previous?.isExpanded ?: (email.uid == newest?.uid),
+                        isExpanded = startsExpanded(email, newest?.uid, previous?.isExpanded),
                         attachments = mail.attachments(email.uid),
                         remoteImages = previous?.remoteImages ?: RemoteImages.BLOCKED,
                         showOriginal = previous?.showOriginal ?: false,
+                        encryption =
+                            if (needsOpening(email, body?.htmlBody, body?.textBody)) {
+                                encryptions[email.uid] ?: MessageEncryption.Decrypting
+                            } else {
+                                null
+                            },
                     )
                 }
+
+        // Another conversation was opened while this one was being read from
+        // disk or downloaded. The load is left to finish -- its bodies land in
+        // the cache, and cancelling would throw away a download the user may
+        // come straight back to -- but it must not draw: the reader would
+        // otherwise switch back to the conversation the user just left.
+        if (opened.value != OpenedThread(accountKey, threadId)) return
 
         _state.update { current ->
             ReaderUiState(
@@ -287,7 +388,9 @@ constructor(
                 // the newest, matching how the list titles a thread: a reply
                 // prefixed "Re:" must not rename the conversation.
                 subject =
-                    subject?.takeIf { it.isNotBlank() } ?: messages.firstOrNull()?.email?.subject,
+                    protectedSubject(messages)
+                        ?: subject?.takeIf { it.isNotBlank() }
+                        ?: messages.firstOrNull()?.email?.subject,
                 messages = messages,
                 isLoading = false,
                 snoozedUntil = thread?.snoozedUntil,
@@ -298,8 +401,83 @@ constructor(
                 busyAttachments = current.busyAttachments,
                 source = current.source,
                 failure = current.failure,
+                // Decided by the first rebuild with something to show: a
+                // conversation opened from a notification may have nothing
+                // cached, and its first rebuild is the one after the download.
+                firstUnread = startAt(current.messages, messages, current.firstUnread),
             )
         }
+
+        messages.filter { it.isExpanded }.forEach(::decryptIfNeeded)
+    }
+
+    /**
+     * The subject a sender protected inside the encryption (RFC 9788), when the conversation's own
+     * is only the placeholder an encrypting client puts outside — `...`, `[...]`, `Encrypted
+     * Message` — as the web app replaces it.
+     */
+    private fun protectedSubject(messages: List<ReaderMessage>): String? {
+        val outer = messages.firstOrNull()?.email?.subject
+        if (!EncryptedMessages.isPlaceholderSubject(outer)) return null
+
+        return messages.firstNotNullOfOrNull {
+            (it.encryption as? MessageEncryption.Opened)?.content?.subject
+        }
+    }
+
+    /**
+     * Decrypts [email] once, in the background, if it is end-to-end encrypted.
+     *
+     * Only when the message is opened, like marking it read: decrypting a whole conversation on the
+     * way in would download every message's source for the ones nobody expands.
+     */
+    private fun decryptIfNeeded(message: ReaderMessage) {
+        val email = message.email
+        if (!needsOpening(email, message.html, message.text)) return
+        if (encryptions[email.uid] != null && encryptions[email.uid] !is MessageEncryption.Failed)
+            return
+
+        encryptions[email.uid] = MessageEncryption.Decrypting
+        updateEncryption(email.uid)
+
+        viewModelScope.launch {
+            val result =
+                when (val outcome = decryptor.open(email)) {
+                    is DecryptionResult.Opened -> MessageEncryption.Opened(outcome.content)
+                    is DecryptionResult.Failed -> MessageEncryption.Failed(outcome.problem)
+                }
+
+            encryptions[email.uid] = result
+            updateEncryption(email.uid)
+        }
+    }
+
+    /** Tries a message that would not open again — after unlocking the keys, or reconnecting. */
+    fun retryDecryption(uid: String) {
+        val message = _state.value.messages.firstOrNull { it.email.uid == uid } ?: return
+        encryptions.remove(uid)
+        decryptIfNeeded(message)
+    }
+
+    private fun updateEncryption(uid: String) {
+        _state.update { current ->
+            val messages =
+                current.messages.map {
+                    if (it.email.uid == uid) it.copy(encryption = encryptions[uid]) else it
+                }
+
+            current.copy(
+                messages = messages,
+                subject = protectedSubject(messages) ?: current.subject,
+            )
+        }
+    }
+
+    override fun onCleared() {
+        // The one place decrypted bytes reach the disk is a file handed to
+        // another app to open; it goes when the reader that made it does.
+        decryptedFiles.clear()
+        encryptions.clear()
     }
 
     /**
@@ -333,6 +511,18 @@ constructor(
         }
     }
 
+    /**
+     * A part of a decrypted message, written out for another app to open, or null for an ordinary
+     * attachment. The bytes come from memory; the file goes when the reader does.
+     */
+    private suspend fun decryptedFile(attachment: AttachmentEntity): java.io.File? {
+        val (emailUid, index) = DecryptedParts.parse(attachment.uid) ?: return null
+        val opened = encryptions[emailUid] as? MessageEncryption.Opened ?: return null
+        val part = opened.content.attachments.getOrNull(index) ?: return null
+
+        return withContext(Dispatchers.IO) { decryptedFiles.write(part) }
+    }
+
     private fun fetch(
         attachment: AttachmentEntity,
         what: FailedAt,
@@ -348,12 +538,13 @@ constructor(
         viewModelScope.launch {
             runCatching {
                 then(
-                    blobs.file(
-                        accountKey = attachment.accountKey,
-                        blobId = attachment.blobId,
-                        name = attachment.name ?: DEFAULT_NAME,
-                        type = attachment.type,
-                    )
+                    decryptedFile(attachment)
+                        ?: blobs.file(
+                            accountKey = attachment.accountKey,
+                            blobId = attachment.blobId,
+                            name = attachment.name ?: DEFAULT_NAME,
+                            type = attachment.type,
+                        )
                 )
             }
                 .onFailure { failure ->
@@ -441,6 +632,10 @@ constructor(
                     }
             )
         }
+
+        _state.value.messages
+            .firstOrNull { it.email.uid == uid && it.isExpanded }
+            ?.let(::decryptIfNeeded)
     }
 
     /** Per message and per session; nothing about this is remembered for the sender yet. */
@@ -538,3 +733,17 @@ constructor(
 
 /** A downloaded file the screen is being asked to hand to another app. */
 data class OpenableFile(val file: java.io.File, val type: String)
+
+/**
+ * Whether a message has to be opened on this device to be read: encrypted end to end (#9), or
+ * S/MIME signed opaquely (#47) — the content inside the signature, where the server keeps no body
+ * for it. The second is known only once the body has been fetched and turned out empty.
+ */
+internal fun needsOpening(email: EmailEntity, html: String?, text: String?): Boolean =
+    email.needsDecryption ||
+        (email.cryptoType == OPAQUE_SIGNED_TYPE &&
+            (html != null || text != null) &&
+            html.isNullOrBlank() &&
+            text.isNullOrBlank())
+
+private const val OPAQUE_SIGNED_TYPE = "smime_signed"

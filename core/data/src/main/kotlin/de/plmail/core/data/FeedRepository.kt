@@ -1,6 +1,7 @@
 package de.plmail.core.data
 
 import androidx.paging.ExperimentalPagingApi
+import androidx.paging.InvalidatingPagingSourceFactory
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
@@ -435,17 +436,22 @@ constructor(
                 accountId = accountId,
                 client = client,
                 filter = filter,
-                onPage = { emails, threads, state ->
+                onPage = { emails, threads, states ->
                     mail.storeEmails(accountKey, emails, threads, fetchedAt = now())
 
-                    // The cursor delta sync resumes from. Recorded here
-                    // because a page is the only place it is reported, and
-                    // without it every push triggers a sync that finds no
+                    // The cursors delta sync resumes from. Recorded here
+                    // because a page is the only place they are reported, and
+                    // without them every push triggers a sync that finds no
                     // cursor and gives up.
-                    mail.recordEmailState(accountKey, state)
+                    mail.recordEmailState(accountKey, states.email)
+                    mail.recordThreadState(accountKey, states.thread)
                 },
             )
         }
+
+        // Invalidated by the mediator after each write, not only by Room: see
+        // FeedMediator.onWritten for the first page this used to lose (#41).
+        val pages = InvalidatingPagingSourceFactory { database.feed().pagingSource(feedId) }
 
         return Pager(
                 config =
@@ -463,8 +469,9 @@ constructor(
                         sources = sources,
                         onFailures = { failed -> _failures.update { failed } },
                         onRowsHeld = { held -> mediatorRowCounts.tryEmit(feedId to held) },
+                        onWritten = pages::invalidate,
                     ),
-                pagingSourceFactory = { database.feed().pagingSource(feedId) },
+                pagingSourceFactory = pages,
             )
             .flow
     }
@@ -548,6 +555,10 @@ constructor(
                     results.resultOrNull(tabs)?.let {
                         mail.replaceInboxTabs(accountKey, it.list, it.state)
                     }
+
+                    // And which of them hold mail, now that both the tabs and
+                    // the Inbox binding are known (#52).
+                    database.probeInboxTabs(client, accountKey, accountId)
                 }
             }
                 // This account just answered two methods, which is the whole of

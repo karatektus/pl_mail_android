@@ -52,6 +52,8 @@ fun MailShell(
     onAppearance: () -> Unit,
     onGestures: () -> Unit,
     onAccounts: () -> Unit,
+    /** End-to-end encryption on this device (#9). */
+    onEncryption: () -> Unit = {},
     /** Null where this install has no calendar. See [LabelSidebar]. */
     onCalendar: (() -> Unit)?,
     onCompose: () -> Unit,
@@ -156,6 +158,10 @@ fun MailShell(
                 onAccounts = {
                     scope.launch { drawer.close() }
                     onAccounts()
+                },
+                onEncryption = {
+                    scope.launch { drawer.close() }
+                    onEncryption()
                 },
                 onCalendar =
                     onCalendar?.let { open ->

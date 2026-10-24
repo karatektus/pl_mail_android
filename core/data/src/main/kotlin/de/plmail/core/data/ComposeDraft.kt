@@ -42,6 +42,21 @@ data class ComposeDraft(
      * recreate-the-draft workaround it was originally added for.
      */
     val savedAttachments: List<StagedAttachment> = emptyList(),
+    /**
+     * Set when the message is to be saved and sent end-to-end encrypted (#9), from this address.
+     *
+     * The composer decides it — by the recipients' keys and the person's choice — and sets it on
+     * the draft it hands over, so the save that follows encrypts exactly what was decided for the
+     * draft it is given.
+     */
+    val sealAs: SealAs? = null,
+    /**
+     * Whether the draft on the server is an encrypted one.
+     *
+     * Such a draft is a message this device built and imported, not fields the server holds, so it
+     * cannot be patched: every save replaces it with a new one and moves the old one to Trash.
+     */
+    val savedSealed: Boolean = false,
 ) {
     /**
      * Whether saving means creating a new message rather than patching the one that exists.

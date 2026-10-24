@@ -8,18 +8,20 @@ import androidx.room.RoomDatabase
 /**
  * The local cache.
  *
- * **Version 9**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
+ * **Version 10**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
  * `labelKeys`; version 3 gave `MailboxEntity` a `color` and `ThreadEntity` a `category`; version 4
  * added the three calendar tables; version 5 gave `IdentityEntity` its `htmlSignature`; version 6
  * gave `ThreadEntity` its `isNew`, version 7 its `isInInbox`, version 8 gave `AccountEntity` the
  * two calendar sync cursors, and version 9 added the reader's inbox tabs — `InboxTabEntity`,
- * `ThreadEntity.inboxTab` and `AccountEntity.inboxTabState`, one bump for the three. Rather than
- * writing a migration each bump deliberately falls through to dropping the database and syncing
- * again — which is exactly what the schema's central constraint was for. Every row here is
- * reconstructible from the server (see `Entities.kt`), so the cost of the drop is one page of mail
- * per list the user opens, and the alternative is the first hand-written migration in a schema
- * designed never to need one, plus a backfill that would have to reconstruct labels by string
- * matching `mailboxIds` against `mailboxes` in SQL.
+ * `ThreadEntity.inboxTab` and `AccountEntity.inboxTabState`, one bump for the three; version 10
+ * gave `EmailEntity` the five end-to-end encryption facts the server publishes and `ThreadEntity`
+ * its `isEncrypted` (#9), one bump for the six, shipped with the app's v0.4.0. Rather than writing
+ * a migration each bump deliberately falls through to dropping the database and syncing again —
+ * which is exactly what the schema's central constraint was for. Every row here is reconstructible
+ * from the server (see `Entities.kt`), so the cost of the drop is one page of mail per list the
+ * user opens, and the alternative is the first hand-written migration in a schema designed never to
+ * need one, plus a backfill that would have to reconstruct labels by string matching `mailboxIds`
+ * against `mailboxes` in SQL.
  *
  * Version 4 is a pure addition and Room could have been given an empty migration for it — three
  * `CREATE TABLE`s and nothing to move. It is a destructive bump anyway, because the value of the
@@ -45,6 +47,9 @@ import androidx.room.RoomDatabase
  * being harmless, not for skipping it — the schema still changed, and `MigrationTest` compares the
  * entity against the exported description rather than against what the data cost.
  *
+ * Version 11 is `InboxTabEntity.hasMail` (#52), which the next tab refresh asks the server for
+ * again; the drop costs the first page of each list and nothing else.
+ *
  * The exported schemas are still checked in and `MigrationTest` still validates them, because that
  * is what catches an entity and its exported description drifting apart — a drift which, on the day
  * somebody *does* need a real migration, would be written against a schema that was never true.
@@ -69,7 +74,7 @@ import androidx.room.RoomDatabase
             CalendarOccurrenceEntity::class,
             InboxTabEntity::class,
         ],
-    version = 9,
+    version = 11,
     exportSchema = true,
 )
 abstract class PlMailDatabase : RoomDatabase() {

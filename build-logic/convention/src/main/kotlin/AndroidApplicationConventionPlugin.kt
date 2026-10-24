@@ -11,7 +11,7 @@ import org.gradle.kotlin.dsl.configure
  * tag matches this string — so the version is a reviewed change in a commit, not a property of
  * whoever typed the tag. Bump this, commit, then tag the commit.
  */
-private const val VERSION_NAME = "0.0.31"
+private const val VERSION_NAME = "0.4.0"
 
 /**
  * versionCode, computed from versionName rather than stored beside it.
@@ -158,6 +158,10 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                     setOf(
                         "/META-INF/{AL2.0,LGPL2.1}",
                         "/META-INF/LICENSE*",
+                        // Build metadata both mime4j jars carry (#9); nothing reads
+                        // it at runtime, and two copies of it fail the merge.
+                        "/META-INF/DEPENDENCIES",
+                        "/META-INF/NOTICE*",
                     )
             }
 

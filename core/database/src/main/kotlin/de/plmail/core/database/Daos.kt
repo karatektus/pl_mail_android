@@ -49,6 +49,14 @@ interface AccountDao {
     @Query("UPDATE accounts SET threadState = :state WHERE uid = :uid")
     suspend fun setThreadState(uid: String, state: String?)
 
+    /**
+     * The first `Thread/changes` cursor an account is given (#59), by the same rule and for the
+     * same reason as [setEmailStateIfAbsent]: a page reports the state it was read at, which is
+     * now, and moving an existing cursor to it would step over every conversation destroyed since.
+     */
+    @Query("UPDATE accounts SET threadState = :state WHERE uid = :uid AND threadState IS NULL")
+    suspend fun setThreadStateIfAbsent(uid: String, state: String)
+
     @Query("UPDATE accounts SET inboxTabState = :state WHERE uid = :uid")
     suspend fun setInboxTabState(uid: String, state: String?)
 
@@ -511,6 +519,13 @@ interface FeedDao {
     @Query("DELETE FROM feed_entries WHERE feedId = :feedId AND accountKey = :accountKey")
     suspend fun clearAccountFromFeed(feedId: String, accountKey: String)
 
+    /**
+     * Drops conversations from every list at once: what a conversation the server destroyed has to
+     * leave behind, wherever it was listed (#59).
+     */
+    @Query("DELETE FROM feed_entries WHERE accountKey = :accountKey AND threadId IN (:threadIds)")
+    suspend fun clearThreads(accountKey: String, threadIds: List<String>)
+
     @Query("SELECT * FROM feed_cursors WHERE feedId = :feedId AND accountKey = :accountKey")
     suspend fun cursor(feedId: String, accountKey: String): FeedCursorEntity?
 
@@ -782,4 +797,7 @@ interface InboxTabDao {
 
     @Query("DELETE FROM inbox_tabs WHERE accountKey = :accountKey")
     suspend fun deleteForAccount(accountKey: String)
+
+    @Query("UPDATE inbox_tabs SET hasMail = :hasMail WHERE uid = :uid")
+    suspend fun setHasMail(uid: String, hasMail: Boolean)
 }

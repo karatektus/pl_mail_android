@@ -49,6 +49,18 @@ class FeedMediator(
      * to a question nobody asked, and it would arrive instantly and look authoritative.
      */
     private val cachedRowsAnswerThis: Boolean = true,
+    /**
+     * Told after every write has committed, so the list re-reads the table (#41).
+     *
+     * Room is meant to do this by itself, and nearly always does: the list's PagingSource observes
+     * the tables it reads. But a source that runs its query just before this commit, and registers
+     * its observer just after it, never hears about the commit, and keeps the empty page it read.
+     * On a first launch after pairing the list then stayed on "Fetching your mail…" with every row
+     * on disk, until the app was restarted. Reproduced on a busy emulator in one pairing out of
+     * three or four. The pager passes an [androidx.paging.InvalidatingPagingSourceFactory]'s
+     * `invalidate` here; it costs one local query per page, which Room would have run anyway.
+     */
+    private val onWritten: () -> Unit = {},
 ) : RemoteMediator<Int, ThreadEntity>() {
 
     private val feed = UnifiedFeed(sources)
@@ -143,6 +155,7 @@ class FeedMediator(
             }
 
             onRowsHeld(held)
+            onWritten()
 
             // Exhaustion comes from the merge, not from the row count: a batch
             // can be short because one account failed while others still have

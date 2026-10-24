@@ -8,6 +8,8 @@ import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -57,44 +59,63 @@ constructor(
      * a settings object with no change log can offer.
      */
     private val appearance: AppearanceRepository,
+    /**
+     * Encrypted mail of accounts that keep a readable copy on the server (#9). Foreground is the
+     * moment the web app does this too (on becoming visible): the catch-up above has just brought
+     * in whatever arrived encrypted while the phone was away.
+     */
+    private val decryptedMail: DecryptedMailKeeper,
     @param:ApplicationScope private val scope: CoroutineScope,
 ) {
 
     private var running: Job? = null
 
     /**
-     * Catches up, and then streams if there is no other channel.
+     * Catches up, and then streams if there is no other channel — for as long as the app is
+     * visible, and for whichever connection is stored while it is.
      *
      * Idempotent by the guard rather than by cancel-and-restart: `ProcessLifecycleOwner` debounces
      * a rotation, but a second caller must not cost a second catch-up sync of every account.
+     *
+     * **Per connection, not once (#43).** A first launch arrives here on the onboarding screen,
+     * before anything is stored: run once, the catch-up found no accounts, the stream found no
+     * connection, and the job ended — so a phone paired a moment later received nothing live until
+     * it had been in the background and back. Following the stored connection starts the work the
+     * moment pairing saves one, and starts it afresh for a different one.
      */
     fun start() {
         if (running?.isActive == true) return
 
-        running = scope.launch {
-            try {
-                // Unconditional, and before the gate is even consulted. This
-                // half is the foreground-resume trigger; the stream is an
-                // optimisation on top of it.
-                deltaSync.syncAll()
+        running = scope.launch { whileConnected(credentials.connection) { catchUpAndStream() } }
+    }
 
-                // After the mail, and swallowing its own failures: the point of
-                // being here is that the app is visible, and re-theming it is
-                // never worth delaying the list that is on screen.
-                appearance.refresh()
+    private suspend fun catchUpAndStream() {
+        try {
+            // Unconditional, and before the gate is even consulted. This
+            // half is the foreground-resume trigger; the stream is an
+            // optimisation on top of it.
+            deltaSync.syncAll()
 
-                if (pushIsSilent()) stream()
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (_: Throwable) {
-                // Swallowed rather than reported, and this is not laziness:
-                // nothing here is an operation the user asked for. The
-                // catch-up records its own per-account failures, which the
-                // diagnostics screen draws, and the stream reconnects on its
-                // own. What an escaping throw would do instead is kill the
-                // process from a scope with no handler, because somebody
-                // unlocked their phone while their NAS was off.
-            }
+            // After the mail, and swallowing its own failures: the point of
+            // being here is that the app is visible, and re-theming it is
+            // never worth delaying the list that is on screen.
+            appearance.refresh()
+
+            // Swallows its own failures, like the appearance above: the list
+            // is already on screen, and this is work nobody is waiting for.
+            decryptedMail.keep()
+
+            if (pushIsSilent()) stream()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            // Swallowed rather than reported, and this is not laziness:
+            // nothing here is an operation the user asked for. The
+            // catch-up records its own per-account failures, which the
+            // diagnostics screen draws, and the stream reconnects on its
+            // own. What an escaping throw would do instead is kill the
+            // process from a scope with no handler, because somebody
+            // unlocked their phone while their NAS was off.
         }
     }
 
@@ -163,4 +184,15 @@ constructor(
             // "push works" and "push works while I am looking at it".
             .collect { pushes.delivered(it.changed, PushDelivery.STREAM) }
     }
+}
+
+/**
+ * Runs [work] while a connection is stored, from the moment one is (#43).
+ *
+ * Restarted for a different connection — pairing again, to another server or as somebody else — and
+ * cancelled when the connection is removed, because a stream on a credential that has just been
+ * thrown away is a stream answering 401 until the app leaves the screen.
+ */
+internal suspend fun <T : Any> whileConnected(connection: Flow<T?>, work: suspend (T) -> Unit) {
+    connection.collectLatest { stored -> if (stored != null) work(stored) }
 }

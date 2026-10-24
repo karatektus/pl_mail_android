@@ -7,6 +7,7 @@ import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
 import de.plmail.core.datastore.AccountPrefsStore
 import de.plmail.core.datastore.CredentialStore
+import de.plmail.core.datastore.KeyVault
 import de.plmail.core.datastore.ServerConnection
 import de.plmail.jmap.client.Credential
 import de.plmail.jmap.client.HttpResponse
@@ -705,14 +706,20 @@ class ComposeRepositoryTest {
             }
 
         val clients = AccountClients(credentials, transports)
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val encryption = EncryptionRepository(clients, KeyVault(InMemoryPreferences(), PlainCipher))
 
         return ComposeRepository(
-            context = ApplicationProvider.getApplicationContext(),
+            context = context,
             database = database,
             clients = clients,
             credentials = credentials,
             mail = MailRepository(database),
             accounts = AccountsRepository(database, prefs, clients, credentials),
+            sealing = OutgoingEncryption(clients, encryption),
+            decryptor =
+                MessageDecryptor(BlobStore(context, database, credentials, transports), encryption),
+            decryptedFiles = DecryptedFiles(context),
         )
     }
 

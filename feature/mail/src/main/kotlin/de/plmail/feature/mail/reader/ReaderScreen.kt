@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -118,10 +119,35 @@ fun ReaderScreen(
     onMove: () -> Unit = {},
     /** Goes to a label's own list, from a chip under the subject. */
     onOpenLabel: (Label) -> Unit = {},
+    /**
+     * Opens the conversation below this one in the list it was opened from, on a swipe left. Null
+     * where there is none, or where this was not opened from a list.
+     */
+    onNext: (() -> Unit)? = null,
+    /** The conversation above, on a swipe right. Null as for [onNext]. */
+    onPrevious: (() -> Unit)? = null,
     viewModel: ReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val header by viewModel.header.collectAsStateWithLifecycle()
+
+    // Opens at the first message that was unread (#58), once. The subject row
+    // is item 0, so a message's item is its index plus one. Keyed on the uid,
+    // which the view model decides once per conversation, so a rebuild once
+    // bodies arrive does not pull the list back while it is being read. Only
+    // into this conversation: the view model outlives a swipe, and until it has
+    // opened the next one its state still holds the last.
+    val listState = rememberLazyListState()
+    val firstUnread = state.firstUnread
+    LaunchedEffect(firstUnread) {
+        val at =
+            state.messages.indexOfFirst {
+                it.email.uid == firstUnread &&
+                    it.email.accountKey == accountKey &&
+                    it.email.threadId == threadId
+            }
+        if (at >= 0) listState.scrollToItem(at + 1)
+    }
 
     // The *app's* scheme, never the system's. `isSystemInDarkTheme()` was here
     // and it is wrong in both directions once there are six themes: Nord on a
@@ -233,7 +259,13 @@ fun ReaderScreen(
                 }
             },
         ) { insets ->
-            LazyColumn(modifier = Modifier.fillMaxSize().padding(insets)) {
+            LazyColumn(
+                state = listState,
+                modifier =
+                    Modifier.fillMaxSize()
+                        .padding(insets)
+                        .swipeBetweenConversations(onNext = onNext, onPrevious = onPrevious),
+            ) {
                 // The subject, on the page rather than in the bar. In the bar it
                 // had one line between the back arrow and the actions, which on
                 // a phone is about twenty characters of a subject that is
@@ -270,6 +302,8 @@ fun ReaderScreen(
                             savePicker.launch(attachment.name ?: DEFAULT_SAVE_NAME)
                         },
                         onShowSource = { viewModel.showSource(message) },
+                        onRetryDecryption = { viewModel.retryDecryption(message.email.uid) },
+                        onSwipe = { next -> (if (next) onNext else onPrevious)?.invoke() },
                     )
                 }
             }
@@ -567,6 +601,8 @@ private fun Message(
     onOpenAttachment: (AttachmentEntity) -> Unit,
     onSaveAttachment: (AttachmentEntity) -> Unit,
     onShowSource: () -> Unit,
+    onRetryDecryption: () -> Unit,
+    onSwipe: (next: Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val body = message.body
@@ -634,7 +670,15 @@ private fun Message(
                 )
                 if (!message.isExpanded) {
                     Text(
-                        text = message.email.preview,
+                        // An encrypted message's preview is blank by design: its
+                        // text is only inside the ciphertext. Saying so beats a
+                        // line that looks like a message with nothing in it.
+                        text =
+                            if (message.email.needsDecryption && message.email.preview.isBlank()) {
+                                stringResource(R.string.crypto_preview)
+                            } else {
+                                message.email.preview
+                            },
                         style = MaterialTheme.typography.bodySmall,
                         color = colors.inkMuted,
                         maxLines = 1,
@@ -659,6 +703,13 @@ private fun Message(
         }
 
         if (!message.isExpanded) return@Column
+
+        CryptoBanner(message = message, onRetry = onRetryDecryption)
+
+        // An encrypted message that has not opened (yet) has nothing else to
+        // show: the banner says why, and the empty-body sentences below would
+        // describe the ciphertext's blank stand-in rather than the mail.
+        if (body == null && message.encryption != null) return@Column
 
         if (body == null) {
             // Two different facts, and telling them apart is the whole point of
@@ -685,7 +736,7 @@ private fun Message(
             // content. An undownloaded message has no attachments to show
             // either way: they arrive with the body.
             Attachments(
-                attachments = message.attachments,
+                attachments = message.shownAttachments,
                 busy = busyAttachments,
                 onOpen = onOpenAttachment,
                 onSave = onSaveAttachment,
@@ -723,13 +774,19 @@ private fun Message(
         // paper reaches the card's edge. Padding here would open a strip of card
         // colour between the two that the sender's own background stops short
         // of -- the band this card exists to remove.
+        // A decrypted message's `cid:` images come out of memory, from inside
+        // the encryption; nothing else in the reader resolves them yet.
+        val inline = (message.encryption as? MessageEncryption.Opened)?.content?.inlineImages
+
         MessageWebView(
             body = body,
             style = style,
             palette = palette,
             remoteImages = message.remoteImages,
             modifier = Modifier.fillMaxWidth(),
+            inlineImage = { cid -> inline?.get(cid)?.let { InlineImage(it.bytes, it.type) } },
             onLink = context::openLink,
+            onSwipe = onSwipe,
         )
 
         // Under the body, which is where the eye arrives after reading: an
@@ -740,7 +797,7 @@ private fun Message(
         // two verbs a thumb apart is a choice the reader was being asked to
         // make between identical options.
         Attachments(
-            attachments = message.attachments,
+            attachments = message.shownAttachments,
             busy = busyAttachments,
             onOpen = onOpenAttachment,
             onSave = onSaveAttachment,

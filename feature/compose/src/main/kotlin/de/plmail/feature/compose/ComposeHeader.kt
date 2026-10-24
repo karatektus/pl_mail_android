@@ -110,6 +110,7 @@ internal fun ComposeHeader(
             label = stringResource(R.string.compose_to),
             addresses = state.draft.to,
             onChanged = onTo,
+            lockOf = state::lockOf,
             suggestions = state.suggestions,
             onQueryChanged = onQueryChanged,
             focusRequester = toField,
@@ -129,6 +130,7 @@ internal fun ComposeHeader(
                 label = stringResource(R.string.compose_cc),
                 addresses = state.draft.cc,
                 onChanged = onCc,
+                lockOf = state::lockOf,
                 suggestions = state.suggestions,
                 onQueryChanged = onQueryChanged,
             )
@@ -137,6 +139,7 @@ internal fun ComposeHeader(
                 label = stringResource(R.string.compose_bcc),
                 addresses = state.draft.bcc,
                 onChanged = onBcc,
+                lockOf = state::lockOf,
                 suggestions = state.suggestions,
                 onQueryChanged = onQueryChanged,
             )

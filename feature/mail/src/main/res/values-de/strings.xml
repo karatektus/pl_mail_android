@@ -23,6 +23,8 @@
     <string name="action_spam">Als Spam markieren</string>
     <string name="undo">Rückgängig</string>
     <string name="reader_back">Zurück zur Liste</string>
+    <string name="reader_next_conversation">Nächste Unterhaltung</string>
+    <string name="reader_previous_conversation">Vorherige Unterhaltung</string>
     <plurals name="archived">
         <item quantity="one">1 Unterhaltung archiviert</item>
         <item quantity="other">%1$d Unterhaltungen archiviert</item>
@@ -70,6 +72,7 @@
     <string name="notifications">Benachrichtigungen</string>
     <string name="diagnostics">Diagnose</string>
     <string name="accounts">Konten</string>
+    <string name="encryption">Verschlüsselung</string>
     <string name="label_new_title">Neues Label</string>
     <string name="label_edit">Label bearbeiten</string>
     <string name="label_edit_title">Label bearbeiten</string>
@@ -206,4 +209,33 @@
     <string name="action_queued">%1$s — hier. Ihr Server erfährt es, sobald er antwortet.</string>
     <string name="action_queued_host">%1$s — hier. %2$s erfährt es, sobald der Server antwortet.</string>
     <string name="link_no_handler">Auf diesem Gerät kann diesen Link nichts öffnen.</string>
+
+    <string name="crypto_preview">Verschlüsselte Nachricht</string>
+    <string name="crypto_encrypted">Ende-zu-Ende verschlüsselt</string>
+    <string name="crypto_encrypted_kept">Verschlüsselt empfangen · auf diesem Server lesbar gespeichert</string>
+    <string name="crypto_decrypting">Wird entschlüsselt …</string>
+    <string name="crypto_retry">Erneut versuchen</string>
+    <string name="crypto_locked">Deine Schlüssel sind auf diesem Gerät gesperrt. Bestätige, dass du es bist, um diese Nachricht zu lesen.</string>
+    <string name="crypto_unlock">Entsperren</string>
+    <string name="crypto_encrypted_smime">Mit S/MIME verschlüsselt</string>
+    <string name="crypto_smime_unreadable">Diese Nachricht ist mit S/MIME für ein Zertifikat verschlüsselt, das plMail hier nicht hat. Importiere es in der Web-App unter Einstellungen → Verschlüsselung und versuche es dann erneut.</string>
+    <string name="crypto_smime_unsupported">Diese Nachricht ist mit einem Verfahren verschlüsselt, das plMail nicht öffnen kann.</string>
+    <string name="crypto_no_keys">Deine Schlüssel sind nicht auf diesem Gerät. Hol sie unter „Verschlüsselung“ im Menü hierher und versuche es dann erneut.</string>
+    <string name="crypto_not_for_these_keys">Diese Nachricht wurde für einen Schlüssel verschlüsselt, den du hier nicht hast.</string>
+    <string name="crypto_no_source">Das Original dieser Nachricht ist nicht verfügbar, darum lässt sie sich nicht entschlüsseln.</string>
+    <string name="crypto_unreachable">Dein Server war nicht erreichbar, um diese Nachricht zu entschlüsseln.</string>
+    <string name="crypto_failed">Diese Nachricht ließ sich nicht entschlüsseln.</string>
+    <string name="crypto_inner_valid">Innerhalb der Verschlüsselung signiert, mit deinem eigenen oder einem verifizierten Schlüssel</string>
+    <string name="crypto_inner_untrusted">Innerhalb der Verschlüsselung signiert — unverändert, aber niemand hat den Schlüssel %1$s bestätigt</string>
+    <string name="crypto_inner_unknown_key">Mit dem Schlüssel %1$s signiert, den plMail noch nicht kennt</string>
+    <string name="crypto_inner_key_changed">Signiert mit dem Schlüssel %1$s — nicht dem, den plMail für diesen Absender kennt</string>
+    <string name="crypto_inner_invalid">Die Signatur in der Nachricht passt nicht</string>
+    <string name="crypto_inner_unchecked">In der Verschlüsselung signiert; die Signatur wurde nicht geprüft</string>
+    <string name="crypto_signed_valid">Signiert, und die Signatur stimmt</string>
+    <string name="crypto_signed_untrusted">Signiert — die Nachricht ist unverändert, aber nichts bestätigt, wer signiert hat</string>
+    <string name="crypto_signed_invalid">Die Signatur passt nicht — die Nachricht wurde verändert oder stammt nicht vom Absender</string>
+    <string name="crypto_signed_unknown_key">Mit einem Schlüssel signiert, den plMail noch nicht kennt</string>
+    <string name="crypto_signed_key_changed">Mit einem anderen Schlüssel signiert als dem, den plMail für diesen Absender kennt</string>
+    <string name="crypto_signed_pending">Signiert — die Signatur wird geprüft …</string>
+    <string name="crypto_signer">Signiert von %1$s</string>
 </resources>

@@ -1,6 +1,7 @@
 package de.plmail.core.data
 
 import de.plmail.core.database.PlMailDatabase
+import de.plmail.jmap.protocol.AccountId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -40,6 +41,12 @@ constructor(
      * Defaulted to nothing for the tests that are about mail and not about tabs.
      */
     private val tabs: InboxTabRefresh = InboxTabRefresh {},
+    /**
+     * Hands the server decrypted copies of mail that arrived encrypted, for accounts that keep them
+     * (#9). Null where nothing needs it — the suites that drive this class are about the mail
+     * cursor, not about end-to-end encryption.
+     */
+    private val decryptedMail: DecryptedMailKeeper? = null,
 ) {
 
     /**
@@ -97,6 +104,11 @@ constructor(
                     // not be fetched now is fetched when the conversation is
                     // opened, which is what happened before this existed at all.
                     runCatching { bodies.prefetch(account.uid) }
+
+                    // Mail that just arrived encrypted, for an account that keeps
+                    // a readable copy on the server (#9). Right away rather than at
+                    // the next periodic sync, so a search a minute later finds it.
+                    runCatching { decryptedMail?.keep(AccountId(account.accountId)) }
                 }
         }
     }

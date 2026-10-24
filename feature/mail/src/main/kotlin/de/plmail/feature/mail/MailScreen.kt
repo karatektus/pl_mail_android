@@ -126,6 +126,12 @@ fun MailScreen(
      */
     onNavigate: (MailView) -> Unit,
     viewModel: MailViewModel = hiltViewModel(),
+    /**
+     * The rows, collected by whoever also needs their order. [MailPane] does: a swipe in the reader
+     * opens the row beside the open one, and two collectors of the same pager would be two copies
+     * of the list that need not agree on what is loaded.
+     */
+    threads: LazyPagingItems<ThreadEntity> = viewModel.threads.collectAsLazyPagingItems(),
 ) {
     // The label this list is browsing, if it is browsing one. A category list is
     // not: the conversations in Promotions carry whatever labels the user put on
@@ -139,7 +145,6 @@ fun MailScreen(
     // somebody's NAS whenever a message was read.
     LaunchedEffect(view.feedId) { viewModel.show(view) }
 
-    val threads = viewModel.threads.collectAsLazyPagingItems()
     val rowsInFeed by viewModel.rowsInFeed.collectAsStateWithLifecycle()
     // The same list the "Label as" sheet is drawn from, and the same list the
     // sidebar orders. A row stores label *keys*, so this is what turns them into
@@ -193,6 +198,9 @@ fun MailScreen(
     LaunchedEffect(view.feedId) {
         if (viewModel.claimStartAtTop(view.feedId)) listState.scrollToItem(0)
     }
+
+    // And it stays there while new mail arrives above the first row (#60).
+    StayAtTopOnArrivals(listState)
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),

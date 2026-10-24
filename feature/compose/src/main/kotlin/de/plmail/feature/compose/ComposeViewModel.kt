@@ -8,13 +8,22 @@ import de.plmail.core.data.CancelOutcome
 import de.plmail.core.data.ComposeDraft
 import de.plmail.core.data.ComposeRepository
 import de.plmail.core.data.ContactSuggestions
+import de.plmail.core.data.DecryptedContent
+import de.plmail.core.data.DecryptionResult
+import de.plmail.core.data.EncryptionBlock
+import de.plmail.core.data.EncryptionMode
+import de.plmail.core.data.EncryptionPlan
+import de.plmail.core.data.RecipientKeys
+import de.plmail.core.data.ReopenedEncryption
 import de.plmail.core.data.ScheduledSend
 import de.plmail.core.data.ScheduledSends
+import de.plmail.core.data.SealAs
 import de.plmail.core.data.SendIdentity
 import de.plmail.core.data.SendQueue
 import de.plmail.core.data.StagedAttachment
 import de.plmail.core.data.including
 import de.plmail.core.data.replySender
+import de.plmail.core.data.withDecrypted
 import de.plmail.jmap.mail.DraftComposer
 import de.plmail.jmap.mail.Email
 import de.plmail.jmap.mail.EmailAddress
@@ -26,6 +35,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
@@ -69,7 +79,12 @@ constructor(
     val state: StateFlow<ComposeUiState> = _state.asStateFlow()
 
     private var autosave: Job? = null
+    private var keyWatch: Job? = null
+    private var opening: Job? = null
     private var opened = false
+
+    /** Set while a send is being decided, so a second tap does not send it twice. */
+    private var handing = false
 
     /**
      * The localised text a reply and a forward are built from.
@@ -91,7 +106,7 @@ constructor(
         opened = true
         this.strings = strings
 
-        viewModelScope.launch {
+        opening = viewModelScope.launch {
             // From the cache first so the From row is never empty, then
             // refreshed. An account added on another device would otherwise be
             // missing from the picker until something else happened to sync.
@@ -120,6 +135,7 @@ constructor(
 
             readSendWindow()
             watchForAutosave()
+            watchRecipientKeys()
         }
     }
 
@@ -171,6 +187,7 @@ constructor(
                             accountKey = identity.accountKey,
                             identityId = identity.identityId,
                             emailId = null,
+                            savedSealed = false,
                             // The blobs belong to the old account too; BlobResolver
                             // filters by account and would refuse them.
                             attachments = draft.attachments.filter { it.uri != null },
@@ -209,12 +226,28 @@ constructor(
     }
 
     /** Drops the quoted original entirely, which is a thing people do on purpose. */
-    fun removeQuote() = _state.update { it.copy(quotedHtml = "") }
+    fun removeQuote() = _state.update { it.copy(quotedHtml = "", isSaved = false) }
 
     fun toggleQuote() = _state.update { it.copy(isQuoteExpanded = !it.isQuoteExpanded) }
 
     /** Sends this one message without a sign-off. The next one is signed again. */
     fun removeSignature() = _state.update { it.copy(signatureHtml = "", isSaved = false) }
+
+    /**
+     * The lock in the app bar (#9): from the automatic choice to the opposite of what it would do,
+     * then between on and off. It does not go back to automatic, as in the web app.
+     */
+    fun toggleEncryption() = _state.update { state ->
+        val next =
+            when (state.encryptionMode) {
+                EncryptionMode.AUTO ->
+                    if (state.encryption.encrypt) EncryptionMode.OFF else EncryptionMode.ON
+                EncryptionMode.ON -> EncryptionMode.OFF
+                EncryptionMode.OFF -> EncryptionMode.ON
+            }
+
+        state.copy(encryptionMode = next, isSaved = false)
+    }
 
     // ------------------------------------------------------------- suggestions
 
@@ -231,12 +264,13 @@ constructor(
     // ------------------------------------------------------------------ actions
 
     /**
-     * Hands the message to the send queue and reports that the screen may close.
+     * Hands the message to the send queue and calls [onHanded] once it has, so the screen closes.
      *
-     * The composer closes immediately and the undo window runs outside it — which is why the queue
-     * owns the work rather than `viewModelScope`, and why nothing here waits for a result.
+     * The composer closes as soon as the message is handed over and the undo window runs outside it
+     * — which is why the queue owns the work rather than `viewModelScope`, and why nothing here
+     * waits for the send itself. What it does wait for is the encryption decision; see [hand].
      */
-    fun send(): Boolean = hand(at = null)
+    fun send(onHanded: () -> Unit) = hand(at = null, onHanded)
 
     /**
      * Hands the message over to be released at [at] rather than now.
@@ -245,23 +279,102 @@ constructor(
      * ceiling is `maxDelayedSend` from the session, and a second copy of the rule in this class
      * would start refusing sends the server would accept the day an instance raised it.
      */
-    fun sendLater(at: Instant): Boolean = hand(at)
+    fun sendLater(at: Instant, onHanded: () -> Unit) = hand(at, onHanded)
 
-    private fun hand(at: Instant?): Boolean {
-        val draft = _state.value.draft
+    /**
+     * Decides, then hands over. The decision is whether the message goes out end-to-end encrypted,
+     * and it is taken again here with the recipients' keys asked for once more — a key found or
+     * accepted since the composer last asked changes it — so [onHanded] closes the screen only once
+     * the message has actually been handed to the queue. A message that is to be encrypted and
+     * cannot be stays open with the reason.
+     */
+    private fun hand(at: Instant?, onHanded: () -> Unit) {
+        if (handing || _state.value.isUnopenable) return
 
-        if (!draft.hasRecipients) {
+        if (!_state.value.draft.hasRecipients) {
             _state.update { it.copy(error = ComposeError.NoRecipients) }
-            return false
+            return
         }
 
-        // Cancelled rather than left to fire: an autosave landing after the
-        // queue has taken over would write the pre-send body over the one being
-        // sent, and on a draft the queue may already have replaced.
-        autosave?.cancel()
-        sendQueue.enqueue(draft.outgoing(_state.value.signatureHtml, _state.value.quotedHtml), at)
+        handing = true
 
-        return true
+        viewModelScope.launch {
+            try {
+                val plan = decide() ?: return@launch
+
+                plan.blocked?.let { block ->
+                    _state.update { it.copy(error = ComposeError.EncryptionBlocked(block)) }
+                    return@launch
+                }
+
+                val state = _state.value
+                val outgoing =
+                    state.draft
+                        .outgoing(state.signatureHtml, state.quotedHtml)
+                        .sealedFor(plan, state.identity)
+                        ?: run {
+                            _state.update {
+                                it.copy(
+                                    error = ComposeError.EncryptionBlocked(EncryptionBlock.NoOwnKey)
+                                )
+                            }
+                            return@launch
+                        }
+
+                // Protected keys are opened here, where the person can be asked,
+                // and not in the queue, which runs after the screen has gone.
+                if (plan.encrypt && !compose.openSigningKeys()) {
+                    _state.update {
+                        it.copy(error = ComposeError.EncryptionBlocked(EncryptionBlock.KeysLocked))
+                    }
+                    return@launch
+                }
+
+                // Cancelled rather than left to fire: an autosave landing after
+                // the queue has taken over would write the pre-send body over
+                // the one being sent, and on a draft the queue may already have
+                // replaced.
+                autosave?.cancel()
+                sendQueue.enqueue(outgoing, at)
+
+                finish()
+                onHanded()
+            } finally {
+                handing = false
+            }
+        }
+    }
+
+    /**
+     * The encryption decision for the message as it stands now, with the recipients' keys asked for
+     * again. Null when they could not be asked and the answer matters — the error then says so.
+     *
+     * Nothing is asked where encryption does not apply: a server without it, or a device without
+     * keys, answered that once already.
+     */
+    private suspend fun decide(): EncryptionPlan? {
+        val state = _state.value
+        if (state.recipientKeys == RecipientKeys.Unavailable) return state.encryption
+
+        val from = state.identity?.email ?: return state.encryption
+        val addresses = (state.draft.to + state.draft.cc + state.draft.bcc).mapNotNull { it.email }
+
+        val keys = runCatching {
+            compose.recipientKeys(
+                state.draft.accountKey,
+                from,
+                addresses,
+                lookUp = state.encryption.pending,
+            )
+        }
+            .getOrElse {
+                _state.update { it.copy(error = ComposeError.KeysUnchecked) }
+                return null
+            }
+
+        _state.update { it.copy(recipientKeys = keys) }
+
+        return _state.value.encryption
     }
 
     /**
@@ -312,14 +425,42 @@ constructor(
         autosave?.cancel()
 
         viewModelScope.launch {
-            if (state.draft.isEmpty(state.quotedHtml)) {
-                runCatching { compose.discard(state.draft) }
-            } else {
-                runCatching {
-                    compose.save(state.draft.outgoing(state.signatureHtml, state.quotedHtml))
+            when {
+                // Saving would put an empty message over the one that could not
+                // be opened.
+                state.isUnopenable -> Unit
+                state.draft.isEmpty(state.quotedHtml) ->
+                    runCatching { compose.discard(state.draft) }
+                else -> {
+                    // An encrypted message that cannot be encrypted right now is
+                    // not saved at all: saving it in the clear is the one thing
+                    // that must not happen to it. What was saved before stays.
+                    val plan = runCatching { decide() }.getOrNull()
+                    val current = _state.value
+
+                    // Nor saved again when nothing changed: each save of an
+                    // encrypted draft is a new import, and the old one goes to
+                    // Trash for nothing.
+                    val unchanged =
+                        plan?.encrypt == true && current.draft.savedSealed && current.isSaved
+
+                    val worthSaving =
+                        plan != null && !(plan.encrypt && plan.blocked != null) && !unchanged
+
+                    // Protected keys are asked for only when there is something to
+                    // save with them, and a person who declines saves nothing.
+                    if (
+                        plan != null && worthSaving && (!plan.encrypt || compose.openSigningKeys())
+                    ) {
+                        current.draft
+                            .outgoing(current.signatureHtml, current.quotedHtml)
+                            .sealedFor(plan, current.identity)
+                            ?.let { runCatching { compose.save(it) } }
+                    }
                 }
             }
 
+            finish()
             onClosed()
         }
     }
@@ -330,11 +471,33 @@ constructor(
 
         viewModelScope.launch {
             runCatching { compose.discard(draft) }
+            finish()
             onDiscarded()
         }
     }
 
     fun dismissError() = _state.update { it.copy(error = null) }
+
+    /**
+     * Puts the composer back to nothing once the message it held has been dealt with — saved,
+     * discarded or handed to the queue.
+     *
+     * On a phone the composer is a screen of the mail activity rather than a destination of its
+     * own, so this ViewModel belongs to the activity and outlives the screen: without this, the
+     * next message written in the same session opened on the last one, and a reply opened as the
+     * previous message because [open] had already run. The guard in [open] is for a configuration
+     * change during one composer, which still keeps everything.
+     */
+    private fun finish() {
+        opening?.cancel()
+        autosave?.cancel()
+        keyWatch?.cancel()
+        opening = null
+        autosave = null
+        keyWatch = null
+        opened = false
+        _state.value = ComposeUiState()
+    }
 
     // ------------------------------------------------------------------ internals
 
@@ -364,7 +527,7 @@ constructor(
     }
 
     private suspend fun startReply(identities: List<SendIdentity>, request: ComposeRequest.Reply) {
-        val original =
+        val fetched =
             compose.original(request.accountKey, request.emailId)
                 ?: run {
                     _state.update {
@@ -372,6 +535,8 @@ constructor(
                     }
                     return
                 }
+
+        val (original, _) = quotable(request.accountKey, fetched)
 
         // Answering from the address the mail was sent to, which the server
         // names -- an alias, or an address at a catch-all domain that is in
@@ -425,7 +590,7 @@ constructor(
         identities: List<SendIdentity>,
         request: ComposeRequest.Forward,
     ) {
-        val original =
+        val fetched =
             compose.original(request.accountKey, request.emailId)
                 ?: run {
                     _state.update {
@@ -433,6 +598,8 @@ constructor(
                     }
                     return
                 }
+
+        val (original, decrypted) = quotable(request.accountKey, fetched)
 
         // The same sender a reply would have: a forward of mail that came in
         // for an alias goes out from that alias, as it does in the browser.
@@ -455,13 +622,40 @@ constructor(
                         subject = composed.subject.orEmpty(),
                         // The original's own files travel with the forward, by
                         // blob id -- nothing is downloaded to the phone and
-                        // re-uploaded to the server it came from.
-                        attachments = original.attachments.toStagedAttachments(),
+                        // re-uploaded to the server it came from. Those of an
+                        // encrypted original are inside its ciphertext, so they
+                        // come from what was decrypted.
+                        attachments =
+                            decrypted?.attachments?.map(compose::outgoingAttachment)
+                                ?: original.attachments.toStagedAttachments(),
                     ),
                 signatureHtml = identity.htmlSignature,
                 quotedHtml = composed.quotedHtml,
                 isLoading = false,
             )
+        }
+    }
+
+    /**
+     * [original] as a reply or forward can quote it (#9): decrypted when it is end-to-end
+     * encrypted, with what was decrypted beside it. An answer to encrypted mail is encrypted, as in
+     * the web app, so the mode is set to on here — and stays on when the original would not open,
+     * because the answer is still to somebody who wrote encrypted.
+     */
+    private suspend fun quotable(
+        accountKey: String,
+        original: Email,
+    ): Pair<Email, DecryptedContent?> {
+        if (!original.needsDecryption) return original to null
+
+        _state.update { it.copy(encryptionMode = EncryptionMode.ON) }
+
+        return when (val result = compose.decrypted(accountKey, original)) {
+            is DecryptionResult.Opened -> original.withDecrypted(result.content) to result.content
+            is DecryptionResult.Failed -> {
+                _state.update { it.copy(error = ComposeError.OriginalNotDecrypted) }
+                original to null
+            }
         }
     }
 
@@ -543,10 +737,25 @@ constructor(
         val (typed, signature) = Signatures.split(reopened.draft.bodyHtml)
         val draft = reopened.draft.copy(bodyHtml = typed)
 
+        val encryption = reopened.encryption
+        val unopenable =
+            encryption == ReopenedEncryption.UNREADABLE ||
+                encryption == ReopenedEncryption.SEALED_ON_WEB
+
         _state.update {
             it.copy(
                 draft = draft,
                 signatureHtml = signature.orEmpty(),
+                encryptionMode =
+                    if (encryption == ReopenedEncryption.OPENED) EncryptionMode.ON
+                    else it.encryptionMode,
+                isUnopenable = unopenable,
+                error =
+                    when (encryption) {
+                        ReopenedEncryption.SEALED_ON_WEB -> ComposeError.SealedOnWeb
+                        ReopenedEncryption.UNREADABLE -> ComposeError.DraftNotDecrypted
+                        else -> it.error
+                    },
                 // A draft on a catch-all address names an identity the list
                 // does not have; without its row the From line would read
                 // "unknown" over a draft that is perfectly sendable.
@@ -595,11 +804,26 @@ constructor(
     private fun watchForAutosave() {
         autosave = viewModelScope.launch {
             _state
-                .map { Triple(it.draft, it.signatureHtml, it.quotedHtml) }
+                .map {
+                    Autosave(
+                        it.draft,
+                        it.signatureHtml,
+                        it.quotedHtml,
+                        it.encryption,
+                        it.isUnopenable,
+                    )
+                }
                 .distinctUntilChanged()
                 .debounce(AUTOSAVE_DELAY_MS)
-                .collect { (draft, signature, quote) ->
-                    if (draft.isEmpty(quote)) return@collect
+                .collect { (draft, signature, quote, encryption, unopenable) ->
+                    if (unopenable || draft.isEmpty(quote)) return@collect
+
+                    // An encrypted message is saved when the composer closes or
+                    // sends, not as it is typed: each save is a new import that
+                    // leaves the last one in Trash. And while the recipients'
+                    // keys are still being asked about, nobody knows yet whether
+                    // a save in the clear would be one it must not get.
+                    if (encryption.encrypt || encryption.pending) return@collect
 
                     runCatching { compose.save(draft.outgoing(signature, quote)) }
                         .onSuccess { saved ->
@@ -620,6 +844,7 @@ constructor(
                                                     it.draft.attachments
                                                 },
                                             savedAttachments = saved.savedAttachments,
+                                            savedSealed = saved.savedSealed,
                                         ),
                                     isSaved = true,
                                     error = null,
@@ -640,10 +865,64 @@ constructor(
         }
     }
 
+    /**
+     * Asks the server about the recipients' keys as they are added (#9), so the chips can show a
+     * lock and the composer knows whether the message will be encrypted before Send is tapped.
+     *
+     * With `lookup`, so the server searches WKD and the key servers for an address it holds no key
+     * for. It does that once per address and caches the answer, so asking about the whole list
+     * again when one address is added costs it nothing for the others.
+     */
+    private fun watchRecipientKeys() {
+        keyWatch = viewModelScope.launch {
+            _state
+                .map { state ->
+                    Triple(
+                        state.draft.accountKey,
+                        state.identity?.email,
+                        (state.draft.to + state.draft.cc + state.draft.bcc)
+                            .mapNotNull { it.email?.trim()?.lowercase() }
+                            .distinct()
+                            .sorted(),
+                    )
+                }
+                .distinctUntilChanged()
+                .debounce(KEY_LOOKUP_DELAY_MS)
+                .collectLatest { (accountKey, from, addresses) ->
+                    if (from == null) return@collectLatest
+
+                    runCatching {
+                        compose.recipientKeys(accountKey, from, addresses, lookUp = true)
+                    }
+                        .onSuccess { keys -> _state.update { it.copy(recipientKeys = keys) } }
+                }
+        }
+    }
+
+    private data class Autosave(
+        val draft: ComposeDraft,
+        val signature: String,
+        val quote: String,
+        val encryption: EncryptionPlan,
+        val unopenable: Boolean,
+    )
+
     private companion object {
         const val AUTOSAVE_DELAY_MS = 3_000L
+        const val KEY_LOOKUP_DELAY_MS = 500L
     }
 }
+
+/**
+ * The draft as the queue is handed it: marked to be encrypted, from the sending address, when
+ * [plan] says so. Null when it is to be encrypted and there is no sending address to do it from.
+ */
+internal fun ComposeDraft.sealedFor(plan: EncryptionPlan, identity: SendIdentity?): ComposeDraft? =
+    when {
+        !plan.encrypt -> copy(sealAs = null)
+        identity == null -> null
+        else -> copy(sealAs = SealAs(identity.email, identity.name, plan.scheme))
+    }
 
 /**
  * A share as the draft it opens.
