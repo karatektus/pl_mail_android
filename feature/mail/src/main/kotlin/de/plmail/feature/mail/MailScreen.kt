@@ -199,6 +199,9 @@ fun MailScreen(
         if (viewModel.claimStartAtTop(view.feedId)) listState.scrollToItem(0)
     }
 
+    // And it stays there while new mail arrives above the first row (#60).
+    StayAtTopOnArrivals(listState)
+
     Scaffold(
         modifier = Modifier.fillMaxSize(),
         floatingActionButton = {
