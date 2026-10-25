@@ -37,9 +37,10 @@ class LauncherIconResolutionTest {
         // Both present: the paint is the newer statement of the same choice.
         assertEquals(icon("pl", "ember"), LauncherIcon.resolve("pl", "ember", "ocean"))
 
-        // The mark has no design of its own apart from the default colourway,
-        // so its `original` is the default alias rather than a second copy of it.
-        assertEquals(LauncherIcon.Default, LauncherIcon.resolve("pl", "original", "ocean"))
+        // The mark has no design of its own apart from berry, so its `original`
+        // is the berry alias rather than a second copy of it -- and not the
+        // product default, which is a different icon.
+        assertEquals(icon("pl", "berry"), LauncherIcon.resolve("pl", "original", "ocean"))
     }
 
     @Test
@@ -63,30 +64,37 @@ class LauncherIconResolutionTest {
         // A server newer than this build. The choice was a real icon; there is
         // no drawable for it in this APK, and the logo is the nearest thing.
         assertEquals(icon("pl", "ocean"), LauncherIcon.resolve("carrier-pigeon", "ocean", null))
-        assertEquals(LauncherIcon.Default, LauncherIcon.resolve("carrier-pigeon", "original", null))
-        assertEquals(LauncherIcon.Default, LauncherIcon.resolve("", null, null))
+        assertEquals(icon("pl", "berry"), LauncherIcon.resolve("carrier-pigeon", "original", null))
+        assertEquals(icon("pl", "berry"), LauncherIcon.resolve("", null, null))
     }
 
     @Test
-    fun `a paint this build has never heard of is the motif's own design, or the default`() {
+    fun `a paint this build has never heard of is the motif's own design`() {
         assertEquals(icon("mailbox", "original"), LauncherIcon.resolve("mailbox", "seafoam", null))
+        assertEquals(LauncherIcon.Default, LauncherIcon.resolve("wax-seal", "seafoam", null))
 
-        // The pl mark keeps today's answer: an unknown colourway is berry.
-        assertEquals(LauncherIcon.Default, LauncherIcon.resolve("pl", "seafoam", null))
-        assertEquals(LauncherIcon.Default, LauncherIcon.resolve(null, null, "seafoam"))
-        assertEquals(LauncherIcon.Default, LauncherIcon.resolve(null, "OCEAN", null))
+        // The pl mark keeps the answer it always had: an unknown colourway is
+        // berry. The user chose the pl mark, and the seal is not it.
+        assertEquals(icon("pl", "berry"), LauncherIcon.resolve("pl", "seafoam", null))
+        assertEquals(icon("pl", "berry"), LauncherIcon.resolve(null, null, "seafoam"))
+        assertEquals(icon("pl", "berry"), LauncherIcon.resolve(null, "OCEAN", null))
     }
 
     @Test
     fun `a server that sends none of the three leaves the default in place`() {
         // The case an install is in before its first read, and on a server too
-        // old for any of this. The default is the product's: the pl mark in
-        // berry, on the alias the manifest enables.
+        // old for any of this. The default is the product's: the wax seal in its
+        // own colours, LogoMotif::DEFAULT on the server, on the alias the
+        // manifest enables.
         assertEquals(LauncherIcon.Default, LauncherIcon.resolve(null, null, null))
         assertEquals(
-            LauncherIcon("pl", "berry", "de.plmail.LogoLauncherBerry"),
+            LauncherIcon("wax-seal", "original", "de.plmail.LogoLauncherWaxSealOriginal"),
             LauncherIcon.Default,
         )
+
+        // And a current server publishing that default resolves to the same alias.
+        assertEquals(LauncherIcon.Default, LauncherIcon.resolve("wax-seal", null, "berry"))
+        assertEquals(LauncherIcon.Default, LauncherIcon.resolve("wax-seal", "original", "berry"))
     }
 
     @Test

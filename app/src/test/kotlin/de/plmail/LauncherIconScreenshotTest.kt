@@ -91,9 +91,25 @@ class LauncherIconScreenshotTest {
 
     @get:Rule val compose = createComposeRule()
 
+    /** The default: the wax seal in its own colours, on the tile the table gives it. */
     @Test
     fun mail() {
-        capture("icon-mail", R.drawable.ic_launcher_foreground)
+        capture(
+            "icon-mail",
+            R.drawable.ic_launcher_foreground,
+            colour = R.color.ic_launcher_default_background,
+        )
+    }
+
+    /**
+     * The pl mark in berry, the default until v0.4.1 and now generated like every other paint.
+     *
+     * Its baseline is the one `icon-mail` had when this was the committed default, unchanged: the
+     * proof that the phones still wearing it see the same icon after the update.
+     */
+    @Test
+    fun `mail in berry`() {
+        capture("icon-mail-berry", R.drawable.ic_launcher_pl_berry_foreground)
     }
 
     @Test
@@ -166,6 +182,16 @@ class LauncherIconScreenshotTest {
         capture(
             "icon-monochrome",
             R.drawable.ic_launcher_monochrome,
+            background = Color(0xFFE0E0E0),
+        )
+    }
+
+    /** The default's themed layer, which a themed home screen shows instead of the seal. */
+    @Test
+    fun `monochrome wax seal`() {
+        capture(
+            "icon-monochrome-wax-seal",
+            R.drawable.ic_launcher_wax_seal_monochrome,
             background = Color(0xFFE0E0E0),
         )
     }

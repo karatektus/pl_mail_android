@@ -157,8 +157,8 @@ class LauncherIconManifestTest {
             // roundIcon as well as icon, pointed at the same drawable. Left
             // undeclared it would inherit the application's, which is the
             // *default* icon -- so a launcher that asks for the round icon would
-            // show the pl mark in berry whatever the user had chosen, and only on
-            // that launcher.
+            // show the wax seal whatever the user had chosen, and only on that
+            // launcher.
             assertEquals(icon, alias.android("roundIcon"), name)
         }
     }

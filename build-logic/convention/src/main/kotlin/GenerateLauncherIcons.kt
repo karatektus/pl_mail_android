@@ -39,8 +39,8 @@ abstract class GenerateLauncherIcons : DefaultTask() {
     abstract val motifs: DirectoryProperty
 
     /**
-     * The committed default icon, read only to prove the pl template still draws the same mark. See
-     * [LauncherIconMatrix.sameDrawing].
+     * The committed default icon, read only to prove the default motif's template still draws the
+     * same thing. See [LauncherIconMatrix.sameDrawing].
      */
     @get:InputFile
     @get:PathSensitive(PathSensitivity.NONE)
@@ -86,10 +86,21 @@ abstract class GenerateLauncherIcons : DefaultTask() {
                 check(matrix.sameDrawing(defaultForeground.get().asFile.readText(), painted)) {
                     "${defaultForeground.get().asFile.name} (the default icon) and " +
                         "${template.name} painted ${LauncherIconMatrix.DEFAULT_PAINT} no longer " +
-                        "draw the same mark. The default alias wears the first and every other " +
-                        "colourway of the mark is painted from the second, so a phone switching " +
-                        "between them would see the letters change. Edit them together."
+                        "draw the same thing. The default alias wears the first and every other " +
+                        "paint of the motif is drawn from the second, so a phone switching " +
+                        "between them would see the icon itself change. Edit them together."
                 }
+
+                // The default's tile, from the table rather than a committed copy of the hex:
+                // `mipmap-anydpi/ic_launcher.xml` names this colour, so the application's own icon
+                // cannot sit on a different tile from the one every other paint of it is drawn on.
+                val tile =
+                    motif.paints.getValue(LauncherIconMatrix.DEFAULT_PAINT).getValue("background")
+                check(tile is LauncherIconMatrix.Paint.Solid) {
+                    "${motif.wire}/${LauncherIconMatrix.DEFAULT_PAINT} has no solid background; " +
+                        "the committed default icon names a colour, not a drawable"
+                }
+                colours["ic_launcher_default_background"] = tile.hex
             }
 
             for (icon in icons.filter { it.motif == motif.wire && !it.isDefault }) {
@@ -183,12 +194,13 @@ abstract class GenerateLauncherIcons : DefaultTask() {
      *
      * A themed icon is a silhouette the platform tints from the wallpaper, so a paint has nothing
      * to say to it: every colourway of one motif is the same shape. The pl mark keeps the committed
-     * `ic_launcher_monochrome` it has always had; the others are committed beside it as
-     * `ic_launcher_<motif>_monochrome`. Not checked here — aapt2 fails the link on a reference to a
-     * drawable that does not exist, which is the same check made by the tool whose job it is.
+     * `ic_launcher_monochrome` it had when it was the only motif; the others are committed beside
+     * it as `ic_launcher_<motif>_monochrome`. Not checked here — aapt2 fails the link on a
+     * reference to a drawable that does not exist, which is the same check made by the tool whose
+     * job it is.
      */
     private fun monochrome(motif: String): String =
-        if (motif == LauncherIconMatrix.DEFAULT_MOTIF) "@drawable/ic_launcher_monochrome"
+        if (motif == LauncherIconMatrix.PL) "@drawable/ic_launcher_monochrome"
         else "@drawable/ic_launcher_${motif.replace('-', '_')}_monochrome"
 
     private fun header(what: String): String =

@@ -42,9 +42,22 @@ import org.xml.sax.InputSource
  */
 internal object LauncherIconMatrix {
 
-    /** The product default, and the only launcher entry a fresh install has. */
-    const val DEFAULT_MOTIF = "pl"
-    const val DEFAULT_PAINT = "berry"
+    /**
+     * The product default, and the only launcher entry a fresh install has: the wax seal in its own
+     * colours, which is the server's `LogoMotif::DEFAULT` and what the web's icons and favicon
+     * wear.
+     */
+    const val DEFAULT_MOTIF = "wax-seal"
+    const val DEFAULT_PAINT = "original"
+
+    /**
+     * The pl mark, the product's logo and the only motif there was before the others. Its aliases
+     * keep the names they had then — see [alias] — and its `original` is [PL_OWN_PAINT].
+     */
+    const val PL = "pl"
+
+    /** What the pl mark looked like before there was a choice, and so what its `original` is. */
+    const val PL_OWN_PAINT = "berry"
 
     /** Every motif's own design. The pl mark has none of its own — see [icons]. */
     const val ORIGINAL = "original"
@@ -123,18 +136,24 @@ internal object LauncherIconMatrix {
 
         val default = motifs.singleOrNull { it.wire == DEFAULT_MOTIF }
         checkNotNull(default) { "$file has no '$DEFAULT_MOTIF' motif; it is the product default" }
+        check(DEFAULT_PAINT in default.paints) {
+            "$file has no $DEFAULT_MOTIF/$DEFAULT_PAINT; it is the product default"
+        }
 
-        // The pl mark's "original" is the default colourway, not a design of its own: berry is
-        // what the mark looked like before there was a choice. So `pl` + `original` resolves to
-        // the berry alias rather than getting a second one that would have to look the same.
-        // Asserted rather than assumed, because the resolver in the app relies on it.
-        check(default.paints[ORIGINAL] == default.paints[DEFAULT_PAINT]) {
-            "$DEFAULT_MOTIF/$ORIGINAL and $DEFAULT_MOTIF/$DEFAULT_PAINT differ in the table, " +
+        val pl = motifs.singleOrNull { it.wire == PL }
+        checkNotNull(pl) { "$file has no '$PL' motif; installed phones have its aliases enabled" }
+
+        // The pl mark's "original" is a colourway, not a design of its own: berry is what the mark
+        // looked like before there was a choice. So `pl` + `original` resolves to the berry alias
+        // rather than getting a second one that would have to look the same. Asserted rather than
+        // assumed, because the resolver in the app relies on it.
+        check(pl.paints[ORIGINAL] == pl.paints[PL_OWN_PAINT]) {
+            "$PL/$ORIGINAL and $PL/$PL_OWN_PAINT differ in the table, " +
                 "but the app resolves the one to the other"
         }
 
         motifs
-            .filter { it.wire != DEFAULT_MOTIF }
+            .filter { it.wire != PL }
             .forEach { check(ORIGINAL in it.paints) { "${it.wire} has no '$ORIGINAL' paint" } }
 
         return motifs
@@ -169,7 +188,7 @@ internal object LauncherIconMatrix {
     fun icons(motifs: List<Motif>, namespace: String): List<Icon> {
         val icons = motifs.flatMap { motif ->
             motif.paints.keys
-                .filterNot { motif.wire == DEFAULT_MOTIF && it == ORIGINAL }
+                .filterNot { motif.wire == PL && it == ORIGINAL }
                 .map { paint -> Icon(motif.wire, paint, alias(namespace, motif.wire, paint)) }
         }
 
@@ -195,9 +214,7 @@ internal object LauncherIconMatrix {
      * `LauncherIcon` in the app for what getting that backwards costs.
      */
     fun alias(namespace: String, motif: String, paint: String): String =
-        "$namespace.LogoLauncher" +
-            (if (motif == DEFAULT_MOTIF) "" else motif.pascal()) +
-            paint.pascal()
+        "$namespace.LogoLauncher" + (if (motif == PL) "" else motif.pascal()) + paint.pascal()
 
     // ------------------------------------------------------------------ painting
 
@@ -317,14 +334,14 @@ internal object LauncherIconMatrix {
     // ---------------------------------------------------------- the default's guard
 
     /**
-     * Whether the committed default icon and the pl template, painted in the default colourway, are
-     * the same drawing.
+     * Whether the committed default icon and the default motif's template, painted in the default
+     * paint, are the same drawing.
      *
      * They have to be, and there are two copies. `ic_launcher_foreground.xml` is the application's
-     * own icon and what the default alias wears; `motif/pl.xml` is what the other thirty-one
-     * colourways of the mark are painted from. If the two ever drew different letters, a phone
-     * switching from berry to ocean would see the mark itself change, not just its colour — so the
-     * build compares them, stroke by stroke, rather than trusting them to have been edited
+     * own icon and what the default alias wears; `motif/wax-seal.xml` is what the seal's other
+     * thirty-two paints are drawn from. If the two ever drew different shapes, a phone switching
+     * from the seal's own colours to ocean would see the seal itself change, not just its colour —
+     * so the build compares them, stroke by stroke, rather than trusting them to have been edited
      * together.
      */
     fun sameDrawing(committed: String, painted: String): Boolean =

@@ -12,8 +12,9 @@
   silhouette in whatever the user's wallpaper produced, so any colour written
   here is thrown away. Black is the convention for "the shape, no paint".
 
-  Geometry, scale and translate are identical to ic_launcher_foreground and
-  must stay that way — a themed icon that traced slightly different letters
+  This is the pl mark's themed layer (the wax seal, the default since v0.4.1,
+  has ic_launcher_wax_seal_monochrome). Geometry, scale and translate are
+  identical to app/src/launcher/motif/pl.xml and must stay that way — a themed icon that traced slightly different letters
   from the coloured one is the same logo drawn twice, which is how the two
   drift apart.
 

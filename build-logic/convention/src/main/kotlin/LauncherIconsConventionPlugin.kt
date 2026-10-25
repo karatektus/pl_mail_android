@@ -54,13 +54,18 @@ import org.gradle.kotlin.dsl.register
  * needs which output: resource merging, manifest merging and Kotlin compilation each depend on the
  * generator through the output they read, and nothing has to remember to run it first.
  *
- * ## The default stays exactly what it was
+ * ## The default is committed, not generated
  *
- * The pl mark in berry is the product default and the only alias the manifest enables. It is not
- * generated: its alias wears `@mipmap/ic_launcher`, the application's own committed icon, so the
- * app's `android:icon`, the default alias and the fallback for anything this build does not know
- * are one asset. The generator checks that the committed icon and the pl template still draw the
- * same mark — see [LauncherIconMatrix.sameDrawing] — because they are two copies of it now.
+ * The wax seal in its own colours is the product default, as it is on the server and the web, and
+ * the only alias the manifest enables. It is not generated: its alias wears `@mipmap/ic_launcher`,
+ * the application's own committed icon, so the app's `android:icon`, the default alias and the
+ * fallback for anything this build does not know are one asset. The generator checks that the
+ * committed icon and the wax-seal template still draw the same thing — see
+ * [LauncherIconMatrix.sameDrawing] — because they are two copies of it, and it writes the tile
+ * colour the committed icon names from the table.
+ *
+ * Until v0.4.1 the default was the pl mark in berry. Its aliases kept their names when it stopped
+ * being the default, and its committed `ic_launcher_monochrome` stayed its themed layer.
  */
 class LauncherIconsConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) {

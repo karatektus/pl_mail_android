@@ -18,7 +18,7 @@ package de.plmail
  *
  * [alias] is spelled out in full rather than derived at runtime. `android:name` in the manifest
  * resolves against the module's **namespace**, `de.plmail`, and not against the applicationId,
- * which carries a flavour suffix (`.google`) and a build-type one (`.debug`). The package half of a
+ * which differs by flavour and carries a build-type suffix (`.debug`). The package half of a
  * `ComponentName` is the applicationId and the class half is this; getting that round the wrong way
  * yields a component the system has never heard of, and `setComponentEnabledSetting` on one of
  * those throws. `LauncherIconManifestTest` asserts every one of these strings against the merged
@@ -43,17 +43,19 @@ data class LauncherIcon(val motif: String, val paint: String, val alias: String)
         /** A motif's own design, as drawn: the paint every motif but the pl mark starts in. */
         const val ORIGINAL = "original"
 
+        /** The pl mark's colourway from before there was a choice, and so its `original`. */
+        private const val PL_OWN_PAINT = "berry"
+
         /** Every icon in this build, one per alias, in the order the manifest declares them. */
         val all: List<LauncherIcon> = LAUNCHER_ICONS
 
         /**
-         * The icon the product ships with, and the answer to every question this build cannot
-         * answer.
+         * The icon the product ships with, and the answer when the server says nothing.
          *
-         * The pl mark in berry: the server's own default, the ink in `ic_launcher_foreground`, the
-         * application's `android:icon`, and the one alias the manifest enables. Those four being
-         * the same thing is what makes anything unknown degrade to a correct icon rather than to no
-         * icon.
+         * The wax seal in its own colours: the server's own default (`LogoMotif::DEFAULT`), the ink
+         * in `ic_launcher_foreground`, the application's `android:icon`, and the one alias the
+         * manifest enables. Those four being the same thing is what makes a fresh install, and a
+         * motif this build cannot draw, end at a correct icon rather than at no icon.
          */
         val Default: LauncherIcon = DEFAULT_LAUNCHER_ICON
 
@@ -61,23 +63,34 @@ data class LauncherIcon(val motif: String, val paint: String, val alias: String)
             it.motif to it.paint
         }
 
+        /**
+         * The pl mark in berry: where the pl mark lands when its paint is unknown or `original`.
+         */
+        private val plOwn: LauncherIcon = byPair.getValue(PL to PL_OWN_PAINT)
+
         private val motifs: Set<String> = all.mapTo(HashSet()) { it.motif }
 
         /**
          * What the server said, as one of [all] — never null, and never an icon this build lacks.
          *
-         * **The motif first**: [logoMotif], or the pl mark when there is none. A server older than
-         * this feature sends no motif at all, and the pl mark is the only icon it ever described. A
-         * motif this build has never heard of — the server grew one after this APK shipped — is the
-         * pl mark too, with the paint still applied where the mark has it: somebody who chose an
-         * icon in ocean gets the logo in ocean, which is the nearest thing this build can draw.
+         * **Nothing at all is [Default].** No motif, no paint and no style is an install before its
+         * first read, or a server too old for any of this; either way the product's default is the
+         * honest answer.
+         *
+         * **Otherwise the motif first**: [logoMotif], or the pl mark when there is none. A server
+         * older than this feature sends no motif, only [logoStyle], and the pl mark is the only
+         * icon it ever described. A motif this build has never heard of — the server grew one after
+         * this APK shipped — is the pl mark too, with the paint still applied where the mark has
+         * it: somebody who chose an icon in ocean gets the logo in ocean, which is the nearest
+         * thing this build can draw.
          *
          * **Then the paint, and the pl mark is the one motif that reads it differently.** Its
          * colourway has been published as [logoStyle] since before there were motifs, so that is
          * the fallback when [logoPaint] is absent — which is exactly what an older server looks
          * like, and why a phone updated against one keeps the colourway it was already wearing.
-         * Unknown lands on [Default], as it always has. So does `original`: the pl mark has no
-         * design of its own apart from berry, and the build checks that the table agrees.
+         * Unknown is the mark in berry, as it always was, and so is `original`: the pl mark has no
+         * design of its own apart from berry, and the build checks that the table agrees. Berry and
+         * not [Default], because the user chose the pl mark and the seal is a different icon.
          *
          * Every other motif starts in [ORIGINAL], and a paint this build does not have for it — a
          * colourway added after it shipped — is that motif's original rather than the default. The
@@ -88,10 +101,12 @@ data class LauncherIcon(val motif: String, val paint: String, val alias: String)
          * from having none at all.
          */
         fun resolve(logoMotif: String?, logoPaint: String?, logoStyle: String?): LauncherIcon {
+            if (logoMotif == null && logoPaint == null && logoStyle == null) return Default
+
             val motif = logoMotif?.takeIf { it in motifs } ?: PL
 
             if (motif == PL) {
-                return (logoPaint ?: logoStyle)?.let { byPair[PL to it] } ?: Default
+                return (logoPaint ?: logoStyle)?.let { byPair[PL to it] } ?: plOwn
             }
 
             return byPair[motif to (logoPaint ?: ORIGINAL)] ?: byPair[motif to ORIGINAL] ?: Default

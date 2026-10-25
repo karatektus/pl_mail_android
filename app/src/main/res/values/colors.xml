@@ -24,6 +24,10 @@
       rather than for the icons. Off-white is this app's answer to a question
       the web does not have to ask, an adaptive icon always having a background
       layer.
+
+      Since v0.4.1 only the calendar icon sits on this tile. Every mail icon,
+      the default wax seal included, takes its tile from tools/logo-paints.json
+      (ic_launcher_default_background and the generated ones beside it).
     -->
     <color name="ic_launcher_background">#FAF9F7</color>
 </resources>
