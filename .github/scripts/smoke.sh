@@ -23,8 +23,8 @@ apk="${1:?usage: smoke.sh <apk>}"
 #
 # Read out of the APK, not off the device.
 #
-# The flavours carry an applicationIdSuffix -- google is `de.plmail.google`,
-# debug adds `.debug` -- so a hardcoded `de.plmail` starts nothing and reports a
+# The variants carry different ids -- google is `de.pluetzner.plmail`, debug
+# adds `.debug` -- so a hardcoded `de.plmail` starts nothing and reports a
 # crash that did not happen. The obvious repair, grepping `pm list packages` for
 # `de.plmail`, is worse: it matches every variant and `head -1` silently picks
 # whichever the device lists first. Doing exactly that on a workstation

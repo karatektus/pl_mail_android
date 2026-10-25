@@ -43,7 +43,7 @@ Both flavours, in both formats, named after the version:
 | Asset | What it is |
 |---|---|
 | `plmail-0.2.0-foss.apk` | The build with no Google code in it. What most people want, and the one F-Droid tracks. |
-| `plmail-0.2.0-google.apk` | FCM push, `de.plmail.google`, installable alongside the other. |
+| `plmail-0.2.0-google.apk` | FCM push, `de.pluetzner.plmail`, installable alongside the other. The build on Google Play. |
 | `plmail-0.2.0-foss.aab` · `plmail-0.2.0-google.aab` | App bundles. Only the `google` one is any use for Play. |
 | `plmail-0.2.0-*-mapping.txt` | R8 mapping files. |
 

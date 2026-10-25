@@ -492,7 +492,7 @@ inherits it from there. That inheritance is the mechanism rather than a workarou
 
 - **A leading colon on the affinity**, not a spelled-out name. It is expanded against the
   applicationId at install time, so it is `de.plmail:calendar` in the foss build and
-  `de.plmail.google:calendar` in the other, `.debug` folded in. The two flavours are installed side
+  `de.pluetzner.plmail:calendar` in the other, `.debug` folded in. The two flavours are installed side
   by side on this project's own test device while the push paths are compared, and a literal affinity
   would have made them share one calendar task.
 - **`exported="false"` on the activity is correct**, and looks like a mistake until you follow the

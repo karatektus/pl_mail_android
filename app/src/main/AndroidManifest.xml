@@ -278,7 +278,7 @@
 
           taskAffinity=":calendar" and not a spelled-out name. A leading colon
           is expanded at install time against the applicationId, so this is
-          "de.plmail:calendar" in the foss build and "de.plmail.google:calendar"
+          "de.plmail:calendar" in the foss build and "de.pluetzner.plmail:calendar"
           in the other, with ".debug" folded in for a debug build. Two flavours
           installed side by side, which this project does while it compares the
           push paths, therefore cannot end up sharing a calendar task.

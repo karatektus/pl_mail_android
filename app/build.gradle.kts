@@ -69,9 +69,11 @@ android {
 
         create("google") {
             dimension = "distribution"
-            // A distinct id, so both can be installed side by side while the
-            // two push paths are being compared.
-            applicationIdSuffix = ".google"
+            // The id Google Play publishes, which can never change after the
+            // first upload -- hence a domain the project owns rather than the
+            // foss id with a suffix. Distinct from foss, so both can still be
+            // installed side by side.
+            applicationId = "de.pluetzner.plmail"
             buildConfigField("boolean", "HAS_GOOGLE_PUSH", "true")
         }
     }

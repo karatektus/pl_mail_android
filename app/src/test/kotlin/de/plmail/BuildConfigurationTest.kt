@@ -1,6 +1,7 @@
 package de.plmail
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -13,14 +14,14 @@ import kotlin.test.assertTrue
 class BuildConfigurationTest {
 
     @Test
-    fun `application id is namespaced under the shared plMail identity`() {
-        // One identity across both clients: de.plmail is what the iOS app's
-        // PRODUCT_BUNDLE_IDENTIFIER already uses, and the pairing deep link
-        // will be registered against this app, so it wants to be predictable.
-        assertTrue(
-            BuildConfig.APPLICATION_ID.startsWith("de.plmail"),
-            "expected an id under de.plmail, got ${BuildConfig.APPLICATION_ID}",
-        )
+    fun `application id is the one its flavour is published under`() {
+        // foss keeps de.plmail, the identity the iOS app's
+        // PRODUCT_BUNDLE_IDENTIFIER shares. google is what Google Play
+        // publishes, and Play never lets that change after the first upload,
+        // so it sits under a domain the project owns. Asserted exactly: either
+        // id drifting would orphan every installed copy.
+        val published = if (BuildConfig.HAS_GOOGLE_PUSH) "de.pluetzner.plmail" else "de.plmail"
+        assertEquals("$published.debug", BuildConfig.APPLICATION_ID)
     }
 
     @Test

@@ -135,7 +135,7 @@ class CalendarLauncherManifestTest {
 
         // A leading colon, so the affinity is expanded against the applicationId
         // at install time: de.plmail:calendar for foss and
-        // de.plmail.google:calendar for the other, with .debug folded in. Two
+        // de.pluetzner.plmail:calendar for the other, with .debug folded in. Two
         // flavours side by side on one device therefore cannot share a calendar
         // task. Asserted as the literal because the expansion is the platform's
         // and happens well after this file is written.
@@ -183,10 +183,11 @@ class CalendarLauncherManifestTest {
         // The alias's class name is fixed to the namespace while the package it
         // is switched under is the applicationId. This suite runs once per
         // variant, so this is where the two are seen to differ on the flavours
-        // where they do.
+        // where they do -- on google they do not even share a prefix.
+        assertEquals(BuildConfig.APPLICATION_ID, applicationId)
         assertTrue(
-            applicationId.startsWith(NAMESPACE),
-            "expected an applicationId under $NAMESPACE, got $applicationId",
+            AppCalendarLauncherIcon.ALIAS.startsWith("$NAMESPACE."),
+            "expected the alias under $NAMESPACE, got ${AppCalendarLauncherIcon.ALIAS}",
         )
     }
 

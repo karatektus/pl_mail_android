@@ -150,10 +150,10 @@ class AppLauncherIcon @Inject constructor(@param:ApplicationContext private val 
     /**
      * The package half from the applicationId, the class half from the namespace.
      *
-     * They are different strings in three of the four variants — `de.plmail.google`, `.debug` — and
-     * `ComponentName(context, "…")` would build both halves out of the applicationId, yielding a
-     * component the system has never heard of. `setComponentEnabledSetting` on one of those throws.
-     * See [LauncherIcon.alias].
+     * They are different strings in three of the four variants — `de.pluetzner.plmail`, `.debug` —
+     * and `ComponentName(context, "…")` would build both halves out of the applicationId, yielding
+     * a component the system has never heard of. `setComponentEnabledSetting` on one of those
+     * throws. See [LauncherIcon.alias].
      */
     private fun component(icon: LauncherIcon) = ComponentName(context.packageName, icon.alias)
 
