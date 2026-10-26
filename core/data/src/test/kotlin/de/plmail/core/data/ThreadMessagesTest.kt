@@ -55,6 +55,23 @@ class ThreadMessagesTest {
         assertEquals(listOf("1", "2"), shown.map { it.emailId }.sorted())
     }
 
+    /**
+     * What a phone found: an undo had put every message back in the inbox without taking the bin
+     * off, so all of them carried Trash and the deleted drafts were drawn with the rest.
+     */
+    @Test
+    fun `a message in the inbox and the bin is shown, a deleted one beside it is not`() = runTest {
+        seed(
+            email("1", mailboxIds = "inbox,trash"),
+            email("2", mailboxIds = "inbox,trash"),
+            email("3", mailboxIds = "trash"),
+        )
+
+        val shown = MailRepository(database).messagesInThread(testAccountKey, "t1")
+
+        assertEquals(listOf("1", "2"), shown.map { it.emailId }.sorted())
+    }
+
     private suspend fun seed(vararg emails: EmailEntity) {
         database
             .mailboxes()
@@ -66,7 +83,14 @@ class ThreadMessagesTest {
                         mailboxId = "trash",
                         name = "Trash",
                         role = "trash",
-                    )
+                    ),
+                    MailboxEntity(
+                        uid = StoreKey.objectKey(testAccountKey, "inbox"),
+                        accountKey = testAccountKey,
+                        mailboxId = "inbox",
+                        name = "Inbox",
+                        role = "inbox",
+                    ),
                 )
             )
         database.emails().upsert(emails.toList())

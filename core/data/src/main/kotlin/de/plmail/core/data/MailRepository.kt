@@ -292,18 +292,28 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
     }
 
     /**
-     * One conversation's messages, from the cache, without the ones in Trash.
+     * One conversation's messages, from the cache, without the ones thrown away.
      *
      * A message moved to Trash is still in its conversation — thread membership does not depend on
      * the mailbox — so a draft deleted from the reader came straight back on the next sync, in
-     * Trash and drawn as though nothing had happened. The web hides them the same way. All of them
-     * when every one is binned, which is a conversation opened from Trash itself.
+     * Trash and drawn as though nothing had happened. The web hides them the same way.
+     *
+     * **Thrown away is Trash without Inbox.** A message carrying both is one an old undo put back
+     * without taking the bin off; counting it as binned made a whole conversation "in Trash", and a
+     * conversation entirely in Trash is shown whole — deleted drafts and all. All of them when
+     * every one is thrown away, which is a conversation opened from Trash itself.
      */
     suspend fun messagesInThread(accountKey: String, threadId: String): List<EmailEntity> {
         val all = database.emails().inThread(accountKey, threadId)
         val bin = database.mailboxes().byRole(accountKey, TRASH_ROLE)?.mailboxId ?: return all
+        val inbox = database.mailboxes().byRole(accountKey, INBOX_ROLE)?.mailboxId
 
-        return all.filterNot { bin in it.mailboxIds.splitIds() }.ifEmpty { all }
+        return all.filterNot { email ->
+                val ids = email.mailboxIds.splitIds()
+
+                bin in ids && inbox !in ids
+            }
+            .ifEmpty { all }
     }
 
     /**
@@ -441,3 +451,5 @@ private suspend fun MailboxDao.bindingKeys(accountKey: String): Map<String, Stri
     bindingKeyRows(accountKey).associate { it.mailboxId to it.labelKey }
 
 private const val TRASH_ROLE = "trash"
+
+private const val INBOX_ROLE = "inbox"
