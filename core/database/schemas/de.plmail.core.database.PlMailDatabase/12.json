@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 12,
-    "identityHash": "836851ef34866fe3700b9e0d2d008fe5",
+    "identityHash": "30fa049d454763570f0947d2774ccb27",
     "entities": [
       {
         "tableName": "accounts",
@@ -230,7 +230,7 @@
       },
       {
         "tableName": "threads",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uid` TEXT NOT NULL, `accountKey` TEXT NOT NULL, `threadId` TEXT NOT NULL, `latestReceivedAt` INTEGER NOT NULL, `subject` TEXT, `participantsSummary` TEXT NOT NULL, `participantsAddress` TEXT, `snippet` TEXT NOT NULL, `messageCount` INTEGER NOT NULL, `binnedCount` INTEGER NOT NULL, `isUnread` INTEGER NOT NULL, `isFlagged` INTEGER NOT NULL, `hasAttachment` INTEGER NOT NULL, `snoozedUntil` INTEGER, `category` TEXT, `inboxTab` TEXT, `isNew` INTEGER NOT NULL, `isInInbox` INTEGER NOT NULL, `labelKeys` TEXT NOT NULL, `isEncrypted` INTEGER NOT NULL, PRIMARY KEY(`uid`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uid` TEXT NOT NULL, `accountKey` TEXT NOT NULL, `threadId` TEXT NOT NULL, `latestReceivedAt` INTEGER NOT NULL, `subject` TEXT, `participantsSummary` TEXT NOT NULL, `participantsAddress` TEXT, `snippet` TEXT NOT NULL, `messageCount` INTEGER NOT NULL, `binnedCount` INTEGER NOT NULL DEFAULT 0, `binnedReceivedAt` INTEGER NOT NULL DEFAULT 0, `isUnread` INTEGER NOT NULL, `isFlagged` INTEGER NOT NULL, `hasAttachment` INTEGER NOT NULL, `snoozedUntil` INTEGER, `category` TEXT, `inboxTab` TEXT, `isNew` INTEGER NOT NULL, `isInInbox` INTEGER NOT NULL, `labelKeys` TEXT NOT NULL, `isEncrypted` INTEGER NOT NULL, PRIMARY KEY(`uid`))",
         "fields": [
           {
             "fieldPath": "uid",
@@ -288,7 +288,15 @@
             "fieldPath": "binnedCount",
             "columnName": "binnedCount",
             "affinity": "INTEGER",
-            "notNull": true
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "binnedReceivedAt",
+            "columnName": "binnedReceivedAt",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
           },
           {
             "fieldPath": "isUnread",
@@ -571,7 +579,7 @@
       },
       {
         "tableName": "email_bodies",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uid` TEXT NOT NULL, `textBody` TEXT, `htmlBody` TEXT, `fetchedAt` INTEGER NOT NULL, PRIMARY KEY(`uid`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`uid` TEXT NOT NULL, `textBody` TEXT, `htmlBody` TEXT, `fetchedAt` INTEGER NOT NULL, `hasReplyHeaders` INTEGER NOT NULL DEFAULT 0, `replyToJson` TEXT, `ccJson` TEXT, `messageId` TEXT, `references` TEXT, PRIMARY KEY(`uid`))",
         "fields": [
           {
             "fieldPath": "uid",
@@ -594,6 +602,33 @@
             "columnName": "fetchedAt",
             "affinity": "INTEGER",
             "notNull": true
+          },
+          {
+            "fieldPath": "hasReplyHeaders",
+            "columnName": "hasReplyHeaders",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "replyToJson",
+            "columnName": "replyToJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "ccJson",
+            "columnName": "ccJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "messageId",
+            "columnName": "messageId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "references",
+            "columnName": "references",
+            "affinity": "TEXT"
           }
         ],
         "primaryKey": {
@@ -1260,7 +1295,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '836851ef34866fe3700b9e0d2d008fe5')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '30fa049d454763570f0947d2774ccb27')"
     ]
   }
 }

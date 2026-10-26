@@ -24,9 +24,10 @@ import org.junit.runner.RunWith
  *    re-exporting — this fails here, at the commit that caused it, rather than at version 2 when
  *    the migration is written against a description of the schema that was never true.
  * 2. **The destructive fallback actually works.** `PlMailDatabase.create` opts into dropping
- *    everything on a version it cannot migrate, which is only safe because every row is
- *    reconstructible from the server. That is a claim worth executing rather than asserting in a
- *    comment.
+ *    everything on a downgrade and on the versions before migrations were written, which is only
+ *    safe because every row is reconstructible from the server. That is a claim worth executing
+ *    rather than asserting in a comment. The migration itself is `MigrationFromV11Test`, in
+ *    `:core:data`, which runs without a device.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {

@@ -1,5 +1,6 @@
 package de.plmail.core.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -169,14 +170,14 @@ data class ThreadEntity(
      * the list it is in. Trash shows these, every other list the rest; one count for both had a
      * conversation with six deleted drafts read "8" in the inbox and in Trash alike.
      */
-    val binnedCount: Int = 0,
+    @ColumnInfo(defaultValue = "0") val binnedCount: Int = 0,
     /**
      * When the newest thrown-away message arrived, or 0 when there is none: Trash's date for the
      * conversation. [latestReceivedAt] is every other list's, and leaves these out — a draft
      * deleted this morning moved a conversation from Sunday to the top of the inbox and labelled it
      * with the draft's time, or did not, depending on which sync had written its row last.
      */
-    val binnedReceivedAt: Long = 0,
+    @ColumnInfo(defaultValue = "0") val binnedReceivedAt: Long = 0,
     val isUnread: Boolean = false,
     val isFlagged: Boolean = false,
     val hasAttachment: Boolean = false,
@@ -348,7 +349,7 @@ data class EmailBodyEntity(
      * because a list page re-fetches that row without them — a reply written from it would lose its
      * Reply-To and its threading. False on a placeholder written for a message with no body.
      */
-    val hasReplyHeaders: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val hasReplyHeaders: Boolean = false,
     val replyToJson: String? = null,
     val ccJson: String? = null,
     /** Every Message-ID the header carries, space-separated as [references] is. */

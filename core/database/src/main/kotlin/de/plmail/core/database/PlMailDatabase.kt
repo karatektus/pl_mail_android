@@ -1,61 +1,38 @@
 package de.plmail.core.database
 
 import android.content.Context
+import androidx.room.AutoMigration
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.AutoMigrationSpec
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 /**
  * The local cache.
  *
- * **Version 10**, and the way it got there is the point. Version 2 gave `ThreadEntity` its
- * `labelKeys`; version 3 gave `MailboxEntity` a `color` and `ThreadEntity` a `category`; version 4
- * added the three calendar tables; version 5 gave `IdentityEntity` its `htmlSignature`; version 6
- * gave `ThreadEntity` its `isNew`, version 7 its `isInInbox`, version 8 gave `AccountEntity` the
- * two calendar sync cursors, and version 9 added the reader's inbox tabs — `InboxTabEntity`,
- * `ThreadEntity.inboxTab` and `AccountEntity.inboxTabState`, one bump for the three; version 10
- * gave `EmailEntity` the five end-to-end encryption facts the server publishes and `ThreadEntity`
- * its `isEncrypted` (#9), one bump for the six, shipped with the app's v0.4.0. Rather than writing
- * a migration each bump deliberately falls through to dropping the database and syncing again —
- * which is exactly what the schema's central constraint was for. Every row here is reconstructible
- * from the server (see `Entities.kt`), so the cost of the drop is one page of mail per list the
- * user opens, and the alternative is the first hand-written migration in a schema designed never to
- * need one, plus a backfill that would have to reconstruct labels by string matching `mailboxIds`
- * against `mailboxes` in SQL.
+ * **Migrated from version 11 on.** Up to version 11, the one v0.4.1 shipped, every bump dropped the
+ * database and synced again. Every row here is reconstructible from the server (see `Entities.kt`),
+ * so that was safe, and it saved writing migrations. It was not free: the drop took every
+ * downloaded body with it, every list was paged again from the top, and to the person updating the
+ * app it looked like their mail reloading from nothing — on every release that touched the schema.
  *
- * Version 4 is a pure addition and Room could have been given an empty migration for it — three
- * `CREATE TABLE`s and nothing to move. It is a destructive bump anyway, because the value of the
- * policy is that there is exactly one of them: a schema where some bumps preserve data and some do
- * not is one where the next person has to work out which kind theirs is, and the calendar tables
- * are the least costly rows in the store to lose. The occurrence table in particular is derived
- * from a query the client can simply re-run.
+ * So from 11 each bump comes with a migration, and the destructive fallback is kept only for the
+ * versions before it, which have no exported path forward worth writing, and for a downgrade, which
+ * only a development build does. A bump without a migration now fails to open rather than quietly
+ * wiping the cache; `MigrationFromV11Test` runs the real migration against the exported schema.
  *
- * **Two columns, one bump.** They arrived in the same session and each is a wipe-and-resync on its
- * own; shipping them as versions 3 and 4 would have cost a second full re-sync for nothing. Anyone
- * adding a third column before this ships should join it to this one rather than adding version 4.
+ * Most bumps are columns, and Room writes those itself from the exported schemas: an
+ * [AutoMigration] per version, a `@ColumnInfo(defaultValue)` on any column that is not null. A
+ * column whose correct value is not its default, as 12's are, says so in its spec.
  *
- * Version 5 is the policy working as intended rather than an exception to it. A signature is read
- * straight back off `Identity/get`, which the directory refresh already calls beside `Mailbox/get`,
- * so the drop costs one request the app was going to make anyway — and the column exists precisely
- * so the composer does not have to wait for it.
+ * Version 12 is the conversation's deleted messages — `ThreadEntity.binnedCount` and
+ * `binnedReceivedAt` — and the reply headers the composer reads from the cache: the five
+ * `EmailBodyEntity` columns from `hasReplyHeaders` to `references`. See [FromV11].
  *
- * Version 8 is the cheapest bump of the eight, and worth naming because it looks like it should be
- * free rather than cheap. `calendarState` and `calendarEventState` are sync cursors: the correct
- * value for a database that has just been dropped is null, which is what a fresh row already has,
- * and a null cursor means the next calendar refresh does the full window fetch it would have done
- * anyway. So the drop costs nothing this column would have saved. That is an argument for the bump
- * being harmless, not for skipping it — the schema still changed, and `MigrationTest` compares the
- * entity against the exported description rather than against what the data cost.
- *
- * Version 11 is `InboxTabEntity.hasMail` (#52), which the next tab refresh asks the server for
- * again; the drop costs the first page of each list and nothing else.
- *
- * The exported schemas are still checked in and `MigrationTest` still validates them, because that
- * is what catches an entity and its exported description drifting apart — a drift which, on the day
- * somebody *does* need a real migration, would be written against a schema that was never true.
- *
- * If a future column ever holds something the server does not know about, this decision becomes
- * wrong and both have to change together.
+ * The exported schemas are checked in, and must be: they are what every auto-migration is written
+ * from, so an entity and its exported description drifting apart would produce a migration to a
+ * schema that was never true.
  */
 @Database(
     entities =
@@ -74,8 +51,9 @@ import androidx.room.RoomDatabase
             CalendarOccurrenceEntity::class,
             InboxTabEntity::class,
         ],
-    version = 14,
+    version = 12,
     exportSchema = true,
+    autoMigrations = [AutoMigration(from = 11, to = 12, spec = PlMailDatabase.FromV11::class)],
 )
 abstract class PlMailDatabase : RoomDatabase() {
 
@@ -102,9 +80,30 @@ abstract class PlMailDatabase : RoomDatabase() {
 
         fun create(context: Context): PlMailDatabase =
             Room.databaseBuilder(context, PlMailDatabase::class.java, NAME)
-                // Safe precisely because nothing here is irreplaceable. The
-                // credential lives behind the Keystore and the rest re-syncs.
-                .fallbackToDestructiveMigration(dropAllTables = true)
+                // The versions from before migrations were written, and a
+                // downgrade. Safe because nothing here is irreplaceable -- the
+                // credential lives behind the Keystore and the rest re-syncs --
+                // but no longer the answer to every bump: see the class.
+                .fallbackToDestructiveMigrationFrom(dropAllTables = true, *BEFORE_MIGRATIONS)
+                .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = true)
                 .build()
+
+        /** Every version before the first one migrated from. */
+        private val BEFORE_MIGRATIONS = (1..10).toList().toIntArray()
+    }
+
+    /**
+     * From v0.4.1's schema: seven new columns, and the cursors cleared.
+     *
+     * The columns arrive at their defaults, and two of those are wrong for rows already here: a
+     * conversation's deleted messages are counted as none, so it counts them outside Trash until
+     * something rewrites it. Clearing every account's sync cursors makes the next sync page the
+     * lists again, which rewrites every conversation on them with the counts the page brings — what
+     * the drop used to do, without throwing away the bodies already downloaded.
+     */
+    class FromV11 : AutoMigrationSpec {
+        override fun onPostMigrate(db: SupportSQLiteDatabase) {
+            db.execSQL("UPDATE accounts SET emailState = NULL, threadState = NULL")
+        }
     }
 }
