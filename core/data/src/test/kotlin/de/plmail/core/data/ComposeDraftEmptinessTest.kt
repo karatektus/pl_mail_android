@@ -99,4 +99,35 @@ class ComposeDraftEmptinessTest {
 
         assertTrue(draft(bodyHtml = nested).isEmpty(quotedHtml = ""))
     }
+
+    // --- a reply as it opened ----------------------------------------------------
+
+    private val quote = "<blockquote><p>The engine works.</p></blockquote>"
+
+    private val opened =
+        draft(subject = "Re: The engine", to = listOf(EmailAddress(email = "charles@b.test")))
+
+    @Test
+    fun `a reply opened and left alone is unchanged, editor frame and all`() {
+        // The editor reports `<p></p>` for its empty first frame; that is not
+        // something the user wrote.
+        val shown = opened.copy(bodyHtml = "<p></p>$signature$quote")
+
+        assertFalse(shown.isEmpty(quotedHtml = quote))
+        assertTrue(shown.isUnchangedFrom(opened, quotedHtml = quote))
+    }
+
+    @Test
+    fun `a word typed into a reply is a change`() {
+        val typed = opened.copy(bodyHtml = "<p>Splendid.</p>$signature$quote")
+
+        assertFalse(typed.isUnchangedFrom(opened, quotedHtml = quote))
+    }
+
+    @Test
+    fun `a recipient added to a reply is a change`() {
+        val copied = opened.copy(cc = listOf(EmailAddress(email = "ada@b.test")))
+
+        assertFalse(copied.isUnchangedFrom(opened, quotedHtml = quote))
+    }
 }

@@ -15,6 +15,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.SwipeToDismissBoxState
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,6 +41,7 @@ import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PlMailLabelColor
 import de.plmail.core.ui.RowChip
 import de.plmail.core.ui.ThreadRow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -150,7 +152,7 @@ fun SwipeableThreadRow(
 
             perform(swiped)
 
-            if (!swiped.removesTheRow) state.reset()
+            if (swiped.removesTheRow) settleIfStillListed(state) else state.reset()
         }
 
         pending?.let { asked ->
@@ -161,7 +163,9 @@ fun SwipeableThreadRow(
                     pending = null
                     perform(asked)
 
-                    if (!asked.removesTheRow) scope.launch { state.reset() }
+                    scope.launch {
+                        if (asked.removesTheRow) settleIfStillListed(state) else state.reset()
+                    }
                 },
                 // Back, outside and "Cancel" are all the same answer, and the
                 // row goes back to where it was.
@@ -252,6 +256,26 @@ private fun SwipeAction.question(isUnread: Boolean): Int =
             if (isUnread) R.string.swipe_confirm_read else R.string.swipe_confirm_unread
         else -> R.string.swipe_confirm_archive
     }
+
+/**
+ * Puts a row back that an archive or trash was expected to take away, if it is still here.
+ *
+ * Normally it never runs to the end: the action removes the conversation from the list, the row
+ * leaves the composition, and this coroutine is cancelled with it. What reaches the reset is a row
+ * whose list kept it — archive in a label, which takes away the inbox and not the label, an action
+ * the cache could not apply — and that one would otherwise stay parked off-screen over its icon,
+ * looking like an action stuck half way.
+ */
+private suspend fun settleIfStillListed(state: SwipeToDismissBoxState) {
+    delay(REMOVAL_GRACE_MILLIS)
+    state.reset()
+}
+
+/**
+ * How long the list gets to drop a swiped row before it is put back. Long enough for the paged list
+ * to re-query after the cache changed; short enough that a row that stays is not mistaken for gone.
+ */
+private const val REMOVAL_GRACE_MILLIS = 1_000L
 
 /** Whether the conversation leaves the list the moment this is swiped. */
 private val SwipeAction.removesTheRow: Boolean

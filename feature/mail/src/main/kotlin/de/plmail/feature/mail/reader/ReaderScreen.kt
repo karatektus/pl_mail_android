@@ -248,15 +248,18 @@ fun ReaderScreen(
             bottomBar = {
                 // The conversation's newest message, expanded or not. A thread is
                 // answered at its end; the per-message row inside each card is what
-                // answers a particular one.
-                state.messages.lastOrNull()?.let { newest ->
-                    ReaderActionBar(
-                        canReplyAll = newest.hasOtherRecipients,
-                        onReply = { onReply(newest.email.emailId, false) },
-                        onReplyAll = { onReply(newest.email.emailId, true) },
-                        onForward = { onForward(newest.email.emailId) },
-                    )
-                }
+                // answers a particular one. Not counting the user's own drafts: a
+                // reply sitting unsent at the end of the thread is nobody to answer,
+                // and answering it addressed the next reply to nobody.
+                (state.messages.lastOrNull { !it.email.isDraft } ?: state.messages.lastOrNull())
+                    ?.let { newest ->
+                        ReaderActionBar(
+                            canReplyAll = newest.hasOtherRecipients,
+                            onReply = { onReply(newest.email.emailId, false) },
+                            onReplyAll = { onReply(newest.email.emailId, true) },
+                            onForward = { onForward(newest.email.emailId) },
+                        )
+                    }
             },
         ) { insets ->
             LazyColumn(

@@ -197,6 +197,57 @@ class DraftComposerTest {
     }
 
     @Test
+    fun `the sender is answered even when their address counts as the user's own`() {
+        // What emptied To on the phone: the sender's address was in the set of
+        // the user's own, and the reply was addressed to nobody.
+        val original =
+            email(
+                from = listOf(EmailAddress(null, "sven@example.org")),
+                to = listOf(EmailAddress("Me", "me@plmail.test")),
+            )
+
+        val draft =
+            DraftComposer.reply(
+                original,
+                DraftComposer.ReplyMode.REPLY,
+                me + "sven@example.org",
+                "",
+            )
+
+        assertEquals(listOf("sven@example.org"), draft.to.map { it.email })
+    }
+
+    @Test
+    fun `answering mail the user sent goes to the people it was sent to`() {
+        val original =
+            email(
+                from = listOf(EmailAddress("Me", "me@plmail.test")),
+                to = listOf(EmailAddress("Anna", "anna@example.org")),
+                cc = listOf(EmailAddress(null, "bob@x.test")),
+            )
+
+        val reply = DraftComposer.reply(original, DraftComposer.ReplyMode.REPLY, me, "")
+        val all = DraftComposer.reply(original, DraftComposer.ReplyMode.REPLY_ALL, me, "")
+
+        assertEquals(listOf("anna@example.org"), reply.to.map { it.email })
+        assertTrue(reply.cc.isEmpty())
+        assertEquals(listOf("bob@x.test"), all.cc.map { it.email })
+    }
+
+    @Test
+    fun `a note to self is answered to self`() {
+        val original =
+            email(
+                from = listOf(EmailAddress("Me", "me@plmail.test")),
+                to = listOf(EmailAddress("Me", "me@plmail.test")),
+            )
+
+        val draft = DraftComposer.reply(original, DraftComposer.ReplyMode.REPLY, me, "")
+
+        assertEquals(listOf("me@plmail.test"), draft.to.map { it.email })
+    }
+
+    @Test
     fun `Reply-To wins over From when the sender set one`() {
         // That is the whole purpose of the header, and mailing lists depend on
         // it: answering From instead mails the list's software, not the list.

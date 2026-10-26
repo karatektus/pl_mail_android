@@ -86,10 +86,22 @@ data class ComposeDraft(
      * abandoned composer would leave a draft behind containing the user's own name.
      */
     fun isEmpty(quotedHtml: String): Boolean =
-        !hasRecipients &&
-            subject.isBlank() &&
-            attachments.isEmpty() &&
-            Signatures.replaceSignature(bodyHtml.removeSuffix(quotedHtml), null).isBlankHtml()
+        !hasRecipients && subject.isBlank() && attachments.isEmpty() && hasNoTypedBody(quotedHtml)
+
+    /**
+     * Whether this is still exactly the draft the composer opened with, nothing typed into it.
+     *
+     * [isEmpty] is no help for a reply: it opens with a recipient and a subject already filled in,
+     * so by that test it is content from the first frame — and tapping Reply and going back left a
+     * draft behind every time, autosaved three seconds after the composer opened. The fields are
+     * compared without the body because the editor reports its empty first frame as `<p></p>`
+     * rather than the empty string the draft was opened with.
+     */
+    fun isUnchangedFrom(opened: ComposeDraft, quotedHtml: String): Boolean =
+        copy(bodyHtml = "") == opened.copy(bodyHtml = "") && hasNoTypedBody(quotedHtml)
+
+    private fun hasNoTypedBody(quotedHtml: String): Boolean =
+        Signatures.replaceSignature(bodyHtml.removeSuffix(quotedHtml), null).isBlankHtml()
 }
 
 /**

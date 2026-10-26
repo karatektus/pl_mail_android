@@ -87,6 +87,17 @@ constructor(
     private var handing = false
 
     /**
+     * What a reply or a forward opened as, before anybody touched it.
+     *
+     * Those two start with fields already filled in — recipients, a subject, the original's files —
+     * so [ComposeDraft.isEmpty] counts them as content, and the composer saved a draft whether or
+     * not a word was written. Compared against this instead, a reply opened and left again leaves
+     * nothing in Drafts. Null for the other starts: a blank composer is covered by `isEmpty`, a
+     * reopened draft is already saved, and a share is somebody's content arriving from another app.
+     */
+    private var pristine: Pristine? = null
+
+    /**
      * The localised text a reply and a forward are built from.
      *
      * Handed in by the screen at [open]. `:core:jmap` composes drafts and must stay Android-free,
@@ -429,7 +440,8 @@ constructor(
                 // Saving would put an empty message over the one that could not
                 // be opened.
                 state.isUnopenable -> Unit
-                state.draft.isEmpty(state.quotedHtml) ->
+                state.draft.isEmpty(state.quotedHtml) ||
+                    isUntouched(state.draft, state.signatureHtml, state.quotedHtml) ->
                     runCatching { compose.discard(state.draft) }
                 else -> {
                     // An encrypted message that cannot be encrypted right now is
@@ -496,6 +508,7 @@ constructor(
         autosave = null
         keyWatch = null
         opened = false
+        pristine = null
         _state.value = ComposeUiState()
     }
 
@@ -503,6 +516,21 @@ constructor(
 
     private fun edit(change: (ComposeDraft) -> ComposeDraft) {
         _state.update { it.copy(draft = change(it.draft), isSaved = false) }
+    }
+
+    /** Takes what a reply or forward has just been filled in with as its untouched state. */
+    private fun rememberPristine() {
+        val state = _state.value
+
+        pristine = Pristine(state.draft, state.signatureHtml, state.quotedHtml)
+    }
+
+    private fun isUntouched(draft: ComposeDraft, signature: String, quote: String): Boolean {
+        val opened = pristine ?: return false
+
+        return signature == opened.signature &&
+            quote == opened.quote &&
+            draft.isUnchangedFrom(opened.draft, quote)
     }
 
     private fun startBlank(identities: List<SendIdentity>) {
@@ -557,10 +585,15 @@ constructor(
                 mode =
                     if (request.all) DraftComposer.ReplyMode.REPLY_ALL
                     else DraftComposer.ReplyMode.REPLY,
-                // Every address this user can send as, so reply-all does not
-                // copy them in on their own reply -- the one being answered
-                // from included, which for a catch-all address is in no list.
-                self = (identities + identity).map { it.email }.toSet(),
+                // The answering account's addresses, so reply-all does not copy
+                // the user in on their own reply -- the one being answered from
+                // included, which for a catch-all address is in no list. That
+                // account's only, as on the web: another account on the same
+                // phone is somebody else as far as this conversation knows.
+                self =
+                    (identities.filter { it.accountKey == identity.accountKey } + identity)
+                        .map { it.email }
+                        .toSet(),
                 attribution = strings.attribution(original),
             )
 
@@ -584,6 +617,8 @@ constructor(
                 isLoading = false,
             )
         }
+
+        rememberPristine()
     }
 
     private suspend fun startForward(
@@ -634,6 +669,8 @@ constructor(
                 isLoading = false,
             )
         }
+
+        rememberPristine()
     }
 
     /**
@@ -816,7 +853,8 @@ constructor(
                 .distinctUntilChanged()
                 .debounce(AUTOSAVE_DELAY_MS)
                 .collect { (draft, signature, quote, encryption, unopenable) ->
-                    if (unopenable || draft.isEmpty(quote)) return@collect
+                    if (unopenable || draft.isEmpty(quote) || isUntouched(draft, signature, quote))
+                        return@collect
 
                     // An encrypted message is saved when the composer closes or
                     // sends, not as it is typed: each save is a new import that
@@ -898,6 +936,12 @@ constructor(
                 }
         }
     }
+
+    private data class Pristine(
+        val draft: ComposeDraft,
+        val signature: String,
+        val quote: String,
+    )
 
     private data class Autosave(
         val draft: ComposeDraft,

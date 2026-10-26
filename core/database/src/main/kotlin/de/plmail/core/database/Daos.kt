@@ -516,6 +516,23 @@ interface FeedDao {
     @Query("DELETE FROM feed_entries WHERE feedId = :feedId AND uid = :feedId || '#' || :threadUid")
     suspend fun clearThread(feedId: String, threadUid: String)
 
+    /**
+     * Drops one conversation from the named lists and from every list whose id starts with [prefix]
+     * — the inbox's lists, which are a fixed few plus one per tab the reader made.
+     */
+    @Query(
+        """
+        DELETE FROM feed_entries WHERE accountKey = :accountKey AND threadId = :threadId
+        AND (feedId IN (:feedIds) OR feedId LIKE :prefix || '%')
+        """
+    )
+    suspend fun clearThreadFrom(
+        accountKey: String,
+        threadId: String,
+        feedIds: List<String>,
+        prefix: String,
+    )
+
     @Query("DELETE FROM feed_entries WHERE feedId = :feedId AND accountKey = :accountKey")
     suspend fun clearAccountFromFeed(feedId: String, accountKey: String)
 

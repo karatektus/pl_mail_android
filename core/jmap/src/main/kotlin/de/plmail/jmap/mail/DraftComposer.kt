@@ -85,12 +85,40 @@ object DraftComposer {
         self: Set<String>,
         attribution: String,
     ): ComposedDraft {
-        // Reply-To wins over From when the sender set one: that is the entire
-        // purpose of the header, and mailing lists depend on it.
-        val answerTo = original.replyTo.ifEmpty { original.from }
         val exclude = self.map { it.normaliseAddress() }.toSet()
 
-        val to = answerTo.deduplicateAddresses(exclude)
+        // Answering mail this user sent is continuing that conversation with
+        // the people it went to -- otherwise Reply on a message in Sent
+        // addresses the reply to its own author. Only when the original went
+        // to somebody else, though: a note to self is still answered to self.
+        val sentBySelf =
+            original.from.any { it.email?.normaliseAddress() in exclude } &&
+                original.to.deduplicateAddresses(exclude).isNotEmpty()
+
+        if (sentBySelf) {
+            return ComposedDraft(
+                to = original.to.deduplicateAddresses(exclude),
+                cc =
+                    when (mode) {
+                        ReplyMode.REPLY -> emptyList()
+                        ReplyMode.REPLY_ALL -> original.cc.deduplicateAddresses(exclude)
+                    },
+                subject = replySubject(original.subject),
+                inReplyTo = original.messageIdHeader()?.let { listOf(it) },
+                references = referencesFor(original),
+                quotedHtml = quote(attribution, original.bodyForQuoting()),
+            )
+        }
+
+        // Reply-To wins over From when the sender set one: that is the entire
+        // purpose of the header, and mailing lists depend on it.
+        //
+        // Not filtered by [self], as the web's ReplyDraftBuilder does not filter
+        // it: the person being answered is the one the reply is for, whatever
+        // else is true of their address. Filtering here emptied To outright
+        // whenever the sender's address was also in [self] -- which is every
+        // address of every account on the phone, not just the one answering.
+        val to = original.replyTo.ifEmpty { original.from }.deduplicateAddresses(emptySet())
 
         val cc =
             when (mode) {

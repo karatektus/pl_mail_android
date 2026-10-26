@@ -173,11 +173,18 @@ constructor(
         // went out from the main address would be found out by the recipient.
         val identity = original.replySender(accountKey, identities) ?: fallback
 
+        // The answering account's addresses, as in the composer: another
+        // account on the same phone is somebody else to this conversation.
+        val own =
+            (identities.filter { it.accountKey == identity.accountKey } + identity)
+                .map { it.email.trim().lowercase() }
+                .toSet()
+
         val composed =
             DraftComposer.reply(
                 original = original,
                 mode = DraftComposer.ReplyMode.REPLY,
-                self = (identities + identity).map { it.email }.toSet(),
+                self = own,
                 // Empty because `composed.quotedHtml` is thrown away -- see the
                 // class note. Passing a localised attribution for a quote
                 // nothing reads would mean this module owning a date format and
@@ -185,13 +192,14 @@ constructor(
                 attribution = "",
             )
 
-        // Every address on the original was one of the user's own, which is what
-        // replying to a message you sent yourself looks like. The composer shows
-        // an empty To row and waits; there is no row here to wait on, and a
-        // submission with no recipients is refused by the server in a way that
-        // would read as "the reply failed" rather than "there was nobody to
-        // reply to".
-        if (composed.to.isEmpty()) return unanswerable()
+        // Every address on the original was one of the user's own: a note to
+        // self. The composer answers it to the user, with the To row there to
+        // show it; the shade has no row, and a reply that silently lands back
+        // in the user's own inbox reads as the reply having gone nowhere. Empty
+        // is the same answer: a submission with no recipients is refused by the
+        // server in a way that would read as "the reply failed" rather than
+        // "there was nobody to reply to".
+        if (composed.to.all { it.email?.trim()?.lowercase() in own }) return unanswerable()
 
         val draft =
             ComposeDraft(

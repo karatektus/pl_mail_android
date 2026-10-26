@@ -95,6 +95,10 @@ data class ReaderHeaderState(
  * discoverable version and it does not fit: every tappable thing here is 48dp, and two of those per
  * label is a row of buttons rather than a row of labels. Removing is undoable, like every other
  * change to mail, which is what makes a gesture with no confirmation safe.
+ *
+ * **The facts and the labels share a line.** Each used to have its own: "7 messages" on one, and a
+ * row under it that, on the many conversations with no label, held nothing but the add chip — a
+ * full 48dp touch target's height of empty header between the subject and the first message.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -113,10 +117,7 @@ internal fun ReaderHeader(
 
     Column(
         modifier =
-            modifier
-                .fillMaxWidth()
-                .padding(start = spacing.gutter)
-                .padding(top = spacing.small, bottom = spacing.medium)
+            modifier.fillMaxWidth().padding(start = spacing.gutter).padding(bottom = spacing.small)
     ) {
         Row(verticalAlignment = Alignment.Top) {
             Text(
@@ -144,12 +145,13 @@ internal fun ReaderHeader(
             }
         }
 
-        ReaderFacts(state)
-
         FlowRow(
             modifier = Modifier.padding(end = spacing.gutter),
             horizontalArrangement = Arrangement.spacedBy(spacing.small),
+            itemVerticalAlignment = Alignment.CenterVertically,
         ) {
+            ReaderFacts(state)
+
             state.labels.forEach { label ->
                 ReaderLabelChip(
                     label = label,
@@ -182,7 +184,6 @@ private fun ReaderFacts(state: ReaderHeaderState) {
         color = PlMailTheme.colors.inkMuted,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.padding(end = PlMailTheme.spacing.gutter),
     )
 }
 

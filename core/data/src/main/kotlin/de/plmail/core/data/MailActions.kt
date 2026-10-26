@@ -210,9 +210,16 @@ constructor(
                 val threadUid = StoreKey.objectKey(target.accountKey, target.threadId)
 
                 when (action) {
-                    MailAction.Archive,
+                    MailAction.Archive ->
+                        database.clearFromInboxLists(target.accountKey, target.threadId)
+
+                    // Out of every list, not only the inbox's. Trash and spam
+                    // take a conversation out of its labels as well, and a row
+                    // swiped away in a label, in Sent or in search results
+                    // stayed parked over the trash icon until the next refresh.
                     MailAction.Trash,
-                    MailAction.MarkSpam -> clearFromInbox(threadUid)
+                    MailAction.MarkSpam ->
+                        database.feed().clearThreads(target.accountKey, listOf(target.threadId))
 
                     // Undoing a removal has to put the row back, or the list
                     // keeps the conversation hidden until the next refresh and
@@ -863,4 +870,23 @@ internal fun EmailEntity.withBinding(binding: MailboxId, applied: Boolean): Emai
     if (applied) current.add(binding.value) else current.remove(binding.value)
 
     return copy(mailboxIds = current.joinToString(","))
+}
+
+/**
+ * Takes an archived conversation out of every inbox list, whichever one it is listed in.
+ *
+ * Not by [inboxFeedId] the way `MailActions.clearFromInbox` does it: that names where the
+ * *projection* files a conversation, and a row the server's own query paged into Primary — before
+ * the classification arrived, or under a tab switched off since — is in a list that rule does not
+ * name, and stayed there with the row swiped aside over its icon. Labels and search results keep
+ * it: archiving takes away the inbox, nothing else.
+ */
+internal suspend fun PlMailDatabase.clearFromInboxLists(accountKey: String, threadId: String) {
+    feed()
+        .clearThreadFrom(
+            accountKey = accountKey,
+            threadId = threadId,
+            feedIds = listOf(Feed.UNIFIED_INBOX.id) + MailCategory.entries.map { it.feedId },
+            prefix = TAB_FEED_PREFIX,
+        )
 }

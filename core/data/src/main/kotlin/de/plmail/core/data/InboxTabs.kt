@@ -71,7 +71,10 @@ data class MailTab(
  * A built-in keeps the id it has always had — `category.promotions` — so a list paged before the
  * extension is the same list after it. The reader's own are `tab.<key>`.
  */
-fun tabFeedId(key: String): String = MailCategory.fromWire(key)?.feedId ?: "tab.$key"
+fun tabFeedId(key: String): String = MailCategory.fromWire(key)?.feedId ?: "$TAB_FEED_PREFIX$key"
+
+/** What the feed id of every tab the reader made starts with. */
+internal const val TAB_FEED_PREFIX = "tab."
 
 /**
  * Which tab a conversation is in, given the tabs its account has.
