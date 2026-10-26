@@ -1,5 +1,6 @@
 package de.plmail.core.data
 
+import de.plmail.core.database.AccountEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
 import de.plmail.core.datastore.NotificationPrefsStore
@@ -123,8 +124,81 @@ constructor(
      * Sequential rather than concurrent. The accounts behind one credential share a server, and
      * that server advertises how many requests it will take at once — spending the whole budget on
      * catching up leaves nothing for the list the user is actually looking at.
+     *
+     * **But asked together first.** Most of the time nothing has changed, and every account can say
+     * so in one request rather than one each — see [unchanged]. Only an account that has something
+     * to catch up on, or could not answer, is then synced on its own.
      */
-    suspend fun syncAll(): List<SyncResult> = accounts.all().map { sync(it.uid) }
+    suspend fun syncAll(): List<SyncResult> {
+        val all = accounts.all()
+        // Nothing is lost when this fails: every account is then synced on its
+        // own, as it always was. A cancellation still cancels.
+        val quiet =
+            try {
+                unchanged(all)
+            } catch (cancellation: kotlinx.coroutines.CancellationException) {
+                throw cancellation
+            } catch (_: Exception) {
+                emptySet()
+            }
+
+        return all.map {
+            if (it.uid in quiet) settled(it.uid, SyncResult.UpToDate) else sync(it.uid)
+        }
+    }
+
+    /**
+     * The accounts whose mail has not changed since their cursors, asked in as few requests as the
+     * server's call limit allows, with their cursors moved on.
+     *
+     * An account is in the answer only when both changelogs came back empty and complete; one with
+     * changes, a method error, or a cursor the server could not answer from is left out, and [sync]
+     * then deals with it exactly as before — this only ever saves the request it replaces.
+     */
+    private suspend fun unchanged(all: List<AccountEntity>): Set<String> {
+        val asking = all.filter { it.emailState != null }
+        if (asking.isEmpty()) return emptySet()
+
+        val client = clients.current() ?: return emptySet()
+        val limit = client.session().core.maxCallsInRequest
+        val quiet = mutableSetOf<String>()
+
+        asking.chunked((limit / 2).coerceAtLeast(1)).forEach { chunk ->
+            val request = RequestBuilder(maxCallsInRequest = limit)
+            val calls = chunk.map { account ->
+                val accountId = AccountId(account.accountId)
+
+                Triple(
+                    account,
+                    request.add(EmailChanges(accountId, StateToken(account.emailState!!))),
+                    account.threadState?.let {
+                        request.add(ThreadChanges(accountId, StateToken(it)))
+                    },
+                )
+            }
+
+            val results = client.send(request)
+
+            calls.forEach { (account, emails, threads) ->
+                val email = results.resultOrNull(emails) ?: return@forEach
+                val thread = threads?.let { results.resultOrNull(it) ?: return@forEach }
+
+                val isQuiet =
+                    email.changed.isEmpty() &&
+                        email.destroyed.isEmpty() &&
+                        !email.hasMoreChanges &&
+                        (thread == null || (thread.destroyed.isEmpty() && !thread.hasMoreChanges))
+
+                if (!isQuiet) return@forEach
+
+                database.accounts().setEmailState(account.uid, email.newState)
+                thread?.let { database.accounts().setThreadState(account.uid, it.newState) }
+                quiet += account.uid
+            }
+        }
+
+        return quiet
+    }
 
     suspend fun sync(accountKey: String): SyncResult {
         val account = database.accounts().byUid(accountKey) ?: return SyncResult.UpToDate
@@ -146,23 +220,7 @@ constructor(
                     account.threadState?.let(::StateToken),
                 )
 
-            // The schedule lives on the server now, and `EmailSubmission` is one
-            // of the four types push announces -- so this is the path a hold
-            // created on a laptop, or cancelled there, actually arrives on. One
-            // `EmailSubmission/changes` when there is nothing waiting, and its
-            // own failures are swallowed inside: a theme is not worth failing a
-            // sync over and neither is a scheduled-send row.
-            runCatching { schedules.reconcile(accountKey) }
-
-            mail.recordSyncSucceeded(accountKey, at = System.currentTimeMillis())
-
-            // The account has just answered, so any banner saying it cannot be
-            // reached is describing an outage that is over. Said here rather
-            // than left to the next page load, which is what it used to wait
-            // for: nothing re-pages until somebody scrolls.
-            reachable.answered(accountKey)
-
-            outcome
+            settled(accountKey, outcome)
         } catch (resync: JmapError) {
             if (resync.requiresResync) {
                 // The one condition that justifies discarding a cursor. Both,
@@ -185,6 +243,27 @@ constructor(
             mail.recordSyncFailed(accountKey, failed.message)
             SyncResult.Failed(failed)
         }
+    }
+
+    /** What follows a sync that reached the server, however little it found. */
+    private suspend fun settled(accountKey: String, outcome: SyncResult): SyncResult {
+        // The schedule lives on the server now, and `EmailSubmission` is one
+        // of the four types push announces -- so this is the path a hold
+        // created on a laptop, or cancelled there, actually arrives on. One
+        // `EmailSubmission/changes` when there is nothing waiting, and its
+        // own failures are swallowed inside: a theme is not worth failing a
+        // sync over and neither is a scheduled-send row.
+        runCatching { schedules.reconcile(accountKey) }
+
+        mail.recordSyncSucceeded(accountKey, at = System.currentTimeMillis())
+
+        // The account has just answered, so any banner saying it cannot be
+        // reached is describing an outage that is over. Said here rather
+        // than left to the next page load, which is what it used to wait
+        // for: nothing re-pages until somebody scrolls.
+        reachable.answered(accountKey)
+
+        return outcome
     }
 
     /**

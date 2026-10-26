@@ -7,6 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -53,6 +54,45 @@ class UnifiedFeedTest {
             order.toSet(),
             "both accounts must be asked before the first row is chosen",
         )
+    }
+
+    /**
+     * Every account is asked at once. One after another was six round trips in a row before the
+     * unified inbox drew a page, on a phone with six accounts. Each source here waits until the
+     * other has been asked too, which one-at-a-time never gets to.
+     */
+    @Test
+    fun `every account is asked at the same time`() = runTest {
+        val asked = mutableSetOf<String>()
+        val both = CompletableDeferred<Unit>()
+
+        fun waiting(account: String, vararg rows: FeedRow): FeedSource =
+            object : FeedSource {
+                override val accountKey = account
+
+                override suspend fun page(
+                    atOrBefore: Long?,
+                    alreadyEmitted: Set<String>,
+                    limit: Int,
+                ): FeedPage {
+                    asked += account
+                    if (asked.size == 2) both.complete(Unit)
+                    both.await()
+
+                    return FeedPage(rows = rows.toList(), isExhausted = true)
+                }
+            }
+
+        val batch =
+            UnifiedFeed(
+                    listOf(
+                        waiting("work", row("w1", 2 * second)),
+                        waiting("home", row("h1", 1 * second)),
+                    )
+                )
+                .next(10)
+
+        assertEquals(listOf("w1", "h1"), batch.rows.map { it.id })
     }
 
     /**

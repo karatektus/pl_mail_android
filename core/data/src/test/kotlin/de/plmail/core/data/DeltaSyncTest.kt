@@ -120,6 +120,37 @@ class DeltaSyncTest {
         )
     }
 
+    /**
+     * Nothing changed: said by every account in one request, and nothing more asked of the server
+     * about mail. Each account was asked on its own before, one after another.
+     */
+    @Test
+    fun `an account with nothing new is answered by the shared check alone`() = runTest {
+        database.seedAccount(emailState = "s5", threadState = null)
+        database.seedInbox()
+
+        val transport = RecordingTransport { request ->
+            val body =
+                if (request.url.endsWith("/.well-known/jmap")) TEST_SESSION
+                else
+                    """
+                    {"sessionState":"s","methodResponses":[
+                      ["Email/changes",
+                       {"accountId":"$TEST_ACCOUNT_ID","oldState":"s5","newState":"s5",
+                        "hasMoreChanges":false,"created":[],"updated":[],"destroyed":[]},"c0"]]}
+                    """
+
+            HttpResponse(200, mapOf("Content-Type" to "application/json"), body.encodeToByteArray())
+        }
+
+        val results = syncStack(database, transport).syncAll()
+
+        assertEquals(listOf<SyncResult>(SyncResult.UpToDate), results)
+        val asked = transport.requests.mapNotNull { it.body?.decodeToString() }
+        assertEquals(1, asked.count { it.contains("Email/changes") }, asked.toString())
+        assertTrue(asked.none { it.contains("Email/get") }, asked.toString())
+    }
+
     /** No cursor yet: the account was paged before there was one, and syncs as it always did. */
     @Test
     fun `without a thread cursor only Email changes is asked`() = runTest {

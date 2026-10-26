@@ -2,7 +2,6 @@ package de.plmail.core.data
 
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.datastore.CredentialStore
-import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.EmailGet
 import de.plmail.jmap.methods.ThreadGet
 import de.plmail.jmap.protocol.AccountId
@@ -29,7 +28,7 @@ class MessageLoader
 constructor(
     private val database: PlMailDatabase,
     private val credentials: CredentialStore,
-    private val transports: TransportFactory,
+    private val clients: AccountClients,
     private val mail: MailRepository,
 ) {
 
@@ -83,12 +82,9 @@ constructor(
         val connection = credentials.connection.first() ?: return
         val account = database.accounts().byUid(accountKey) ?: return
 
-        val client =
-            JmapClient(
-                discoveryUrl = connection.address.discoveryUrl,
-                credential = connection.credential,
-                transport = transports.create(connection.address, connection.pinnedKey),
-            )
+        // The shared client, whose Session is already known: a client of its
+        // own asked the server for it again on every conversation opened.
+        val client = clients.current() ?: return
 
         val accountId = AccountId(account.accountId)
 

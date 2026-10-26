@@ -200,7 +200,7 @@ class MessageLoaderTest {
         return MessageLoader(
             database = database,
             credentials = credentials,
-            transports = fixedTransports(transport),
+            clients = AccountClients(credentials, fixedTransports(transport)),
             mail = MailRepository(database),
         )
     }

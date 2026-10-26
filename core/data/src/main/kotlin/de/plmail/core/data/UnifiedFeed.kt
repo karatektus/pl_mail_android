@@ -1,6 +1,9 @@
 package de.plmail.core.data
 
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 
 /**
  * One row of a merged list: the newest message of one conversation, in one account.
@@ -162,37 +165,66 @@ class UnifiedFeed(sources: List<FeedSource>, private val pageSize: Int = DEFAULT
      *
      * A source that answers with nothing is exhausted: `Email/query` reports no `hasMore`, so an
      * empty page is the only signal the end has been reached.
+     *
+     * **All at once.** One account after another was six round trips in a row before the unified
+     * inbox could draw a page, on a phone with six. The sources share one client, whose gate holds
+     * them to what the server says it takes at once, so asking together costs the server nothing it
+     * has not agreed to.
      */
     private suspend fun refill(failures: MutableList<SourceFailure>) {
-        states.forEach { state ->
-            if (state.buffer.isNotEmpty() || state.isFinished) return@forEach
+        val empty = states.filter { it.buffer.isEmpty() && !it.isFinished }
 
-            try {
-                // A copy: this set keeps mutating as rows are emitted, and a
-                // source that held the reference -- a cache, a test double, a
-                // request being assembled asynchronously -- would see it change
-                // underneath it.
-                val page = state.source.page(state.cursor, state.emittedAtCursor.toSet(), pageSize)
+        val outcomes = coroutineScope {
+            empty
+                .map { state ->
+                    async {
+                        try {
+                            // A copy: this set keeps mutating as rows are
+                            // emitted, and a source that held the reference --
+                            // a cache, a test double, a request being assembled
+                            // asynchronously -- would see it change underneath
+                            // it.
+                            Result.success(
+                                state.source.page(
+                                    state.cursor,
+                                    state.emittedAtCursor.toSet(),
+                                    pageSize,
+                                )
+                            )
+                        } catch (cancelled: CancellationException) {
+                            // Never a failure, and this catch exists only
+                            // because Kotlin's CancellationException is an
+                            // Exception and would otherwise be swallowed by the
+                            // arm below. It was: switching from one list to
+                            // another cancels the page in flight, which was then
+                            // reported as "could not reach your server" -- a
+                            // banner accusing a server that was answering
+                            // perfectly well, raised by the app's own navigation.
+                            throw cancelled
+                        } catch (unreachable: Exception) {
+                            Result.failure(unreachable)
+                        }
+                    }
+                }
+                .awaitAll()
+        }
 
-                state.buffer.addAll(page.rows)
-                if (page.rows.isEmpty() || page.isExhausted) state.isExhausted = true
-            } catch (cancelled: CancellationException) {
-                // Never a failure, and this catch exists only because Kotlin's
-                // CancellationException is an Exception and would otherwise be
-                // swallowed by the arm below. It was: switching from one list to
-                // another cancels the page in flight, which was then reported as
-                // "could not reach your server" -- a banner accusing a server
-                // that was answering perfectly well, raised by the app's own
-                // navigation.
-                throw cancelled
-            } catch (unreachable: Exception) {
-                // Recorded rather than thrown. The other accounts' rows are
-                // still correct and still ordered, and a list that refuses to
-                // draw because one server is rebooting is worse than a list
-                // with a banner on it.
-                state.failure = unreachable
-                failures += SourceFailure(state.source.accountKey, unreachable)
-            }
+        // Applied in order once all have answered, so the merge reads the same
+        // whichever account answered first.
+        empty.zip(outcomes).forEach { (state, outcome) ->
+            outcome
+                .onSuccess { page ->
+                    state.buffer.addAll(page.rows)
+                    if (page.rows.isEmpty() || page.isExhausted) state.isExhausted = true
+                }
+                .onFailure { unreachable ->
+                    // Recorded rather than thrown. The other accounts' rows are
+                    // still correct and still ordered, and a list that refuses
+                    // to draw because one server is rebooting is worse than a
+                    // list with a banner on it.
+                    state.failure = unreachable
+                    failures += SourceFailure(state.source.accountKey, unreachable)
+                }
         }
     }
 

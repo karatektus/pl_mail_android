@@ -9,7 +9,6 @@ import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.datastore.CredentialStore
-import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.SearchSnippet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.MailboxId
@@ -59,7 +58,7 @@ class SearchRepository
 constructor(
     private val database: PlMailDatabase,
     private val credentials: CredentialStore,
-    private val transports: TransportFactory,
+    private val clients: AccountClients,
     private val mail: MailRepository,
 ) {
 
@@ -119,12 +118,14 @@ constructor(
         _snippets.value = emptyMap()
         _skipped.value = emptyList()
 
+        // The shared client, whose Session is already known: a client of its
+        // own asked the server for it again on every search.
         val client =
-            JmapClient(
-                discoveryUrl = connection.address.discoveryUrl,
-                credential = connection.credential,
-                transport = transports.create(connection.address, connection.pinnedKey),
-            )
+            clients.current()
+                ?: run {
+                    emitAll(flowOf(PagingData.empty()))
+                    return@flow
+                }
 
         val session = client.session()
         val server = connection.address.origin
