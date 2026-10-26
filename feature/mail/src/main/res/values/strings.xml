@@ -203,6 +203,9 @@
     <string name="source_close">Close</string>
     <string name="source_share">Share</string>
     <string name="source_failed">Could not download the message source.</string>
+    <string name="draft_edit">Edit draft</string>
+    <string name="draft_discard">Delete draft</string>
+    <string name="draft_discard_failed">The draft could not be deleted.</string>
     <!--
       plMail stores parsed headers and decoded bodies rather than raw bytes, so
       a message synced before raw storage existed reconstructs to nothing.

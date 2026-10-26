@@ -99,6 +99,22 @@ fun SwipeableThreadRow(
     key(thread.uid) {
         val state = rememberSwipeToDismissBoxState()
 
+        // Whether a dismissed state is this row's own swipe. The state is
+        // saveable, and the list keeps saved state per conversation: a row
+        // swiped away and listed again -- by a sync, or by undo -- came back
+        // dismissed, and the effect below acted on it a second time, with a
+        // second snackbar, every time the conversation reappeared. Not
+        // saveable itself, so a row entering the list starts disarmed, puts
+        // any restored swipe back without acting, and only then listens.
+        var isArmed by remember { mutableStateOf(false) }
+
+        LaunchedEffect(Unit) {
+            if (state.currentValue != SwipeToDismissBoxValue.Settled) {
+                state.snapTo(SwipeToDismissBoxValue.Settled)
+            }
+            isArmed = true
+        }
+
         var isSnoozeOpen by remember { mutableStateOf(false) }
         var isPickingTime by remember { mutableStateOf(false) }
 
@@ -132,7 +148,9 @@ fun SwipeableThreadRow(
         // feed table lets the list close the gap rather than this animating a
         // row that is about to disappear anyway; one that does not, puts the
         // row back.
-        LaunchedEffect(state.currentValue) {
+        LaunchedEffect(state.currentValue, isArmed) {
+            if (!isArmed) return@LaunchedEffect
+
             val towardsEnd =
                 when (state.currentValue) {
                     SwipeToDismissBoxValue.StartToEnd -> true

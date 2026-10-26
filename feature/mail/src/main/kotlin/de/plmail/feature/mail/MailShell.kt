@@ -59,6 +59,8 @@ fun MailShell(
     onCompose: () -> Unit,
     onReply: (accountKey: String, emailId: String, all: Boolean) -> Unit,
     onForward: (accountKey: String, emailId: String) -> Unit,
+    /** Opens a draft from a conversation in the composer. */
+    onEditDraft: (accountKey: String, emailId: String) -> Unit,
     /** A conversation to open straight away, from a notification tap. */
     openThread: ThreadTarget? = null,
     onThreadOpened: () -> Unit = {},
@@ -205,6 +207,7 @@ fun MailShell(
                 onCompose = onCompose,
                 onReply = onReply,
                 onForward = onForward,
+                onEditDraft = onEditDraft,
                 openThread = openThread,
                 onThreadOpened = onThreadOpened,
             )

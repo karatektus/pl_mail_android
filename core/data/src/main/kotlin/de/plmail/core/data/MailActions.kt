@@ -10,6 +10,7 @@ import de.plmail.core.database.StoreKey
 import de.plmail.core.database.ThreadEntity
 import de.plmail.jmap.methods.EmailPatch
 import de.plmail.jmap.methods.EmailSet
+import de.plmail.jmap.methods.ThreadGet
 import de.plmail.jmap.methods.ThreadPatch
 import de.plmail.jmap.methods.ThreadSet
 import de.plmail.jmap.methods.isUnsupportedMove
@@ -562,20 +563,48 @@ constructor(
             .forEach { (accountKey, forAccount) ->
                 val account = database.accounts().byUid(accountKey) ?: return@forEach
                 val client = clients.forAccount(accountKey) ?: return@forEach
-                // Resolved from the cache rather than taken from the caller.
+                val accountId = AccountId(account.accountId)
+
                 // Thread ids and message ids are different id spaces, and a
-                // list row only knows the former.
+                // list row only knows the former. A message-scoped target names
+                // its own id; a conversation's messages are asked of the server.
+                //
+                // Not read from the cache, which is what this did: the list
+                // pages one message per conversation, so the cache holds the
+                // newest and nothing older until the reader opens it. Trashing
+                // a conversation from the list moved its newest message alone,
+                // the rest stayed in the inbox, and the next sync put the
+                // conversation back -- one message lighter each time round.
+                val conversations =
+                    forAccount
+                        .filter { it.emailId == null }
+                        .map { ThreadId(it.threadId) }
+                        .distinct()
+
+                val members =
+                    if (conversations.isEmpty()) {
+                        emptyMap()
+                    } else {
+                        val lookup = RequestBuilder()
+                        val get = lookup.add(ThreadGet(accountId, ids = conversations))
+
+                        client.send(lookup).result(get).list.associate { thread ->
+                            thread.id.value to thread.emailIds.map { it.value }
+                        }
+                    }
+
                 val ids =
                     forAccount
                         .flatMap { target ->
-                            // A message-scoped target names its own id and needs
-                            // no lookup. Everything else is a conversation, and
-                            // its messages are only known to the cache.
                             target.emailId?.let { listOf(it) }
-                                ?: database
-                                    .emails()
-                                    .inThread(target.accountKey, target.threadId)
-                                    .map { it.emailId }
+                                // The cache as well, for a conversation the
+                                // server no longer knows by that id: what this
+                                // phone has seen of it is still worth moving.
+                                ?: (members[target.threadId].orEmpty() +
+                                    database
+                                        .emails()
+                                        .inThread(target.accountKey, target.threadId)
+                                        .map { it.emailId })
                         }
                         .distinct()
                         .map(::EmailId)
@@ -583,7 +612,6 @@ constructor(
                 if (ids.isEmpty()) return@forEach
 
                 val request = RequestBuilder()
-                val accountId = AccountId(account.accountId)
 
                 // No `ifInState`, deliberately. The server bumps the account's
                 // Email state on every IMAP sync and flag change, and on the

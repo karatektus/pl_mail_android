@@ -10,6 +10,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.data.ActionOutcome
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.BlobStore
+import de.plmail.core.data.ComposeRepository
 import de.plmail.core.data.DecryptedContent
 import de.plmail.core.data.DecryptedFiles
 import de.plmail.core.data.DecryptionProblem
@@ -214,6 +215,7 @@ enum class FailedAt {
     DOWNLOAD,
     SAVE,
     SOURCE,
+    DISCARD,
 }
 
 private data class OpenedThread(val accountKey: String, val threadId: String)
@@ -238,6 +240,7 @@ constructor(
     private val blobs: BlobStore,
     private val decryptor: MessageDecryptor,
     private val decryptedFiles: DecryptedFiles,
+    private val compose: ComposeRepository,
     labels: LabelRepository,
     @param:ApplicationContext private val context: Context,
 ) : ViewModel() {
@@ -593,6 +596,30 @@ constructor(
                     Log.w(TAG, "Could not download the source of ${message.email.uid}", failure)
                     _state.update { it.copy(source = null) }
                     announce(FailedAt.SOURCE, failure)
+                }
+        }
+    }
+
+    /**
+     * Throws away a draft listed in this conversation — a reply started and abandoned, which until
+     * now could be got rid of only from the browser.
+     *
+     * The composer's own discard, so the draft goes to Trash exactly as it does from there and can
+     * be fished back out. The conversation is redrawn from the cache afterwards, which no longer
+     * holds it.
+     */
+    fun discardDraft(message: ReaderMessage) {
+        if (!message.email.isDraft) return
+
+        // The conversation on screen, which is the one the draft was listed in.
+        val thread = opened.value ?: return
+
+        viewModelScope.launch {
+            runCatching { compose.discardDraft(thread.accountKey, message.email.emailId) }
+                .onSuccess { show(thread.accountKey, thread.threadId, _state.value.subject) }
+                .onFailure { failure ->
+                    Log.w(TAG, "Could not discard draft ${message.email.uid}", failure)
+                    announce(FailedAt.DISCARD, failure)
                 }
         }
     }

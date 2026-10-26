@@ -764,6 +764,26 @@ constructor(
         moveToTrash(client, AccountId(account.accountId), draft.accountKey, emailId)
     }
 
+    /**
+     * [discard] for a draft the composer does not hold: one listed in a conversation, thrown away
+     * from the reader.
+     *
+     * The cached copy goes too. The reader draws the conversation from the cache, and a draft still
+     * in it after the server has moved it to Trash is a delete that appears to have done nothing
+     * until the next sync. Thrown when the server could not be asked, so the reader can say so.
+     */
+    suspend fun discardDraft(accountKey: String, emailId: String) {
+        val account =
+            database.accounts().byUid(accountKey)
+                ?: error("This account is no longer on the phone.")
+        val client =
+            clients.forAccount(accountKey) ?: error("There is no connection to this server.")
+
+        moveToTrash(client, AccountId(account.accountId), accountKey, emailId)
+
+        database.emails().delete(listOf(StoreKey.objectKey(accountKey, emailId)))
+    }
+
     /** Reads the bytes of a picked file. Null when the URI has been revoked since it was staged. */
     private fun bytesOf(attachment: StagedAttachment): ByteArray? {
         val uri = attachment.uri ?: return null
@@ -953,7 +973,12 @@ constructor(
         accountKey: String,
         emailId: String,
     ) {
-        val trash = binding(accountKey, TRASH_ROLE) ?: return
+        // Thrown rather than returned quietly: every caller that may shrug it
+        // off already wraps this, and the one that must not -- a draft deleted
+        // from the reader -- has to be able to say it stayed where it was.
+        val trash =
+            binding(accountKey, TRASH_ROLE)
+                ?: error("This account has no Trash yet. Its labels have not been synced.")
         val drafts = binding(accountKey, DRAFTS_ROLE)
 
         val patch = EmailPatch.build {
@@ -965,7 +990,13 @@ constructor(
         val set =
             request.add(EmailSet(accountId = accountId, update = mapOf(EmailId(emailId) to patch)))
 
-        client.send(request).result(set)
+        val result = client.send(request).result(set)
+
+        if (result.hasFailures) {
+            val failure = result.firstFailure()
+
+            error(failure?.description ?: failure?.type ?: "The server refused to move the draft.")
+        }
     }
 
     /**

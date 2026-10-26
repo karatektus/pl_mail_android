@@ -155,6 +155,9 @@
     <string name="source_close">Schließen</string>
     <string name="source_share">Teilen</string>
     <string name="source_failed">Der Quelltext konnte nicht geladen werden.</string>
+    <string name="draft_edit">Entwurf bearbeiten</string>
+    <string name="draft_discard">Entwurf löschen</string>
+    <string name="draft_discard_failed">Der Entwurf konnte nicht gelöscht werden.</string>
     <string name="source_empty">Für diese Nachricht ist auf dem Server kein Quelltext hinterlegt.</string>
     <string name="appearance">Darstellung</string>
 

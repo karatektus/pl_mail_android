@@ -452,6 +452,9 @@ private fun PlMailApp(
                             onForward = { accountKey, emailId ->
                                 composing = ComposeRequest.Forward(accountKey, emailId)
                             },
+                            onEditDraft = { accountKey, emailId ->
+                                composing = ComposeRequest.Edit(accountKey, emailId)
+                            },
                             openThread = openThread,
                             // Both cleared, not just whichever produced this
                             // target: acknowledging is what stops back-then-
