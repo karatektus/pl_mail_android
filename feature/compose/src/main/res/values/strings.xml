@@ -12,6 +12,7 @@
     <string name="compose_from_unknown">Not known yet</string>
     <!-- "Address" rather than "account": the picker offers one entry per alias now. -->
     <string name="compose_choose_sender">Choose which address sends</string>
+    <string name="compose_refresh_senders">Refresh addresses</string>
     <string name="compose_to">To</string>
     <string name="compose_cc">Cc</string>
     <string name="compose_bcc">Bcc</string>

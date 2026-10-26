@@ -126,11 +126,13 @@ constructor(
     override suspend fun sendingIdentities(): List<SendIdentity> = identities().first()
 
     /**
-     * Re-reads `Identity/get` for every account.
+     * Re-reads `Identity/get` for every account, in one request.
      *
      * Excluded from push and from delta sync on purpose: identities change only when the user edits
-     * their own addresses. This runs when a composer opens, which is the one moment a stale list
-     * would be visible.
+     * their own addresses, and the directory refresh reads them beside the mailboxes anyway. This
+     * is for the two moments a stale list is in the way: the From menu's refresh, and a send the
+     * server refused for an address it no longer allows. Not the composer opening — that waited on
+     * one round trip per account before it drew anything.
      */
     suspend fun refreshIdentities() {
         val client = clients.current() ?: return
@@ -142,21 +144,32 @@ constructor(
         // neither of them.
         val server = credentials.connection.first()?.address?.origin ?: return
 
-        client.session().accountIds.forEach { accountId ->
-            runCatching {
-                val request = RequestBuilder()
-                val get = request.add(IdentityGet(AccountId(accountId.value)))
-                val identities = client.send(request).result(get).list
+        client.session().accountIds.chunked(RequestBuilder.DEFAULT_MAX_CALLS).forEach { chunk ->
+            val request = RequestBuilder()
+            val gets = chunk.map { it to request.add(IdentityGet(AccountId(it.value))) }
+            val results = client.send(request)
 
-                mail.replaceIdentities(StoreKey.account(server, accountId.value), identities)
+            // Each account's answer on its own: one that failed keeps the
+            // addresses it had rather than taking the others' with it.
+            gets.forEach { (accountId, get) ->
+                results.resultOrNull(get)?.let {
+                    mail.replaceIdentities(StoreKey.account(server, accountId.value), it.list)
+                }
             }
         }
     }
 
     /**
      * The message a reply or forward is built from, with its body, from the cache or the server.
+     *
+     * The cache first — see [cachedOriginal] for when it can answer — because this stands between
+     * tapping Reply and seeing the composer.
      */
     override suspend fun original(accountKey: String, emailId: String): Email? {
+        database.cachedOriginal(accountKey, emailId)?.let {
+            return it
+        }
+
         val account = database.accounts().byUid(accountKey) ?: return null
         val client = clients.forAccount(accountKey) ?: return null
 

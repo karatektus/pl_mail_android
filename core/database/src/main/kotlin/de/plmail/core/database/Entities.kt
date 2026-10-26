@@ -341,6 +341,19 @@ data class EmailBodyEntity(
     /** Always the server's sanitised HTML, never a raw column. */
     val htmlBody: String? = null,
     val fetchedAt: Long = 0,
+    /**
+     * Whether the headers below came in the same fetch as the body.
+     *
+     * They are what a reply is built from, and they are kept here rather than on the message row
+     * because a list page re-fetches that row without them — a reply written from it would lose its
+     * Reply-To and its threading. False on a placeholder written for a message with no body.
+     */
+    val hasReplyHeaders: Boolean = false,
+    val replyToJson: String? = null,
+    val ccJson: String? = null,
+    /** Every Message-ID the header carries, space-separated as [references] is. */
+    val messageId: String? = null,
+    val references: String? = null,
 )
 
 @Entity(tableName = "attachments", indices = [Index("emailUid")])

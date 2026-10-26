@@ -10,6 +10,7 @@
     <string name="compose_from">Von</string>
     <string name="compose_from_unknown">Noch nicht bekannt</string>
     <string name="compose_choose_sender">Absenderadresse wählen</string>
+    <string name="compose_refresh_senders">Adressen aktualisieren</string>
     <string name="compose_to">An</string>
     <string name="compose_cc">Cc</string>
     <string name="compose_bcc">Bcc</string>

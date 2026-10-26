@@ -204,6 +204,13 @@ fun Email.toBodyEntity(accountKey: String, fetchedAt: Long): EmailBodyEntity? {
         textBody = text,
         htmlBody = html,
         fetchedAt = fetchedAt,
+        // A body is only ever fetched with the reader's properties, which
+        // carry these -- see EmailBodyEntity.hasReplyHeaders.
+        hasReplyHeaders = true,
+        replyToJson = replyTo.encode(),
+        ccJson = cc.encode(),
+        messageId = messageId?.takeIf { it.isNotEmpty() }?.joinToString(" "),
+        references = references?.takeIf { it.isNotEmpty() }?.joinToString(" "),
     )
 }
 

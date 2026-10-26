@@ -211,6 +211,7 @@ class ComposerScreenshotTest {
             isExpanded = isExpanded,
             onExpandedChange = {},
             onIdentity = {},
+            onRefreshIdentities = {},
             onTo = {},
             onCc = {},
             onBcc = {},

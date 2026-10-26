@@ -74,7 +74,7 @@ import androidx.room.RoomDatabase
             CalendarOccurrenceEntity::class,
             InboxTabEntity::class,
         ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 abstract class PlMailDatabase : RoomDatabase() {

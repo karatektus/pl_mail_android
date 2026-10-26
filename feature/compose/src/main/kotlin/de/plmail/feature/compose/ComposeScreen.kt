@@ -275,6 +275,7 @@ fun ComposeScreen(
                         if (it) isWritingBody = false
                     },
                     onIdentity = viewModel::setIdentity,
+                    onRefreshIdentities = viewModel::refreshIdentities,
                     onTo = viewModel::setTo,
                     onCc = viewModel::setCc,
                     onBcc = viewModel::setBcc,

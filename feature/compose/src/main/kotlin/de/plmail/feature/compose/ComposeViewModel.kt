@@ -118,16 +118,10 @@ constructor(
         this.strings = strings
 
         opening = viewModelScope.launch {
-            // From the cache first so the From row is never empty, then
-            // refreshed. An account added on another device would otherwise be
-            // missing from the picker until something else happened to sync.
-            val identities = compose.identities().first()
-
-            _state.update { it.copy(identities = identities) }
-
-            runCatching { compose.refreshIdentities() }
-
-            val current = compose.identities().first().ifEmpty { identities }
+            // From the cache alone. The directory refresh keeps it current, and
+            // the From menu can ask again; asking here was one round trip per
+            // account before the composer drew anything.
+            val current = compose.identities().first()
 
             _state.update { it.copy(identities = current) }
 
@@ -147,6 +141,22 @@ constructor(
             readSendWindow()
             watchForAutosave()
             watchRecipientKeys()
+        }
+    }
+
+    /**
+     * Asks the server for every account's addresses again, for the From menu.
+     *
+     * The address this message is written from stays in the list whatever the answer: it may be a
+     * catch-all address that is in no list, and the send is what says if it is no longer allowed.
+     */
+    fun refreshIdentities() {
+        viewModelScope.launch {
+            runCatching { compose.refreshIdentities() }
+
+            val fresh = compose.identities().first()
+
+            _state.update { it.copy(identities = fresh.including(it.identity)) }
         }
     }
 
