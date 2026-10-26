@@ -774,7 +774,21 @@ constructor(
                 }
             }
 
-            MailAction.MoveToInbox -> inbox(accountKey)?.let { EmailPatch.build { addMailbox(it) } }
+            // Out of the bin as well as into the inbox, as the web's restore
+            // does: Trash, Spam and Archive all come off. Adding Inbox alone --
+            // which this did -- left an undone trash in the inbox and the bin
+            // at once, and the server's own trash had already taken Inbox away,
+            // so nothing else would ever clean it up.
+            MailAction.MoveToInbox -> {
+                val inbox = inbox(accountKey) ?: return null
+                val leaving =
+                    listOf("trash", "junk", "archive").mapNotNull { binding(accountKey, it) }
+
+                EmailPatch.build {
+                    addMailbox(inbox)
+                    leaving.forEach { removeMailbox(it) }
+                }
+            }
 
             MailAction.MarkSpam -> {
                 val junk = binding(accountKey, "junk") ?: return null

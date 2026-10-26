@@ -980,10 +980,16 @@ constructor(
             binding(accountKey, TRASH_ROLE)
                 ?: error("This account has no Trash yet. Its labels have not been synced.")
         val drafts = binding(accountKey, DRAFTS_ROLE)
+        // Inbox off too, as the server's own trash takes it off. A draft has
+        // no business in the inbox, but one that got there -- an undone trash
+        // of its whole conversation used to put it there -- stayed listed
+        // after a discard that left it.
+        val inbox = binding(accountKey, INBOX_ROLE)
 
         val patch = EmailPatch.build {
             addMailbox(trash)
             drafts?.let { removeMailbox(it) }
+            inbox?.let { removeMailbox(it) }
         }
 
         val request = RequestBuilder()
@@ -1036,6 +1042,7 @@ constructor(
         const val DRAFTS_ROLE = "drafts"
         const val SENT_ROLE = "sent"
         const val TRASH_ROLE = "trash"
+        const val INBOX_ROLE = "inbox"
     }
 }
 
