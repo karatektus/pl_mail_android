@@ -408,7 +408,7 @@ constructor(
     private suspend fun tabFeedOf(thread: ThreadEntity): String? =
         thread.inboxFeedId(
             enabled = database.enabledTabKeys(thread.accountKey),
-            classifies = database.threads().hasCategories(),
+            classifies = database.classifies(thread.accountKey),
             wantsTabs = database.wantsInboxTabs(thread.accountKey),
         )
 

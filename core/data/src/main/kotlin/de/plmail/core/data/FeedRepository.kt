@@ -218,7 +218,7 @@ constructor(
             // on every one of them.
             if (
                 category == MailCategory.PRIMARY &&
-                    (!database.threads().hasCategories() || !database.wantsInboxTabs(accountKey))
+                    (!database.classifies(accountKey) || !database.wantsInboxTabs(accountKey))
             ) {
                 return@feed inbox
             }

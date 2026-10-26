@@ -315,7 +315,7 @@ constructor(
         // nothing -- see notifyScopeKeys. Read once per hydration like the
         // others; it is a fact about the server, so it cannot change halfway
         // down one catch-up.
-        val classifies = database.threads().hasCategories()
+        val classifies = database.classifies(accountKey)
 
         // And the reader's tabs, so a notification is raised under the tab the
         // web shows the conversation in -- their own "Shipping", or Primary for a

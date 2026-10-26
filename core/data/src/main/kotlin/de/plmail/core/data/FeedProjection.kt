@@ -68,7 +68,7 @@ constructor(
         // unclassified conversation means -- see targetFeeds. Read once for the
         // batch and outside the transaction: it is a fact about the server, and
         // the rows this reads are the ones storeEmails has already committed.
-        val classifies = database.threads().hasCategories()
+        val classifies = database.classifies(accountKey)
 
         // The tabs this account has switched on, or null where its server has
         // none -- which tab a conversation is in depends on them, see tabKeyOf.

@@ -111,6 +111,17 @@ fun ThreadEntity.tabKey(enabled: Set<String>?): String? = tabKeyOf(inboxTab, cat
 internal suspend fun PlMailDatabase.enabledTabKeys(accountKey: String): Set<String>? =
     inboxTabs().forAccount(accountKey).takeIf { it.isNotEmpty() }?.enabledKeys()
 
+/**
+ * Whether this account's server sorts its inbox into categories.
+ *
+ * A server with inbox tabs does by definition, and its tabs are cached before the first list is
+ * built. The cached conversations alone — the old rule — answered no on every empty cache: the
+ * first sync after signing in, or after a schema change emptied the cache, built Primary as the
+ * whole inbox, and the promotions in it stayed there until the list was paged again.
+ */
+internal suspend fun PlMailDatabase.classifies(accountKey: String): Boolean =
+    inboxTabs().forAccount(accountKey).isNotEmpty() || threads().hasCategories()
+
 private fun List<InboxTabEntity>.enabledKeys(): Set<String> = filter {
     it.isEnabled
 }
