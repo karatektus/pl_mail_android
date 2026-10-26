@@ -7,7 +7,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -16,12 +15,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -30,8 +32,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.InputChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,7 +48,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
@@ -144,98 +144,131 @@ internal fun RecipientField(
 
     val theme = LocalPlMailTheme.current
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        FlowRow(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = theme.spacing.gutter),
-            horizontalArrangement = Arrangement.spacedBy(theme.spacing.tiny),
+    // The Box is the suggestion list's anchor: the list hangs under the whole
+    // field, as wide as it, and the line being typed is always its last line.
+    Box(modifier = modifier.fillMaxWidth().onSizeChanged { fieldWidthPx = it.width }) {
+        // One flow for the label, the chips and the input, so a line with room
+        // for them is one line. The chips had a row of their own above the
+        // input, which made every reply's To two rows tall for one address.
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = theme.spacing.gutter),
+            verticalAlignment = Alignment.Top,
         ) {
-            addresses.forEach { address ->
-                InputChip(
-                    selected = false,
-                    onClick = { onChanged(addresses - address) },
-                    label = { Text(address.display) },
-                    leadingIcon = lockOf(address)?.let { lock -> { RecipientLockIcon(lock) } },
-                    trailingIcon = {
-                        Icon(
-                            imageVector = Icons.Filled.Close,
-                            contentDescription =
-                                stringResource(R.string.compose_remove_recipient, address.display),
-                        )
-                    },
+            FlowRow(
+                modifier =
+                    Modifier.weight(1f)
+                        .heightIn(min = LINE_HEIGHT)
+                        // A tap anywhere on the line types into it, which the input
+                        // alone cannot promise once it has shrunk beside the chips.
+                        .clickable(interactionSource = null, indication = null) {
+                            focusRequester.requestFocus()
+                        }
+                        .padding(vertical = theme.spacing.tiny),
+                horizontalArrangement = Arrangement.spacedBy(theme.spacing.tiny),
+                verticalArrangement = Arrangement.spacedBy(theme.spacing.tiny),
+                itemVerticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = theme.colors.fieldPlaceholder,
+                    modifier = Modifier.padding(end = theme.spacing.tiny),
                 )
+
+                addresses.forEach { address ->
+                    InputChip(
+                        selected = false,
+                        onClick = { onChanged(addresses - address) },
+                        label = { Text(address.display) },
+                        leadingIcon = lockOf(address)?.let { lock -> { RecipientLockIcon(lock) } },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Filled.Close,
+                                contentDescription =
+                                    stringResource(
+                                        R.string.compose_remove_recipient,
+                                        address.display,
+                                    ),
+                            )
+                        },
+                    )
+                }
+
+                // As wide as what is typed, and room for an address while it has the
+                // cursor; until then nothing, so an empty input never pushes the
+                // chips onto a second line. Not weighted to fill the line: a weighted
+                // item is measured for its share before the chips are, and they
+                // wrapped early to leave it room.
+                BasicTextField(
+                    value = typed,
+                    onValueChange = { value ->
+                        // A separator the user typed is a commit. Pasting "a@x, b@y"
+                        // therefore lands as two chips rather than one unusable string.
+                        if (value.endsWith(",") || value.endsWith(";") || value.endsWith(" ")) {
+                            commit(value)
+                        } else {
+                            typed = value
+                            onQueryChanged(value)
+                        }
+                    },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(color = theme.colors.ink),
+                    cursorBrush = SolidColor(theme.colors.accent),
+                    keyboardOptions =
+                        KeyboardOptions(
+                            keyboardType = KeyboardType.Email,
+                            imeAction = ImeAction.Done,
+                        ),
+                    keyboardActions = KeyboardActions(onDone = { commit() }),
+                    modifier =
+                        Modifier.then(
+                                // Exactly, rather than at least: a text field has
+                                // a minimum size of its own that "at least 1dp"
+                                // does not override, and it took a second line.
+                                // A point tall as well, for a line whose last chip
+                                // fills it and pushes even a point onto the next.
+                                if (isFocused || typed.isNotEmpty())
+                                    Modifier.widthIn(min = MIN_INPUT_WIDTH)
+                                        .padding(vertical = theme.spacing.small)
+                                else Modifier.size(1.dp)
+                            )
+                            .focusRequester(focusRequester)
+                            .onFocusChanged { focus ->
+                                isFocused = focus.isFocused
+
+                                // Tapping Send from inside this field is the case
+                                // this exists for: without it the address being
+                                // typed is silently dropped and the mail goes to
+                                // whoever was already chipped, or to nobody.
+                                if (!focus.isFocused) commit()
+                            },
+                )
+            }
+
+            // Beside the flow rather than in it, at the height of its first line:
+            // in it, Cc / Bcc was one more item to wrap and took a line of its own.
+            trailing?.let {
+                Box(
+                    modifier =
+                        Modifier.padding(vertical = theme.spacing.tiny)
+                            .heightIn(min = LINE_HEIGHT - theme.spacing.tiny * 2)
+                            .padding(end = theme.spacing.small),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    it()
+                }
             }
         }
 
-        // The Box is the suggestion list's anchor. It wraps the input only, not
-        // the chips above it, so the list hangs off the line being typed into
-        // rather than off the bottom of a field that has grown three rows of
-        // recipients tall.
-        Box(modifier = Modifier.fillMaxWidth()) {
-            TextField(
-                value = typed,
-                onValueChange = { value ->
-                    // A separator the user typed is a commit. Pasting "a@x, b@y"
-                    // therefore lands as two chips rather than one unusable string.
-                    if (value.endsWith(",") || value.endsWith(";") || value.endsWith(" ")) {
-                        commit(value)
-                    } else {
-                        typed = value
-                        onQueryChanged(value)
-                    }
-                },
-                // A placeholder rather than a floating label: the label animating
-                // up and shrinking on focus is a form's idiom, and this is a line
-                // of an address book.
-                //
-                // One of the two, never both. The prefix appears once the line has
-                // chips on it, so a line with a recipient and nothing typed drew
-                // the prefix *and* the placeholder and read "To To" -- visible in
-                // the first screenshot this component was ever captured in.
-                placeholder = if (addresses.isEmpty()) ({ Text(label) }) else null,
-                prefix = if (addresses.isEmpty()) null else ({ Text("$label ") }),
-                trailingIcon = trailing,
-                singleLine = true,
-                keyboardOptions =
-                    KeyboardOptions(
-                        keyboardType = KeyboardType.Email,
-                        imeAction = ImeAction.Done,
-                    ),
-                keyboardActions = KeyboardActions(onDone = { commit() }),
-                colors =
-                    TextFieldDefaults.colors(
-                        focusedContainerColor = theme.colors.surface,
-                        unfocusedContainerColor = theme.colors.surface,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        cursorColor = theme.colors.accent,
-                        focusedPlaceholderColor = theme.colors.fieldPlaceholder,
-                        unfocusedPlaceholderColor = theme.colors.fieldPlaceholder,
-                    ),
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .onSizeChanged { fieldWidthPx = it.width }
-                        .focusRequester(focusRequester)
-                        .onFocusChanged { focus ->
-                            isFocused = focus.isFocused
-
-                            // Tapping Send from inside this field is the case
-                            // this exists for: without it the address being
-                            // typed is silently dropped and the mail goes to
-                            // whoever was already chipped, or to nobody.
-                            if (!focus.isFocused) commit()
-                        },
+        // Only while something is being typed into a line that still has the
+        // cursor. A suggestion list that stays open over the subject field is
+        // in the way rather than helpful.
+        if (isFocused && typed.isNotBlank() && suggestions.isNotEmpty()) {
+            SuggestionList(
+                suggestions = suggestions,
+                width = with(LocalDensity.current) { fieldWidthPx.toDp() },
+                onPicked = ::pick,
             )
-
-            // Only while something is being typed into a line that still has the
-            // cursor. A suggestion list that stays open over the subject field is
-            // in the way rather than helpful.
-            if (isFocused && typed.isNotBlank() && suggestions.isNotEmpty()) {
-                SuggestionList(
-                    suggestions = suggestions,
-                    width = with(LocalDensity.current) { fieldWidthPx.toDp() },
-                    onPicked = ::pick,
-                )
-            }
         }
     }
 
@@ -522,6 +555,12 @@ private class UnderTheField(private val gap: Int, private val keyboard: Int) :
  * allowed to cover, and that is the same amount on a phone and on a tablet.
  */
 private val MAX_HEIGHT = 240.dp
+
+/** A line's height with nothing on it: the 48dp touch target, as the From row and subject have. */
+private val LINE_HEIGHT = 48.dp
+
+/** The narrowest the input gets before it takes a line of its own: room for a short address. */
+private val MIN_INPUT_WIDTH = 96.dp
 
 /**
  * How much of the row beyond the last whole one is left showing.
