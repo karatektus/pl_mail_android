@@ -20,7 +20,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
  * So from 11 each bump comes with a migration, and the destructive fallback is kept only for the
  * versions before it, which have no exported path forward worth writing, and for a downgrade, which
  * only a development build does. A bump without a migration now fails to open rather than quietly
- * wiping the cache; `MigrationFromV11Test` runs the real migration against the exported schema.
+ * wiping the cache; `DatabaseUpgradeTest` runs the real migration against the exported schema.
  *
  * Most bumps are columns, and Room writes those itself from the exported schemas: an
  * [AutoMigration] per version, a `@ColumnInfo(defaultValue)` on any column that is not null. A

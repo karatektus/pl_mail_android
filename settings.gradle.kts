@@ -18,6 +18,10 @@ pluginManagement {
     }
 }
 
+// Downloads the JDK the unit tests run on when the machine lacks it; see
+// `configureUnitTestPlatform` in build-logic.
+plugins { id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0" }
+
 dependencyResolutionManagement {
     // Modules declare dependencies, never repositories. A module that adds its
     // own repository is a supply-chain surface nobody reviews.

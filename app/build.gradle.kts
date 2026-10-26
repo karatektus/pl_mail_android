@@ -157,6 +157,9 @@ android {
 }
 
 dependencies {
+    // Installs `src/main/baseline-prof.txt` on a device the app was not installed
+    // on by Play, which is every F-Droid and GitHub install.
+    implementation(libs.androidx.profileinstaller)
     implementation(projects.core.data)
     implementation(projects.core.datastore)
     implementation(projects.core.designsystem)

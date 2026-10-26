@@ -137,7 +137,10 @@ class DeltaSyncTest {
                     {"sessionState":"s","methodResponses":[
                       ["Email/changes",
                        {"accountId":"$TEST_ACCOUNT_ID","oldState":"s5","newState":"s5",
-                        "hasMoreChanges":false,"created":[],"updated":[],"destroyed":[]},"c0"]]}
+                        "hasMoreChanges":false,"created":[],"updated":[],"destroyed":[]},"c0"],
+                      ["EmailSubmission/changes",
+                       {"accountId":"$TEST_ACCOUNT_ID","oldState":"0","newState":"q1",
+                        "hasMoreChanges":false,"created":[],"updated":[],"destroyed":[]},"c1"]]}
                     """
 
             HttpResponse(200, mapOf("Content-Type" to "application/json"), body.encodeToByteArray())
@@ -146,9 +149,14 @@ class DeltaSyncTest {
         val results = syncStack(database, transport).syncAll()
 
         assertEquals(listOf<SyncResult>(SyncResult.UpToDate), results)
-        val asked = transport.requests.mapNotNull { it.body?.decodeToString() }
-        assertEquals(1, asked.count { it.contains("Email/changes") }, asked.toString())
-        assertTrue(asked.none { it.contains("Email/get") }, asked.toString())
+        // One request in all: the scheduled-send check rides along with the
+        // mail check rather than following it.
+        val asked =
+            transport.requests
+                .filter { it.url.endsWith("/jmap/api") }
+                .mapNotNull { it.body?.decodeToString() }
+        assertEquals(1, asked.size, asked.toString())
+        assertTrue(asked.single().contains("EmailSubmission/changes"), asked.toString())
     }
 
     /** No cursor yet: the account was paged before there was one, and syncs as it always did. */

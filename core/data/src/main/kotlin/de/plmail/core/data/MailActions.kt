@@ -575,23 +575,36 @@ constructor(
                 // a conversation from the list moved its newest message alone,
                 // the rest stayed in the inbox, and the next sync put the
                 // conversation back -- one message lighter each time round.
-                val conversations =
+                //
+                // Unless the phone holds the conversation whole: the list pages
+                // and the sync record how many messages each has, and holding
+                // that many, the cache is the answer and asking costs a round
+                // trip before the change can be sent. Most conversations are a
+                // single message, so most actions go out as one request.
+                val cached =
                     forAccount
                         .filter { it.emailId == null }
-                        .map { ThreadId(it.threadId) }
+                        .map { it.threadId }
                         .distinct()
+                        .associateWith { database.emails().inThread(accountKey, it) }
+                val heldWhole = cached.filter { (threadId, emails) ->
+                    val counted = database.threads().byUid(StoreKey.objectKey(accountKey, threadId))
+                    counted != null && emails.size >= counted.messageCount
+                }
+                val conversations = (cached.keys - heldWhole.keys).map(::ThreadId)
 
                 val members =
-                    if (conversations.isEmpty()) {
-                        emptyMap()
-                    } else {
-                        val lookup = RequestBuilder()
-                        val get = lookup.add(ThreadGet(accountId, ids = conversations))
+                    heldWhole.mapValues { (_, emails) -> emails.map { it.emailId } } +
+                        if (conversations.isEmpty()) {
+                            emptyMap()
+                        } else {
+                            val lookup = RequestBuilder()
+                            val get = lookup.add(ThreadGet(accountId, ids = conversations))
 
-                        client.send(lookup).result(get).list.associate { thread ->
-                            thread.id.value to thread.emailIds.map { it.value }
+                            client.send(lookup).result(get).list.associate { thread ->
+                                thread.id.value to thread.emailIds.map { it.value }
+                            }
                         }
-                    }
 
                 val ids =
                     forAccount

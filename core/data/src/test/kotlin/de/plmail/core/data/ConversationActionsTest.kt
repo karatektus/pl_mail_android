@@ -59,6 +59,19 @@ class ConversationActionsTest {
         listOf("m1", "m2", "m3").forEach { assertTrue(set.contains("\"$it\""), "$it in $set") }
     }
 
+    /** A conversation the phone holds whole needs no lookup before the change goes out. */
+    @Test
+    fun `a conversation held whole is trashed in one request`() = runTest {
+        seed(messageCount = 1)
+        val transport = serving()
+
+        actions(transport).apply(MailAction.Trash, listOf(ActionTarget(testAccountKey, "t1")))
+
+        val asked = sent(transport)
+        assertTrue(asked.none { it.contains("\"Thread/get\"") }, asked.toString())
+        assertTrue(asked.single().contains("\"m1\""), asked.toString())
+    }
+
     /** Undoing a trash. Adding Inbox alone left the messages in the bin as well. */
     @Test
     fun `back to the inbox takes the bin, spam and archive off`() = runTest {
@@ -75,10 +88,11 @@ class ConversationActionsTest {
         }
     }
 
-    private suspend fun seed() {
+    private suspend fun seed(messageCount: Int = 3) {
         database.seedAccount()
         database.seedInbox()
-        database.seedThread("t1", isInInbox = true)
+        // Three, as the page that listed it counted: more than the cache holds.
+        database.seedThread("t1", isInInbox = true, messageCount = messageCount)
         database
             .mailboxes()
             .upsert(

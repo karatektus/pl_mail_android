@@ -1,0 +1,40 @@
+# The app's own code, compiled ahead of time at install rather than interpreted
+# and JIT-compiled through the first launches after every install or update.
+#
+# Written by hand rather than recorded. A recorded profile needs a build signed
+# in to a server, walking the inbox and the reader; the emulator a recording
+# would run on has neither, and a profile of the onboarding screen alone would
+# leave out exactly the code this is for. So: the classes startup loads, and
+# every method on the paths somebody waits on -- the list, its rows, opening a
+# conversation, and the data layer under them.
+#
+# Methods are named by wildcard and their classes are not listed. A listed class
+# is loaded into the app image at startup; listing every class in these packages
+# would make startup slower to make everything after it faster. Only the
+# startup classes themselves are listed.
+#
+# The Compose and AndroidX libraries ship profiles of their own, which the build
+# merges with this one.
+
+# Startup.
+HSPLde/plmail/PlMailApplication;->**(**)**
+HSPLde/plmail/Hilt_PlMailApplication;->**(**)**
+HSPLde/plmail/MainActivity;->**(**)**
+HSPLde/plmail/Hilt_MainActivity;->**(**)**
+HSPLde/plmail/MainViewModel;->**(**)**
+Lde/plmail/PlMailApplication;
+Lde/plmail/Hilt_PlMailApplication;
+Lde/plmail/MainActivity;
+Lde/plmail/Hilt_MainActivity;
+Lde/plmail/MainViewModel;
+
+# The inbox, its rows, and the reader.
+HSPLde/plmail/feature/mail/**->**(**)**
+HSPLde/plmail/core/ui/**->**(**)**
+HSPLde/plmail/core/designsystem/**->**(**)**
+
+# What they read: the cache, the sync, and the protocol under both.
+HSPLde/plmail/core/data/**->**(**)**
+HSPLde/plmail/core/database/**->**(**)**
+HSPLde/plmail/core/jmap/**->**(**)**
+HSPLde/plmail/core/datastore/**->**(**)**

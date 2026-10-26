@@ -28,7 +28,7 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 // sdk = 36 for the reason FeedProjectionTest gives.
 @Config(sdk = [36])
-class MigrationFromV11Test {
+class DatabaseUpgradeTest {
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private var opened: PlMailDatabase? = null
@@ -41,7 +41,7 @@ class MigrationFromV11Test {
 
     @Test
     fun `the bodies already downloaded survive the update`() = runTest {
-        seedVersion11 {
+        seed(version = 11) {
             execSQL("INSERT INTO email_bodies (uid, textBody, fetchedAt) VALUES ('e1', 'Hello', 1)")
         }
 
@@ -55,7 +55,7 @@ class MigrationFromV11Test {
     /** The new counts are wrong at their defaults, so the lists are paged again to rewrite them. */
     @Test
     fun `every account is paged again after the update`() = runTest {
-        seedVersion11 {
+        seed(version = 11) {
             execSQL(
                 """
                 INSERT INTO accounts (uid, serverId, accountId, name, isPersonal, isReadOnly,
@@ -73,10 +73,54 @@ class MigrationFromV11Test {
         assertNull(account?.threadState)
     }
 
-    /** The database v0.4.1 would have left, built from the schema it was compiled against. */
-    private fun seedVersion11(rows: SQLiteDatabase.() -> Unit) {
+    /**
+     * The current schema, as exported, is the one compiled.
+     *
+     * Room stores the schema's hash and refuses a database whose hash is not its own, so opening
+     * the export proves the two agree. An entity changed without its export being written again
+     * would otherwise be found the day somebody migrates from it, against a schema that was never
+     * true.
+     */
+    @Test
+    fun `the exported schema is the one compiled`() = runTest {
+        seed(version = CURRENT) {}
+
+        val database = PlMailDatabase.create(context).also { opened = it }
+
+        assertEquals(emptyList(), database.accounts().all())
+    }
+
+    /** A version from before migrations were written is dropped and rebuilt, not fatal. */
+    @Test
+    fun `a database from before migrations is rebuilt`() = runTest {
+        seed(version = 10) {
+            execSQL(
+                """
+                INSERT INTO accounts (uid, serverId, accountId, name, isPersonal, isReadOnly,
+                  sortIndex, wantsInboxTabs) VALUES ('a1', 's', '13', 'Me', 1, 0, 0, 0)
+                """
+            )
+        }
+
+        val database = PlMailDatabase.create(context).also { opened = it }
+
+        assertEquals(emptyList(), database.accounts().all())
+    }
+
+    /** A development build's newer database, met by an older one: rebuilt, not a crash loop. */
+    @Test
+    fun `a newer database is rebuilt`() = runTest {
+        seed(version = CURRENT) { version = CURRENT + 1 }
+
+        val database = PlMailDatabase.create(context).also { opened = it }
+
+        assertEquals(emptyList(), database.accounts().all())
+    }
+
+    /** The database a build compiled against [version] would have left. */
+    private fun seed(version: Int, rows: SQLiteDatabase.() -> Unit) {
         val schema =
-            Json.parseToJsonElement(File(SCHEMAS, "11.json").readText())
+            Json.parseToJsonElement(File(SCHEMAS, "$version.json").readText())
                 .jsonObject
                 .getValue("database")
         val path = context.getDatabasePath(PlMailDatabase.NAME).apply { parentFile?.mkdirs() }
@@ -94,13 +138,16 @@ class MigrationFromV11Test {
             schema.jsonObject.getValue("setupQueries").jsonArray.forEach {
                 db.execSQL(it.jsonPrimitive.content)
             }
+            db.version = version
             db.rows()
-            db.version = 11
         }
     }
 
     private companion object {
         /** The exported schemas, from this module's directory, where the test runs. */
         val SCHEMAS = File("../database/schemas/de.plmail.core.database.PlMailDatabase")
+
+        /** The version the app opens at, which `PlMailDatabase` declares. */
+        const val CURRENT = 12
     }
 }

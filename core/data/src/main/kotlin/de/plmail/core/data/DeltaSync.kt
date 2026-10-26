@@ -7,12 +7,18 @@ import de.plmail.core.datastore.NotificationPrefsStore
 import de.plmail.core.datastore.NotifiedMessageStore
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.methods.EmailChanges
+import de.plmail.jmap.methods.EmailChangesResult
 import de.plmail.jmap.methods.EmailGet
+import de.plmail.jmap.methods.EmailSubmissionChanges
+import de.plmail.jmap.methods.EmailSubmissionChangesResult
 import de.plmail.jmap.methods.ThreadChanges
+import de.plmail.jmap.methods.ThreadChangesResult
 import de.plmail.jmap.methods.ThreadGet
 import de.plmail.jmap.protocol.AccountId
+import de.plmail.jmap.protocol.Capability
 import de.plmail.jmap.protocol.EmailId
 import de.plmail.jmap.protocol.JmapError
+import de.plmail.jmap.protocol.MethodHandle
 import de.plmail.jmap.protocol.RequestBuilder
 import de.plmail.jmap.protocol.StateToken
 import javax.inject.Inject
@@ -139,11 +145,12 @@ constructor(
             } catch (cancellation: kotlinx.coroutines.CancellationException) {
                 throw cancellation
             } catch (_: Exception) {
-                emptySet()
+                emptyMap()
             }
 
         return all.map {
-            if (it.uid in quiet) settled(it.uid, SyncResult.UpToDate) else sync(it.uid)
+            if (it.uid in quiet) settled(it.uid, SyncResult.UpToDate, quiet[it.uid])
+            else sync(it.uid)
         }
     }
 
@@ -155,31 +162,39 @@ constructor(
      * changes, a method error, or a cursor the server could not answer from is left out, and [sync]
      * then deals with it exactly as before — this only ever saves the request it replaces.
      */
-    private suspend fun unchanged(all: List<AccountEntity>): Set<String> {
+    private suspend fun unchanged(all: List<AccountEntity>): Map<String, SubmissionDelta?> {
         val asking = all.filter { it.emailState != null }
-        if (asking.isEmpty()) return emptySet()
+        if (asking.isEmpty()) return emptyMap()
 
-        val client = clients.current() ?: return emptySet()
+        val client = clients.current() ?: return emptyMap()
         val limit = client.session().core.maxCallsInRequest
-        val quiet = mutableSetOf<String>()
+        val quiet = mutableMapOf<String, SubmissionDelta?>()
 
-        asking.chunked((limit / 2).coerceAtLeast(1)).forEach { chunk ->
-            val request = RequestBuilder(maxCallsInRequest = limit)
+        asking.chunked((limit / CALLS_PER_ACCOUNT).coerceAtLeast(1)).forEach { chunk ->
+            val request =
+                RequestBuilder(using = Capability.USING_MAIL_SUBMISSION, maxCallsInRequest = limit)
             val calls = chunk.map { account ->
                 val accountId = AccountId(account.accountId)
 
-                Triple(
-                    account,
-                    request.add(EmailChanges(accountId, StateToken(account.emailState!!))),
-                    account.threadState?.let {
-                        request.add(ThreadChanges(accountId, StateToken(it)))
-                    },
+                Changes(
+                    account = account,
+                    emails = request.add(EmailChanges(accountId, StateToken(account.emailState!!))),
+                    threads =
+                        account.threadState?.let {
+                            request.add(ThreadChanges(accountId, StateToken(it)))
+                        },
+                    // The scheduled-send check every settled account makes, asked
+                    // here too so a quiet account needs no request of its own.
+                    submissions =
+                        request.add(
+                            EmailSubmissionChanges(accountId, schedules.changeCursor(account.uid))
+                        ),
                 )
             }
 
             val results = client.send(request)
 
-            calls.forEach { (account, emails, threads) ->
+            calls.forEach { (account, emails, threads, submissions) ->
                 val email = results.resultOrNull(emails) ?: return@forEach
                 val thread = threads?.let { results.resultOrNull(it) ?: return@forEach }
 
@@ -193,7 +208,17 @@ constructor(
 
                 database.accounts().setEmailState(account.uid, email.newState)
                 thread?.let { database.accounts().setThreadState(account.uid, it.newState) }
-                quiet += account.uid
+
+                // Null where the server did not answer it, and the reconcile
+                // then asks for itself.
+                quiet[account.uid] =
+                    results.resultOrNull(submissions)?.let {
+                        SubmissionDelta(
+                            newState = it.newState.ifBlank { schedules.changeCursor(account.uid) },
+                            changed = it.changed,
+                            hasMore = it.hasMoreChanges,
+                        )
+                    }
             }
         }
 
@@ -246,14 +271,18 @@ constructor(
     }
 
     /** What follows a sync that reached the server, however little it found. */
-    private suspend fun settled(accountKey: String, outcome: SyncResult): SyncResult {
+    private suspend fun settled(
+        accountKey: String,
+        outcome: SyncResult,
+        submissions: SubmissionDelta? = null,
+    ): SyncResult {
         // The schedule lives on the server now, and `EmailSubmission` is one
         // of the four types push announces -- so this is the path a hold
         // created on a laptop, or cancelled there, actually arrives on. One
         // `EmailSubmission/changes` when there is nothing waiting, and its
         // own failures are swallowed inside: a theme is not worth failing a
         // sync over and neither is a scheduled-send row.
-        runCatching { schedules.reconcile(accountKey) }
+        runCatching { schedules.reconcile(accountKey, firstPage = submissions) }
 
         mail.recordSyncSucceeded(accountKey, at = System.currentTimeMillis())
 
@@ -535,7 +564,18 @@ constructor(
         return arrived.filter { keyOf(it) in claimed }
     }
 
+    /** One account's half of the shared check in [unchanged]. */
+    private data class Changes(
+        val account: AccountEntity,
+        val emails: MethodHandle<EmailChangesResult>,
+        val threads: MethodHandle<ThreadChangesResult>?,
+        val submissions: MethodHandle<EmailSubmissionChangesResult>,
+    )
+
     private companion object {
+        /** Mail, threads and scheduled sends: the calls [unchanged] makes per account. */
+        const val CALLS_PER_ACCOUNT = 3
+
         /**
          * 100, not the permitted 500.
          *

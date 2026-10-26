@@ -1,4 +1,5 @@
 [versions]
+profileinstaller = "1.4.1"
 # Toolchain. Compiled against SDK 37 (Android 17, a final release) but targeting
 # 36, which is the highest level an emulator image exists for — declaring a
 # targetSdk whose behaviour changes have never been run is a guess, not a claim.
@@ -84,6 +85,7 @@ spotless = "8.10.4"
 ktfmt = "0.64"
 
 [libraries]
+androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileinstaller" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "androidxCore" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycle" }

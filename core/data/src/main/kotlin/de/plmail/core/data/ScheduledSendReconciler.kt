@@ -97,9 +97,14 @@ constructor(private val scheduled: ScheduledSends, private val directory: Submis
     suspend fun reconcile(
         accountKey: String,
         now: Long = System.currentTimeMillis(),
+        /**
+         * The change log's first page, when a caller already asked for it alongside other work; see
+         * [changeCursor]. Fetched here otherwise.
+         */
+        firstPage: SubmissionDelta? = null,
     ): SubmissionVisibility {
         val known = scheduled.forAccount(accountKey)
-        val discovered = discover(accountKey)
+        val discovered = discover(accountKey, firstPage)
 
         // Nothing recorded here and nothing new on the server. The common case
         // by a wide margin, and it costs one `/changes` rather than a `/get`.
@@ -156,13 +161,14 @@ constructor(private val scheduled: ScheduledSends, private val directory: Submis
      *   rather than nowhere because a first run against a mailbox with years of sent mail would
      *   otherwise be hundreds of round trips against a Raspberry Pi.
      */
-    private suspend fun discover(accountKey: String): List<String> {
-        var cursor = scheduled.cursors()[accountKey] ?: EmailSubmissionChanges.FROM_THE_BEGINNING
+    private suspend fun discover(accountKey: String, firstPage: SubmissionDelta?): List<String> {
+        var cursor = changeCursor(accountKey)
         val ids = mutableListOf<String>()
         var pages = 0
 
         while (pages < MAX_PAGES) {
-            val delta = directory.submissionChanges(accountKey, cursor)
+            val delta =
+                firstPage.takeIf { pages == 0 } ?: directory.submissionChanges(accountKey, cursor)
 
             ids += delta.changed
             pages++
@@ -180,6 +186,16 @@ constructor(private val scheduled: ScheduledSends, private val directory: Submis
 
         return ids.distinct().takeLast(MAX_DISCOVERED)
     }
+
+    /**
+     * Where this account's submission change log was last read to.
+     *
+     * For the sync, which asks every account whether its mail changed in one request and asks this
+     * in the same one: an account with nothing scheduled and nothing new then costs no request of
+     * its own. Its answer comes back as [reconcile]'s `firstPage`.
+     */
+    suspend fun changeCursor(accountKey: String): String =
+        scheduled.cursors()[accountKey] ?: EmailSubmissionChanges.FROM_THE_BEGINNING
 
     private companion object {
         const val MAX_PAGES = 8

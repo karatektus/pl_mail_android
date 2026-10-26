@@ -4,6 +4,8 @@ import org.gradle.api.artifacts.VersionCatalog
 import org.gradle.api.artifacts.VersionCatalogsExtension
 import org.gradle.api.tasks.testing.Test
 import org.gradle.jvm.toolchain.JavaLanguageVersion
+import org.gradle.jvm.toolchain.JavaToolchainService
+import org.gradle.jvm.toolchain.JvmVendorSpec
 import org.gradle.kotlin.dsl.getByType
 import org.gradle.kotlin.dsl.withType
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
@@ -73,8 +75,21 @@ internal fun Project.configureKotlin() {
  * earlier versions and on the plain JVM tests, which never touch the package.
  */
 internal fun Project.configureUnitTestPlatform() {
+    // Run on Temurin, as CI does, whichever JDK the machine has. Oracle's JDK
+    // verifies the signature of the JCE framework itself, and that check cannot
+    // initialise once Robolectric has loaded Android's classes into the same
+    // JVM: every test that touches javax.crypto then failed on a developer's
+    // machine and passed on CI, so a local build was never green and a real
+    // failure among those tests looked like the usual noise.
+    val temurin =
+        extensions.getByType<JavaToolchainService>().launcherFor {
+            languageVersion.set(javaToolchainVersion())
+            vendor.set(JvmVendorSpec.ADOPTIUM)
+        }
+
     tasks.withType<Test>().configureEach {
         useJUnitPlatform()
+        javaLauncher.set(temurin)
         jvmArgs("--add-exports=java.base/jdk.internal.access=ALL-UNNAMED")
     }
 }
