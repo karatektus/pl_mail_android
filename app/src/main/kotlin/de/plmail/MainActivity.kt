@@ -20,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -340,132 +341,142 @@ private fun PlMailApp(
                 // list below is a slot rather than a sibling because the two
                 // cases disagree about whether it should exist at all -- see
                 // ComposeHost.
+                // Kept while the composer is up. On a phone the composer takes
+                // the screen and the mail shell leaves the composition, and
+                // rememberSaveable state is restored after a rotation or a
+                // process death -- not after leaving and coming back. Without
+                // this every close of the composer landed on the inbox, the
+                // list and the conversation it was opened from forgotten.
+                val behind = rememberSaveableStateHolder()
+
                 ComposeHost(request = composing, onClose = { composing = null }) {
-                    // One value rather than a chain read twice. The system
-                    // back handler below has to dismiss *whichever* screen is on
-                    // top, and the flags are not exclusive -- opening appearance
-                    // from a search leaves both set, and a notification arriving
-                    // outranks all of them -- so deriving the answer once is
-                    // what stops back closing a screen nobody can see.
-                    val screen =
-                        when {
-                            openThread != null -> Screen.MAIL
-                            isManagingAccounts -> Screen.ACCOUNTS
-                            isManagingEncryption -> Screen.ENCRYPTION
-                            isCalendaring -> Screen.CALENDAR
-                            isAdjustingAppearance -> Screen.APPEARANCE
-                            isSettingGestures -> Screen.GESTURES
-                            isReadingPushLog -> Screen.PUSH_LOG
-                            isChoosingPush -> Screen.PUSH
-                            isChoosingNotifications -> Screen.NOTIFICATIONS
-                            isDiagnosing -> Screen.DIAGNOSTICS
-                            isSearching -> Screen.SEARCH
-                            else -> Screen.MAIL
+                    behind.SaveableStateProvider(BEHIND_THE_COMPOSER) {
+                        // One value rather than a chain read twice. The system
+                        // back handler below has to dismiss *whichever* screen is on
+                        // top, and the flags are not exclusive -- opening appearance
+                        // from a search leaves both set, and a notification arriving
+                        // outranks all of them -- so deriving the answer once is
+                        // what stops back closing a screen nobody can see.
+                        val screen =
+                            when {
+                                openThread != null -> Screen.MAIL
+                                isManagingAccounts -> Screen.ACCOUNTS
+                                isManagingEncryption -> Screen.ENCRYPTION
+                                isCalendaring -> Screen.CALENDAR
+                                isAdjustingAppearance -> Screen.APPEARANCE
+                                isSettingGestures -> Screen.GESTURES
+                                isReadingPushLog -> Screen.PUSH_LOG
+                                isChoosingPush -> Screen.PUSH
+                                isChoosingNotifications -> Screen.NOTIFICATIONS
+                                isDiagnosing -> Screen.DIAGNOSTICS
+                                isSearching -> Screen.SEARCH
+                                else -> Screen.MAIL
+                            }
+
+                        // Without this, back on any of these three left the *app*.
+                        // They are swapped in by state rather than pushed onto a
+                        // back stack, so nothing else was going to consume the
+                        // gesture -- and a settings screen you can only leave by
+                        // finding the arrow is a settings screen people back out of
+                        // and lose the app from.
+                        BackHandler(enabled = screen != Screen.MAIL) {
+                            when (screen) {
+                                Screen.ACCOUNTS -> isManagingAccounts = false
+                                Screen.ENCRYPTION -> isManagingEncryption = false
+                                Screen.CALENDAR -> isCalendaring = false
+                                Screen.APPEARANCE -> isAdjustingAppearance = false
+                                Screen.GESTURES -> isSettingGestures = false
+                                // The log closes back onto the push screen it was
+                                // opened from, rather than all the way to mail:
+                                // somebody who just compared a log against their
+                                // server is one tap from switching transport.
+                                Screen.PUSH_LOG -> isReadingPushLog = false
+                                Screen.PUSH -> isChoosingPush = false
+                                Screen.NOTIFICATIONS -> isChoosingNotifications = false
+                                Screen.DIAGNOSTICS -> isDiagnosing = false
+                                Screen.SEARCH -> isSearching = false
+                                Screen.MAIL -> Unit
+                            }
                         }
 
-                    // Without this, back on any of these three left the *app*.
-                    // They are swapped in by state rather than pushed onto a
-                    // back stack, so nothing else was going to consume the
-                    // gesture -- and a settings screen you can only leave by
-                    // finding the arrow is a settings screen people back out of
-                    // and lose the app from.
-                    BackHandler(enabled = screen != Screen.MAIL) {
-                        when (screen) {
-                            Screen.ACCOUNTS -> isManagingAccounts = false
-                            Screen.ENCRYPTION -> isManagingEncryption = false
-                            Screen.CALENDAR -> isCalendaring = false
-                            Screen.APPEARANCE -> isAdjustingAppearance = false
-                            Screen.GESTURES -> isSettingGestures = false
-                            // The log closes back onto the push screen it was
-                            // opened from, rather than all the way to mail:
-                            // somebody who just compared a log against their
-                            // server is one tap from switching transport.
-                            Screen.PUSH_LOG -> isReadingPushLog = false
-                            Screen.PUSH -> isChoosingPush = false
-                            Screen.NOTIFICATIONS -> isChoosingNotifications = false
-                            Screen.DIAGNOSTICS -> isDiagnosing = false
-                            Screen.SEARCH -> isSearching = false
-                            Screen.MAIL -> Unit
+                        if (screen == Screen.ACCOUNTS) {
+                            AccountsScreen(onBack = { isManagingAccounts = false })
+                        } else if (screen == Screen.ENCRYPTION) {
+                            EncryptionScreen(onBack = { isManagingEncryption = false })
+                        } else if (screen == Screen.CALENDAR) {
+                            // The calendar owns its own detail and editor and its
+                            // own back between them; what :app decides is only
+                            // whether the calendar or the mail is on screen, the
+                            // same way it does for every other swapped screen here.
+                            CalendarScreen(onBack = { isCalendaring = false })
+                        } else if (screen == Screen.APPEARANCE) {
+                            AppearanceScreen(onBack = { isAdjustingAppearance = false })
+                        } else if (screen == Screen.GESTURES) {
+                            SwipeScreen(onBack = { isSettingGestures = false })
+                        } else if (screen == Screen.PUSH_LOG) {
+                            PushLogScreen(onBack = { isReadingPushLog = false })
+                        } else if (screen == Screen.PUSH) {
+                            PushScreen(
+                                onBack = { isChoosingPush = false },
+                                onLog = { isReadingPushLog = true },
+                            )
+                        } else if (screen == Screen.NOTIFICATIONS) {
+                            NotificationsScreen(onBack = { isChoosingNotifications = false })
+                        } else if (screen == Screen.DIAGNOSTICS) {
+                            // Above search in this chain rather than beside it,
+                            // because a notification tap has to win over both: mail
+                            // arriving is a reason to leave a screen the user opened
+                            // to find out why mail was not arriving.
+                            DiagnosticsScreen(onBack = { isDiagnosing = false })
+                        } else if (screen == Screen.SEARCH) {
+                            SearchScreen(
+                                // Closing search as well as picking: Back from the
+                                // opened conversation should return to the mail
+                                // list, not to a query the user has finished with.
+                                onOpenThread = { accountKey, threadId ->
+                                    isSearching = false
+                                    searchPick = ThreadTarget(accountKey, threadId)
+                                },
+                                onBack = { isSearching = false },
+                            )
+                        } else {
+                            MailShell(
+                                onSearch = { isSearching = true },
+                                onPush = { isChoosingPush = true },
+                                onNotifications = { isChoosingNotifications = true },
+                                onDiagnostics = { isDiagnosing = true },
+                                onAppearance = { isAdjustingAppearance = true },
+                                onGestures = { isSettingGestures = true },
+                                onAccounts = { isManagingAccounts = true },
+                                onEncryption = { isManagingEncryption = true },
+                                // Null hides the drawer entry outright, which is
+                                // what an instance publishing no calendars
+                                // capability has to look like: a product without a
+                                // calendar, rather than a control that opens an
+                                // empty one.
+                                onCalendar = if (hasCalendar) ({ isCalendaring = true }) else null,
+                                onCompose = { composing = ComposeRequest.New },
+                                onReply = { accountKey, emailId, all ->
+                                    composing = ComposeRequest.Reply(accountKey, emailId, all)
+                                },
+                                onForward = { accountKey, emailId ->
+                                    composing = ComposeRequest.Forward(accountKey, emailId)
+                                },
+                                onEditDraft = { accountKey, emailId ->
+                                    composing = ComposeRequest.Edit(accountKey, emailId)
+                                },
+                                openThread = openThread,
+                                // Both cleared, not just whichever produced this
+                                // target: acknowledging is what stops back-then-
+                                // rotate from reopening the conversation, and a
+                                // stale pick would do exactly that the moment the
+                                // notification ahead of it was consumed.
+                                onThreadOpened = {
+                                    searchPick = null
+                                    onNotificationHandled()
+                                },
+                            )
                         }
-                    }
-
-                    if (screen == Screen.ACCOUNTS) {
-                        AccountsScreen(onBack = { isManagingAccounts = false })
-                    } else if (screen == Screen.ENCRYPTION) {
-                        EncryptionScreen(onBack = { isManagingEncryption = false })
-                    } else if (screen == Screen.CALENDAR) {
-                        // The calendar owns its own detail and editor and its
-                        // own back between them; what :app decides is only
-                        // whether the calendar or the mail is on screen, the
-                        // same way it does for every other swapped screen here.
-                        CalendarScreen(onBack = { isCalendaring = false })
-                    } else if (screen == Screen.APPEARANCE) {
-                        AppearanceScreen(onBack = { isAdjustingAppearance = false })
-                    } else if (screen == Screen.GESTURES) {
-                        SwipeScreen(onBack = { isSettingGestures = false })
-                    } else if (screen == Screen.PUSH_LOG) {
-                        PushLogScreen(onBack = { isReadingPushLog = false })
-                    } else if (screen == Screen.PUSH) {
-                        PushScreen(
-                            onBack = { isChoosingPush = false },
-                            onLog = { isReadingPushLog = true },
-                        )
-                    } else if (screen == Screen.NOTIFICATIONS) {
-                        NotificationsScreen(onBack = { isChoosingNotifications = false })
-                    } else if (screen == Screen.DIAGNOSTICS) {
-                        // Above search in this chain rather than beside it,
-                        // because a notification tap has to win over both: mail
-                        // arriving is a reason to leave a screen the user opened
-                        // to find out why mail was not arriving.
-                        DiagnosticsScreen(onBack = { isDiagnosing = false })
-                    } else if (screen == Screen.SEARCH) {
-                        SearchScreen(
-                            // Closing search as well as picking: Back from the
-                            // opened conversation should return to the mail
-                            // list, not to a query the user has finished with.
-                            onOpenThread = { accountKey, threadId ->
-                                isSearching = false
-                                searchPick = ThreadTarget(accountKey, threadId)
-                            },
-                            onBack = { isSearching = false },
-                        )
-                    } else {
-                        MailShell(
-                            onSearch = { isSearching = true },
-                            onPush = { isChoosingPush = true },
-                            onNotifications = { isChoosingNotifications = true },
-                            onDiagnostics = { isDiagnosing = true },
-                            onAppearance = { isAdjustingAppearance = true },
-                            onGestures = { isSettingGestures = true },
-                            onAccounts = { isManagingAccounts = true },
-                            onEncryption = { isManagingEncryption = true },
-                            // Null hides the drawer entry outright, which is
-                            // what an instance publishing no calendars
-                            // capability has to look like: a product without a
-                            // calendar, rather than a control that opens an
-                            // empty one.
-                            onCalendar = if (hasCalendar) ({ isCalendaring = true }) else null,
-                            onCompose = { composing = ComposeRequest.New },
-                            onReply = { accountKey, emailId, all ->
-                                composing = ComposeRequest.Reply(accountKey, emailId, all)
-                            },
-                            onForward = { accountKey, emailId ->
-                                composing = ComposeRequest.Forward(accountKey, emailId)
-                            },
-                            onEditDraft = { accountKey, emailId ->
-                                composing = ComposeRequest.Edit(accountKey, emailId)
-                            },
-                            openThread = openThread,
-                            // Both cleared, not just whichever produced this
-                            // target: acknowledging is what stops back-then-
-                            // rotate from reopening the conversation, and a
-                            // stale pick would do exactly that the moment the
-                            // notification ahead of it was consumed.
-                            onThreadOpened = {
-                                searchPick = null
-                                onNotificationHandled()
-                            },
-                        )
                     }
                 }
 
@@ -541,3 +552,6 @@ private enum class Screen {
     ACCOUNTS,
     ENCRYPTION,
 }
+
+/** The key the screens behind the composer keep their state under. */
+private const val BEHIND_THE_COMPOSER = "behind-the-composer"

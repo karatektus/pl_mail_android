@@ -291,9 +291,20 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
             .map { (_, uid) -> uid }
     }
 
-    /** One conversation's messages, oldest first, from the cache. */
-    suspend fun messagesInThread(accountKey: String, threadId: String): List<EmailEntity> =
-        database.emails().inThread(accountKey, threadId)
+    /**
+     * One conversation's messages, from the cache, without the ones in Trash.
+     *
+     * A message moved to Trash is still in its conversation — thread membership does not depend on
+     * the mailbox — so a draft deleted from the reader came straight back on the next sync, in
+     * Trash and drawn as though nothing had happened. The web hides them the same way. All of them
+     * when every one is binned, which is a conversation opened from Trash itself.
+     */
+    suspend fun messagesInThread(accountKey: String, threadId: String): List<EmailEntity> {
+        val all = database.emails().inThread(accountKey, threadId)
+        val bin = database.mailboxes().byRole(accountKey, TRASH_ROLE)?.mailboxId ?: return all
+
+        return all.filterNot { bin in it.mailboxIds.splitIds() }.ifEmpty { all }
+    }
 
     /**
      * The conversation's own row, for the things that are not properties of any message.
@@ -428,3 +439,5 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
  */
 private suspend fun MailboxDao.bindingKeys(accountKey: String): Map<String, String> =
     bindingKeyRows(accountKey).associate { it.mailboxId to it.labelKey }
+
+private const val TRASH_ROLE = "trash"
