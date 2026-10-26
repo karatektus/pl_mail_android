@@ -65,6 +65,13 @@ constructor(
      * in whatever arrived encrypted while the phone was away.
      */
     private val decryptedMail: DecryptedMailKeeper,
+    /**
+     * The newest mail's bodies, downloaded while the app is open as well as in the background, so
+     * mail that arrived while somebody was looking opens without waiting. On a network that costs
+     * nothing per byte only.
+     */
+    private val bodies: BodyPrefetcher,
+    private val connectivity: Connectivity,
     @param:ApplicationScope private val scope: CoroutineScope,
 ) {
 
@@ -104,6 +111,13 @@ constructor(
             // Swallows its own failures, like the appearance above: the list
             // is already on screen, and this is work nobody is waiting for.
             decryptedMail.keep()
+
+            // Beside the stream rather than ahead of it: a download of fifty
+            // bodies per account must not hold up the stream that delivers the
+            // next message.
+            if (connectivity.isUnmetered()) {
+                scope.launch { runCatching { bodies.prefetchAll() } }
+            }
 
             if (pushIsSilent()) stream()
         } catch (cancellation: CancellationException) {

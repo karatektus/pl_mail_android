@@ -59,10 +59,9 @@ class MessageLoaderTest {
         assertEquals(setOf("m1", "m2", "m3"), stored.keys)
         assertEquals("Body of m1.", database.emails().body(uidOf("m1"))?.textBody)
 
-        // Only what was missing: m3 is cached, body and all.
-        val asked = emailGets(transport).single()
-        assertTrue(asked.contains("\"m1\"") && asked.contains("\"m2\""), asked)
-        assertFalse(asked.contains("\"m3\""), asked)
+        // Asked what it holds and sent it in the one request, not one after
+        // the other.
+        assertEquals(1, apiRequests(transport).size)
     }
 
     /** Fetching is not reading: a message nobody has looked at yet stays unread. */
@@ -71,7 +70,7 @@ class MessageLoaderTest {
         database.seedAccount()
         database.cache("m3", seen = true)
 
-        loader(server(members = listOf("m1", "m2", "m3"), seen = setOf("m1")))
+        loader(server(members = listOf("m1", "m2", "m3"), seen = setOf("m1", "m3")))
             .loadBodies(testAccountKey, "t1")
 
         val stored = database.emails().inThread(testAccountKey, "t1").associateBy { it.emailId }
@@ -79,20 +78,67 @@ class MessageLoaderTest {
         assertFalse(stored.getValue("m2").isSeen)
     }
 
-    /** A conversation the device already holds whole costs the one question and nothing else. */
+    /** A conversation the device already holds whole opens without the server. */
     @Test
-    fun `a complete thread with its bodies cached sends no Email get`() = runTest {
+    fun `a thread held whole with its bodies sends nothing`() = runTest {
         database.seedAccount()
+        database.seedThread("t1", messageCount = 2)
         database.cache("m1", seen = true)
         database.cache("m2", seen = true)
 
         val transport = server(members = listOf("m1", "m2"))
         loader(transport).loadBodies(testAccountKey, "t1")
 
-        assertEquals(emptyList(), emailGets(transport))
+        assertEquals(emptyList(), apiRequests(transport))
     }
 
-    /** A conversation the server no longer has: the bodies are all there is to fetch. */
+    /** Held whole but for one body: that body alone, without asking what the thread holds. */
+    @Test
+    fun `a thread held whole asks only for the bodies it lacks`() = runTest {
+        database.seedAccount()
+        database.seedThread("t1", messageCount = 2)
+        database.cache("m1", seen = true)
+        database.cache("m2", seen = true, withBody = false)
+
+        val transport = server(members = listOf("m1", "m2"))
+        loader(transport).loadBodies(testAccountKey, "t1")
+
+        val asked = apiRequests(transport).single()
+        assertFalse(asked.contains("Thread/get"), asked)
+        assertTrue(asked.contains("\"m2\"") && !asked.contains("\"m1\""), asked)
+        assertEquals("Body of m2.", database.emails().body(uidOf("m2"))?.textBody)
+    }
+
+    /** Fewer messages held than the server counted: the thread is asked again. */
+    @Test
+    fun `a thread the device holds part of is fetched whole`() = runTest {
+        database.seedAccount()
+        database.seedThread("t1", messageCount = 3)
+        database.cache("m3", seen = true)
+
+        loader(server(members = listOf("m1", "m2", "m3"))).loadBodies(testAccountKey, "t1")
+
+        assertEquals(3, database.emails().inThread(testAccountKey, "t1").size)
+    }
+
+    /** The rows on screen, downloaded ahead: every conversation's missing bodies in one request. */
+    @Test
+    fun `prefetching several conversations asks once`() = runTest {
+        database.seedAccount()
+        database.seedThread("t1")
+        database.seedThread("t2")
+        database.cache("m1", seen = true, withBody = false)
+        database.cache("m2", seen = true, withBody = false, threadId = "t2")
+
+        val transport = server(members = listOf("m1"))
+        loader(transport).prefetch(testAccountKey, listOf("t1", "t2"))
+
+        val asked = apiRequests(transport).single()
+        assertTrue(asked.contains("\"m1\"") && asked.contains("\"m2\""), asked)
+        assertFalse(asked.contains("Thread/get"), asked)
+    }
+
+    /** A conversation the server does not find: the bodies are all there is to fetch. */
     @Test
     fun `a thread the server does not find still gets its missing bodies`() = runTest {
         database.seedAccount()
@@ -110,6 +156,7 @@ class MessageLoaderTest {
         emailId: String,
         seen: Boolean,
         withBody: Boolean = true,
+        threadId: String = "t1",
     ) {
         emails()
             .upsert(
@@ -118,7 +165,7 @@ class MessageLoaderTest {
                         uid = uidOf(emailId),
                         accountKey = testAccountKey,
                         emailId = emailId,
-                        threadId = "t1",
+                        threadId = threadId,
                         receivedAt = 5_000,
                         isSeen = seen,
                     )
@@ -132,57 +179,58 @@ class MessageLoaderTest {
         }
     }
 
-    private fun emailGets(transport: RecordingTransport): List<String> =
+    private fun apiRequests(transport: RecordingTransport): List<String> =
         transport.requests
+            .filter { it.url.endsWith("/jmap/api") }
             .mapNotNull { it.body?.decodeToString() }
-            .filter { it.contains("Email/get") }
 
     /**
      * A server holding conversation t1 with [members], or not holding it at all when null, and
-     * answering `Email/get` for whichever ids it is asked.
+     * answering `Email/get` for whichever ids it is asked, by name or by reference to the thread.
      */
     private fun server(members: List<String>?, seen: Set<String> = emptySet()) =
         RecordingTransport { request ->
             val asked = request.body?.decodeToString().orEmpty()
 
-            val body =
-                when {
-                    request.url.endsWith("/.well-known/jmap") -> TEST_SESSION
-                    asked.contains("Thread/get") -> {
-                        val list = members?.let { ids ->
-                            """{"id":"t1","emailIds":[${ids.joinToString(",") { "\"$it\"" }}]}"""
-                        }
-                        """
-                        {"sessionState":"s","methodResponses":[
-                          ["Thread/get",{"accountId":"$TEST_ACCOUNT_ID","state":"h1",
-                            "list":[${list.orEmpty()}],
-                            "notFound":[${if (list == null) "\"t1\"" else ""}]},"c0"]]}
-                        """
-                    }
-                    else -> {
-                        val ids =
-                            Regex("\"ids\":\\[([^]]*)]")
-                                .find(asked)!!
-                                .groupValues[1]
-                                .split(",")
-                                .map { it.trim('"') }
-                        val list =
-                            ids.joinToString(",") { id ->
-                                val keywords = if (id in seen) """{"${'$'}seen":true}""" else "{}"
-                                """
-                                {"id":"$id","threadId":"t1","receivedAt":"2026-08-01T10:00:00Z",
-                                 "keywords":$keywords,"mailboxIds":{"$INBOX_MAILBOX_ID":true},
-                                 "textBody":[{"partId":"1","type":"text/plain"}],
-                                 "bodyValues":{"1":{"value":"Body of $id."}}}
-                                """
-                            }
-                        """
-                        {"sessionState":"s","methodResponses":[
-                          ["Email/get",{"accountId":"$TEST_ACCOUNT_ID","state":"e1",
-                            "list":[$list],"notFound":[]},"c0"]]}
-                        """
-                    }
+            val responses = mutableListOf<String>()
+            if (asked.contains("Thread/get")) {
+                val list = members?.let { ids ->
+                    """{"id":"t1","emailIds":[${ids.joinToString(",") { "\"$it\"" }}]}"""
                 }
+                responses +=
+                    """
+                    ["Thread/get",{"accountId":"$TEST_ACCOUNT_ID","state":"h1",
+                      "list":[${list.orEmpty()}],
+                      "notFound":[${if (list == null) "\"t1\"" else ""}]},"c0"]
+                    """
+            }
+            if (asked.contains("Email/get")) {
+                val ids =
+                    if (asked.contains("\"#ids\"")) members.orEmpty()
+                    else
+                        Regex("\"ids\":\\[([^]]*)]").find(asked)!!.groupValues[1].split(",").map {
+                            it.trim('"')
+                        }
+                val list =
+                    ids.joinToString(",") { id ->
+                        val keywords = if (id in seen) """{"${'$'}seen":true}""" else "{}"
+                        """
+                        {"id":"$id","threadId":"t1","receivedAt":"2026-08-01T10:00:00Z",
+                         "keywords":$keywords,"mailboxIds":{"$INBOX_MAILBOX_ID":true},
+                         "textBody":[{"partId":"1","type":"text/plain"}],
+                         "bodyValues":{"1":{"value":"Body of $id."}}}
+                        """
+                    }
+                responses +=
+                    """
+                    ["Email/get",{"accountId":"$TEST_ACCOUNT_ID","state":"e1",
+                      "list":[$list],"notFound":[]},"c${responses.size}"]
+                    """
+            }
+
+            val body =
+                if (request.url.endsWith("/.well-known/jmap")) TEST_SESSION
+                else """{"sessionState":"s","methodResponses":[${responses.joinToString(",")}]}"""
 
             HttpResponse(200, mapOf("Content-Type" to "application/json"), body.encodeToByteArray())
         }

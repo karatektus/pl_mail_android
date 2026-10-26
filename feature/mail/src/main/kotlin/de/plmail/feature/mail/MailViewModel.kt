@@ -21,6 +21,7 @@ import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
 import de.plmail.core.data.MailTab
 import de.plmail.core.data.MailView
+import de.plmail.core.data.MessageLoader
 import de.plmail.core.data.Outbox
 import de.plmail.core.data.RecentMoves
 import de.plmail.core.data.ShownThreads
@@ -30,6 +31,7 @@ import de.plmail.core.data.UndoableAction
 import de.plmail.core.data.isStartDestination
 import de.plmail.core.database.ThreadEntity
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -104,8 +106,9 @@ constructor(
     private val shownThreads: ShownThreads,
     private val recentMoves: RecentMoves,
     private val inboxTabs: InboxTabRepository,
+    private val loader: MessageLoader,
     swipeActions: SwipeActionsRepository,
-    connectivity: Connectivity,
+    private val connectivity: Connectivity,
     outbox: Outbox,
     accounts: AccountsRepository,
 ) : ViewModel() {
@@ -113,24 +116,13 @@ constructor(
     private val _isSyncing = MutableStateFlow(false)
 
     /**
-     * Whether the *server* half of a pull-to-refresh is still running.
+     * Whether the sync a pull-to-refresh started is still running.
      *
-     * Separate from Paging's own load state because a pull does two things, and Paging can only see
-     * one of them. Re-paging the list on screen is the visible half; the delta sync is the half
-     * that brings every other list, and every read and flag state anywhere, up to date. A spinner
-     * tied to the mediator alone disappears while that is still going, so the gesture looks
-     * finished before the thing the user pulled for has happened.
+     * Separate from Paging's own load state because Paging cannot see it: a pull is a delta sync,
+     * which brings this list, every other list, and every read and flag state up to date without
+     * re-paging anything. A spinner tied to the mediator alone would not show for it at all.
      */
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
-
-    /**
-     * Accounts a sync has decided can no longer be described incrementally.
-     *
-     * The screen re-pages on each one. `SyncResult.NeedsRepage` is durable in the account's null
-     * cursor, which is what a list built *afterwards* reads — but the list somebody is looking at
-     * was built before it, and would go on drawing rows nothing can bring up to date.
-     */
-    val repagedAccounts: Flow<String> = feed.repagedAccounts
 
     /**
      * The server half of a pull-to-refresh.
@@ -138,7 +130,8 @@ constructor(
      * One `Email/changes` per account, which is the cheapest possible way to correct *everything*:
      * the projection puts each changed conversation into the lists it now belongs to, so pulling on
      * the inbox also fixes Promotions, every label list, and the read and starred state of anything
-     * touched on another device. Re-paging alone would only correct the list being pulled.
+     * touched on another device. Re-paging would only correct the list being pulled, and would
+     * throw away every row paged below its first page.
      *
      * Guarded rather than restarted, because a second pull while the first is in flight would ask
      * the same server the same question twice.
@@ -404,6 +397,40 @@ constructor(
             .forEach { (accountKey, forAccount) ->
                 shownThreads.report(accountKey, forAccount.map { it.threadId })
             }
+    }
+
+    /**
+     * Downloads the conversations on screen, once the list has come to rest on them.
+     *
+     * On a network that costs nothing per byte only: on mobile data, a conversation scrolled past
+     * is not a conversation somebody asked to download. One request per account for every row in
+     * view, so the first open of each draws from the cache instead of waiting on the server.
+     */
+    fun rowsAtRest(uids: List<String>) {
+        if (uids.isEmpty() || !connectivity.isUnmetered()) return
+
+        viewModelScope.launch {
+            uids
+                .mapNotNull { mail.threadByUid(it) }
+                .groupBy { it.accountKey }
+                .forEach { (accountKey, threads) ->
+                    // Each account its own: one unreachable server must not
+                    // stop the others' rows from being fetched.
+                    runCatching { loader.prefetch(accountKey, threads.map { it.threadId }) }
+                        .onFailure { if (it is CancellationException) throw it }
+                }
+        }
+    }
+
+    /**
+     * Starts downloading a conversation as the finger lands, so the reader the release opens finds
+     * it already arriving. The reader's own load waits for this one rather than asking twice.
+     */
+    fun rowPressed(thread: ThreadEntity) {
+        viewModelScope.launch {
+            runCatching { loader.prefetch(thread.accountKey, listOf(thread.threadId)) }
+                .onFailure { if (it is CancellationException) throw it }
+        }
     }
 
     private val _badgedNew = MutableStateFlow(emptySet<String>())

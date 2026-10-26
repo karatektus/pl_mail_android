@@ -358,6 +358,8 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
     suspend fun thread(accountKey: String, threadId: String): ThreadEntity? =
         database.threads().byUid(StoreKey.objectKey(accountKey, threadId))
 
+    suspend fun threadByUid(uid: String): ThreadEntity? = database.threads().byUid(uid)
+
     suspend fun body(emailUid: String): EmailBodyEntity? = database.emails().body(emailUid)
 
     /**

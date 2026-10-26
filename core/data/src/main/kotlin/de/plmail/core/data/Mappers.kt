@@ -410,6 +410,10 @@ internal fun ThreadEntity.carryConversationFacts(stored: ThreadEntity?): ThreadE
             isNew = it.isNew,
             binnedCount = it.binnedCount,
             binnedReceivedAt = it.binnedReceivedAt,
+            // The server's count, which a write of a few messages cannot know:
+            // without it a conversation of four read as one after a body
+            // download, and the reader took it to be cached whole.
+            messageCount = maxOf(messageCount, it.messageCount),
         )
     } ?: this
 

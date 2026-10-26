@@ -1,8 +1,11 @@
 package de.plmail.core.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +25,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -172,6 +179,14 @@ fun ThreadRow(
      * decoration rather than information.
      */
     showsAccount: Boolean = false,
+    /**
+     * Told the moment a finger lands on the row, before it lifts.
+     *
+     * A tap takes a hundred milliseconds or more from press to release, and the conversation can
+     * start downloading in that time rather than after it. A press that turns into a scroll or a
+     * swipe has fetched a conversation nobody opened, which is the price.
+     */
+    onPress: () -> Unit = {},
 ) {
     PlMailSurface(PlMailSurfaceKind.LIST) {
         ThreadRowContent(
@@ -185,6 +200,7 @@ fun ThreadRow(
             isNew = isNew,
             today = today,
             showsAccount = showsAccount,
+            onPress = onPress,
         )
     }
 }
@@ -210,12 +226,19 @@ private fun ThreadRowContent(
     isNew: Boolean,
     today: LocalDate,
     showsAccount: Boolean,
+    onPress: () -> Unit,
 ) {
     val theme = LocalPlMailTheme.current
     val colors = theme.colors
     val spacing = theme.spacing
     val list = theme.list
     val spoken = thread.spoken(labels, hiddenLabels, isNew)
+
+    val presses = remember { MutableInteractionSource() }
+    val pressed by rememberUpdatedState(onPress)
+    LaunchedEffect(presses) {
+        presses.interactions.collect { if (it is PressInteraction.Press) pressed() }
+    }
 
     // Subtle takes the ink promotion off an unread row and leaves the weight
     // alone; Standard and Strong keep both. See PlMailUnreadEmphasis for why the
@@ -270,7 +293,12 @@ private fun ThreadRowContent(
                 // in measurement would make an unread row taller than a read one
                 // at one setting and not at another.
                 .marks(bar = bar, corner = accountMark)
-                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+                .combinedClickable(
+                    interactionSource = presses,
+                    indication = LocalIndication.current,
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                )
                 // The row is never shorter than a touch target, whatever the
                 // density: a compact list still has to be tappable by someone
                 // walking.

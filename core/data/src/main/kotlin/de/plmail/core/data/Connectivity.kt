@@ -81,6 +81,19 @@ class Connectivity @Inject constructor(@param:ApplicationContext private val con
         awaitClose { manager.unregisterNetworkCallback(callback) }
     }
         .distinctUntilChanged()
+
+    /**
+     * Whether the network now in use costs nothing per byte: Wi-Fi or Ethernet, as the system
+     * classifies it, rather than mobile data or a phone's hotspot.
+     *
+     * What downloading mail ahead of time asks before it starts. Read now rather than observed,
+     * because each download is a moment rather than a subscription.
+     */
+    fun isUnmetered(): Boolean =
+        context
+            .getSystemService<ConnectivityManager>()
+            ?.let { manager -> manager.activeNetwork?.let(manager::getNetworkCapabilities) }
+            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == true
 }
 
 private fun ConnectivityManager.hasValidatedNetwork(): Boolean =

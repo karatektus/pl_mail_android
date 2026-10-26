@@ -536,6 +536,15 @@ interface FeedDao {
     @Query("DELETE FROM feed_entries WHERE feedId = :feedId AND accountKey = :accountKey")
     suspend fun clearAccountFromFeed(feedId: String, accountKey: String)
 
+    @Query("SELECT COUNT(*) FROM feed_entries WHERE feedId = :feedId AND accountKey = :accountKey")
+    suspend fun countFor(feedId: String, accountKey: String): Int
+
+    /** How far down the list the other accounts have been paged: their oldest row's date. */
+    @Query(
+        "SELECT MIN(sortDate) FROM feed_entries WHERE feedId = :feedId AND accountKey != :accountKey"
+    )
+    suspend fun oldestExcept(feedId: String, accountKey: String): Long?
+
     /**
      * Drops conversations from every list at once: what a conversation the server destroyed has to
      * leave behind, wherever it was listed (#59).

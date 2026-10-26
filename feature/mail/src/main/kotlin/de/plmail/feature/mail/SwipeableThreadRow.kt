@@ -88,6 +88,8 @@ fun SwipeableThreadRow(
      * marker. See [de.plmail.feature.mail.MailViewModel.badgedNew].
      */
     isNew: Boolean = false,
+    /** A finger has landed on the row; see [de.plmail.core.ui.ThreadRow]'s `onPress`. */
+    onPress: () -> Unit = {},
 ) {
     // Scoped to the conversation, not to the position in the list.
     //
@@ -212,6 +214,7 @@ fun SwipeableThreadRow(
                 ThreadRow(
                     thread = thread,
                     onClick = onClick,
+                    onPress = onPress,
                     showsAccount = showsAccount,
                     onLongClick = onLongClick,
                     isSelected = isSelected,

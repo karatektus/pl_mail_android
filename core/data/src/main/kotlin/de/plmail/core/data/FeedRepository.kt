@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -120,16 +121,6 @@ constructor(
      * the whole point is that three working accounts keep drawing while a fourth is down.
      */
     val failures = _failures.asStateFlow()
-
-    /**
-     * Accounts a sync has decided cannot be brought up to date incrementally.
-     *
-     * Re-exposed here for the same reason [failures] is: the list layer already holds this
-     * repository and should not have to reach past it to a signal class in this module to learn
-     * something about the list it is drawing. A plain [Flow] rather than the `SharedFlow` behind
-     * it, because the only thing a collector may do with it is collect.
-     */
-    val repagedAccounts: Flow<String> = repages.accounts
 
     /**
      * Withdraws the claim that this account cannot be reached.
@@ -458,27 +449,41 @@ constructor(
         // FeedMediator.onWritten for the first page this used to lose (#41).
         val pages = InvalidatingPagingSourceFactory { database.feed().pagingSource(feedId) }
 
-        return Pager(
-                config =
-                    PagingConfig(
-                        pageSize = pageSize,
-                        // Room's PagingSource reads from disk, so a generous
-                        // prefetch costs a query rather than a round trip.
-                        prefetchDistance = pageSize,
-                        enablePlaceholders = false,
-                    ),
-                remoteMediator =
-                    FeedMediator(
-                        feedId = feedId,
-                        database = database,
-                        sources = sources,
-                        onFailures = { failed -> _failures.update { failed } },
-                        onRowsHeld = { held -> mediatorRowCounts.tryEmit(feedId to held) },
-                        onWritten = pages::invalidate,
-                    ),
-                pagingSourceFactory = pages,
+        val mediator =
+            FeedMediator(
+                feedId = feedId,
+                database = database,
+                sources = sources,
+                onFailures = { failed -> _failures.update { failed } },
+                onRowsHeld = { held -> mediatorRowCounts.tryEmit(feedId to held) },
+                onWritten = pages::invalidate,
             )
-            .flow
+
+        val pager =
+            Pager(
+                    config =
+                        PagingConfig(
+                            pageSize = pageSize,
+                            // Room's PagingSource reads from disk, so a generous
+                            // prefetch costs a query rather than a round trip.
+                            prefetchDistance = pageSize,
+                            enablePlaceholders = false,
+                        ),
+                    remoteMediator = mediator,
+                    pagingSourceFactory = pages,
+                )
+                .flow
+
+        // The in-process half of making `NeedsRepage` mean anything. A sync that
+        // finds the server can no longer answer from an account's stored
+        // position clears its cursor, which is what a list built *afterwards*
+        // reads -- this list was built before it, and without being told would go
+        // on drawing rows that nothing can bring up to date. Only that account
+        // is paged again; the others' rows are still right.
+        return channelFlow {
+            launch { repages.accounts.collect { mediator.repage(it) } }
+            pager.collect { send(it) }
+        }
     }
 
     /**

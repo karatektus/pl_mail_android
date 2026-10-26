@@ -54,6 +54,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.pluralStringResource
@@ -84,6 +85,8 @@ import de.plmail.core.designsystem.PlMailEmptyState
 import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.core.ui.rowLabelSlots
 import java.time.Instant
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.launch
 
 /**
@@ -172,13 +175,6 @@ fun MailScreen(
     // off each row, because drawing the row is what retires the marker -- see
     // `MailViewModel.badgedNew`.
     val badgedNew by viewModel.badgedNew.collectAsStateWithLifecycle()
-
-    // The in-process half of making `NeedsRepage` mean anything. A sync that
-    // finds the server can no longer answer from this account's stored position
-    // clears the cursor, which is what a list built *afterwards* reads -- this
-    // list was built before it, and without being told would go on drawing rows
-    // that nothing can bring up to date.
-    LaunchedEffect(Unit) { viewModel.repagedAccounts.collect { threads.refresh() } }
 
     // Back clears a selection before it leaves the screen: a selection is a
     // mode, and leaving a mode is what back is for.
@@ -408,14 +404,21 @@ fun MailScreen(
                 isRefreshing =
                     threads.loadState.mediator?.refresh is LoadState.Loading || isSyncing,
                 onRefresh = {
-                    // The sync first, and it is not the redundant half. Re-paging
-                    // rebuilds *this* list from the server's query; the sync is
-                    // one `Email/changes` per account, which is what moves
-                    // conversations into and out of every other feed and corrects
-                    // read and starred state everywhere the user has touched mail
-                    // on another device.
+                    // The sync alone. It is one `Email/changes` per account, and
+                    // the projection writes what changed into every list it now
+                    // belongs to -- this one included, so new mail lands at the
+                    // top without the list being thrown away. Re-paging as well
+                    // cleared the list and fetched its first page again, and
+                    // everything scrolled past had to be fetched a second time.
+                    //
+                    // Re-paged only where there is nothing to correct: a list
+                    // that failed to load, or holds no rows.
                     viewModel.refresh()
-                    threads.refresh()
+                    if (
+                        threads.loadState.mediator?.refresh is LoadState.Error ||
+                            threads.itemCount == 0
+                    )
+                        threads.refresh()
                 },
                 modifier = Modifier.fillMaxSize(),
             ) {
@@ -434,6 +437,8 @@ fun MailScreen(
                     onMove = { thread -> viewModel.openMoveSheet(view, listOf(thread.target())) },
                     onOpenCategory = onNavigate,
                     onShown = viewModel::threadsShown,
+                    onRowsAtRest = viewModel::rowsAtRest,
+                    onRowPressed = viewModel::rowPressed,
                     onThreadSelected = { thread ->
                         // The badge is spent by *opening* the conversation, not
                         // by the row having been drawn -- see
@@ -570,6 +575,10 @@ internal fun ThreadList(
      * See [de.plmail.core.data.ShownThreads].
      */
     onShown: (List<ThreadEntity>) -> Unit,
+    /** The conversations in view whenever the list comes to rest, by uid. */
+    onRowsAtRest: (List<String>) -> Unit = {},
+    /** A finger has landed on a row, which is usually the start of opening it. */
+    onRowPressed: (ThreadEntity) -> Unit = {},
     onThreadSelected: (ThreadEntity) -> Unit,
     onToggleSelected: (String) -> Unit,
     onAction: (ThreadEntity, MailAction) -> Unit,
@@ -627,6 +636,22 @@ internal fun ThreadList(
             remember(arrivals.size) {
                 derivedStateOf { digestHasScrolledAway(listState.firstVisibleItemIndex, arrivals) }
             }
+
+        // Once a scroll has settled rather than on every row it passes: a
+        // fling across two hundred conversations is not a request to download
+        // them.
+        LaunchedEffect(listState) {
+            snapshotFlow {
+                    if (listState.isScrollInProgress) null
+                    else
+                        listState.layoutInfo.visibleItemsInfo.mapNotNull { item ->
+                            (item.key as? String)?.takeUnless { it.startsWith("bundle:") }
+                        }
+                }
+                .filterNotNull()
+                .distinctUntilChanged()
+                .collect(onRowsAtRest)
+        }
 
         LazyColumn(
             state = listState,
@@ -711,6 +736,7 @@ internal fun ThreadList(
                             if (selection.isEmpty()) onThreadSelected(thread)
                             else onToggleSelected(thread.uid)
                         },
+                        onPress = { if (selection.isEmpty()) onRowPressed(thread) },
                         onLongClick = { onToggleSelected(thread.uid) },
                         onAction = { action -> onAction(thread, action) },
                         onMove = { onMove(thread) },

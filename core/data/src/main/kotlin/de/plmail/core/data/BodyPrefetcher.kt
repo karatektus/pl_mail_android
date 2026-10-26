@@ -20,9 +20,10 @@ import javax.inject.Singleton
  * a time: the *first* open of every thread waits on the network, on the one screen where the mail
  * is a second old and the user has just tapped a notification about it.
  *
- * So the bodies come down afterwards, on the background paths only. Nothing here ever runs in front
- * of something the user is waiting for: it is on the periodic worker and on the push handler, and
- * explicitly not on the foreground `syncAll()` that pull-to-refresh spins for.
+ * So the bodies come down afterwards, never in front of something the user is waiting for: on the
+ * periodic worker, on the push handler, and beside the catch-up sync when the app comes to the
+ * foreground on an unmetered network — but explicitly not on the `syncAll()` that pull-to-refresh
+ * spins for.
  *
  * Bounded on both sides. [BUDGET] messages per account per run, so an account that has just been
  * paged back to 2019 does not turn one sync into an overnight download, and [prune] gives the space
@@ -49,7 +50,10 @@ constructor(
     }
 
     /** The newest [BUDGET] messages of one account that have no body on the device. */
-    suspend fun prefetch(accountKey: String) {
+    suspend fun prefetch(accountKey: String) =
+        BodyDownloads.oneAtATime(accountKey) { prefetchLocked(accountKey) }
+
+    private suspend fun prefetchLocked(accountKey: String) {
         val account = database.accounts().byUid(accountKey) ?: return
         val missing = database.emails().withoutBodies(accountKey, BUDGET)
         if (missing.isEmpty()) return

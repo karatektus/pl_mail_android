@@ -132,6 +132,8 @@ internal suspend fun PlMailDatabase.seedThread(
     /** Whether the conversation is in the inbox, as `storeEmails` records it. */
     isInInbox: Boolean = false,
     sender: String = "",
+    /** How many messages the server last said the conversation holds. */
+    messageCount: Int = 1,
 ) {
     threads()
         .upsert(
@@ -141,6 +143,7 @@ internal suspend fun PlMailDatabase.seedThread(
                     accountKey = accountKey,
                     threadId = threadId,
                     latestReceivedAt = receivedAt,
+                    messageCount = messageCount,
                     labelKeys = labelKeys,
                     category = category,
                     inboxTab = inboxTab,
