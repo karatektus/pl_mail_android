@@ -104,6 +104,8 @@ fun ReaderScreen(
     onForward: (emailId: String) -> Unit,
     /** Opens one of the conversation's drafts in the composer. */
     onEditDraft: (emailId: String) -> Unit = {},
+    /** Opened from Trash: shows the messages thrown away rather than the ones kept. */
+    fromBin: Boolean = false,
     /** Null where the list is already on screen beside this, and there is nothing to go back to. */
     onBack: (() -> Unit)? = null,
     /**
@@ -163,7 +165,9 @@ fun ReaderScreen(
     val context = LocalContext.current
     val snackbars = remember { SnackbarHostState() }
 
-    LaunchedEffect(accountKey, threadId) { viewModel.open(accountKey, threadId, subject) }
+    LaunchedEffect(accountKey, threadId, fromBin) {
+        viewModel.open(accountKey, threadId, subject, fromBin)
+    }
 
     // The attachment the save picker is currently being opened for. Held here
     // rather than passed through the launcher because `CreateDocument` hands

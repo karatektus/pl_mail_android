@@ -314,8 +314,12 @@ constructor(
                 initialValue = ReaderHeaderState(),
             )
 
-    fun open(accountKey: String, threadId: String, subject: String?) {
+    /** Whether the conversation was opened from Trash, which shows its thrown-away messages. */
+    private var fromBin = false
+
+    fun open(accountKey: String, threadId: String, subject: String?, fromBin: Boolean = false) {
         _state.update { ReaderUiState(subject = subject, isLoading = true) }
+        this.fromBin = fromBin
         opened.value = OpenedThread(accountKey, threadId)
 
         viewModelScope.launch {
@@ -344,7 +348,7 @@ constructor(
      * had just allowed — at an unpredictable moment, because it depends on the network.
      */
     private suspend fun show(accountKey: String, threadId: String, subject: String?) {
-        val emails = mail.messagesInThread(accountKey, threadId)
+        val emails = mail.messagesInThread(accountKey, threadId, fromBin)
         val thread = mail.thread(accountKey, threadId)
         val newest = emails.maxByOrNull { it.receivedAt ?: Long.MIN_VALUE }
         val existing = _state.value.messages.associateBy { it.email.uid }

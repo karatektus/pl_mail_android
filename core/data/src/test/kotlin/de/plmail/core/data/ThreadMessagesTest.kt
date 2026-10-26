@@ -72,6 +72,24 @@ class ThreadMessagesTest {
         assertEquals(listOf("1", "2"), shown.map { it.emailId }.sorted())
     }
 
+    /**
+     * What a phone found next: the conversation restored, its drafts deleted again, then opened
+     * from Trash, where it showed the two messages still in the inbox and none of the drafts.
+     */
+    @Test
+    fun `opened from Trash, it shows what was thrown away and not what was kept`() = runTest {
+        seed(
+            email("1", mailboxIds = "inbox"),
+            email("2", mailboxIds = "inbox"),
+            email("3", mailboxIds = "trash"),
+            email("4", mailboxIds = "trash"),
+        )
+
+        val shown = MailRepository(database).messagesInThread(testAccountKey, "t1", fromBin = true)
+
+        assertEquals(listOf("3", "4"), shown.map { it.emailId }.sorted())
+    }
+
     private suspend fun seed(vararg emails: EmailEntity) {
         database
             .mailboxes()
