@@ -170,6 +170,13 @@ data class ThreadEntity(
      * conversation with six deleted drafts read "8" in the inbox and in Trash alike.
      */
     val binnedCount: Int = 0,
+    /**
+     * When the newest thrown-away message arrived, or 0 when there is none: Trash's date for the
+     * conversation. [latestReceivedAt] is every other list's, and leaves these out — a draft
+     * deleted this morning moved a conversation from Sunday to the top of the inbox and labelled it
+     * with the draft's time, or did not, depending on which sync had written its row last.
+     */
+    val binnedReceivedAt: Long = 0,
     val isUnread: Boolean = false,
     val isFlagged: Boolean = false,
     val hasAttachment: Boolean = false,

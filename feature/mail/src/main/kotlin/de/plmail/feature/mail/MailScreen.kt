@@ -74,6 +74,7 @@ import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailView
 import de.plmail.core.data.SwipeActions
 import de.plmail.core.data.messagesShown
+import de.plmail.core.data.receivedShown
 import de.plmail.core.data.rowLabels
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PaneTone
@@ -685,12 +686,15 @@ internal fun ThreadList(
                     }
 
                     SwipeableThreadRow(
-                        // Counted for this list: the deleted messages in Trash,
-                        // the others everywhere else.
+                        // Counted and dated for this list: by the deleted messages
+                        // in Trash, by the others everywhere else.
                         thread =
-                            thread.copy(
-                                messageCount = thread.messagesShown(viewing?.role == TRASH_ROLE)
-                            ),
+                            (viewing?.role == TRASH_ROLE).let { inBin ->
+                                thread.copy(
+                                    messageCount = thread.messagesShown(inBin),
+                                    latestReceivedAt = thread.receivedShown(inBin),
+                                )
+                            },
                         isSelected = thread.uid in selection,
                         showsAccount = isMerged,
                         isNew = thread.uid in badgedNew || thread.isNew,

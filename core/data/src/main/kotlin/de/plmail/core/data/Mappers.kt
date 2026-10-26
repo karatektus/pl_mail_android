@@ -402,6 +402,7 @@ internal fun ThreadEntity.carryConversationFacts(stored: ThreadEntity?): ThreadE
             inboxTab = it.inboxTab,
             isNew = it.isNew,
             binnedCount = it.binnedCount,
+            binnedReceivedAt = it.binnedReceivedAt,
         )
     } ?: this
 
@@ -412,3 +413,7 @@ internal fun ThreadEntity.carryConversationFacts(stored: ThreadEntity?): ThreadE
  */
 fun ThreadEntity.messagesShown(inBin: Boolean): Int =
     (if (inBin) binnedCount else messageCount - binnedCount).takeIf { it > 0 } ?: messageCount
+
+/** The conversation's date in the list it is drawn in, by the rule [messagesShown] counts by. */
+fun ThreadEntity.receivedShown(inBin: Boolean): Long =
+    binnedReceivedAt.takeIf { inBin && it > 0 } ?: latestReceivedAt

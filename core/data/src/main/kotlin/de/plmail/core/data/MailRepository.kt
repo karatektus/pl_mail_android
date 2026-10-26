@@ -170,9 +170,10 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
      * that writes a message row comes through here, which is what makes this the one place that can
      * see a message change.
      *
-     * [members] are the mailboxes of every message in [threads], cached or not — see
-     * [memberMailboxes] — and are what [ThreadEntity.binnedCount] is counted from. Without them it
-     * is counted from the cache, which holds the whole conversation only once it has been opened.
+     * [members] are the mailboxes and dates of every message in [threads], cached or not — see
+     * [memberMailboxes] — and are what [ThreadEntity.binnedCount], [ThreadEntity.binnedReceivedAt]
+     * and [ThreadEntity.latestReceivedAt] are worked out from. Without them the cache is, which
+     * holds the whole conversation only once it has been opened.
      */
     suspend fun storeEmails(
         accountKey: String,
@@ -220,8 +221,9 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
 
             val bin = database.mailboxes().byRole(accountKey, TRASH_ROLE)?.mailboxId
             val inbox = database.mailboxes().byRole(accountKey, INBOX_ROLE)?.mailboxId
-            val memberBoxes = members.associate {
-                it.id.value to it.mailboxIds.filterValues { on -> on }.keys
+            val dates = members.associate { email ->
+                email.id.value to
+                    (email.mailboxIds.filterValues { it }.keys to email.receivedAt.toEpochMillis())
             }
 
             // Read back rather than reusing `emails`: the summary has to cover
@@ -234,18 +236,29 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
                         val thread = fetched[threadId] ?: MailThread(id = ThreadId(threadId))
 
                         val cached = database.emails().inThread(accountKey, threadId)
-                        val known = thread.emailIds.mapNotNull { memberBoxes[it.value] }
-                        val binned =
-                            if (known.isNotEmpty() && known.size == thread.emailIds.size) {
-                                known.count { isBinned(it, bin, inbox) }
-                            } else {
-                                cached.count { isBinned(it.mailboxIds.splitIds(), bin, inbox) }
-                            }
 
+                        // Each message's mailboxes and date: from the members
+                        // fetch where it covers the whole conversation, else
+                        // from the cache.
+                        val known = thread.emailIds.mapNotNull { dates[it.value] }
+                        val dated =
+                            if (known.isNotEmpty() && known.size == thread.emailIds.size) known
+                            else cached.map { it.mailboxIds.splitIds() to it.receivedAt }
+                        val (binned, kept) =
+                            dated.partition { (boxes, _) -> isBinned(boxes, bin, inbox) }
+
+                        val summary = thread.toEntity(accountKey, cached, bindings, inboxKey)
                         val row =
-                            thread
-                                .toEntity(accountKey, cached, bindings, inboxKey)
-                                .copy(binnedCount = binned)
+                            summary.copy(
+                                binnedCount = binned.size,
+                                // The kept messages' newest, or every message's
+                                // when nothing is kept: a conversation entirely
+                                // in Trash still needs a date everywhere.
+                                latestReceivedAt =
+                                    kept.ifEmpty { binned }.mapNotNull { it.second }.maxOrNull()
+                                        ?: summary.latestReceivedAt,
+                                binnedReceivedAt = binned.mapNotNull { it.second }.maxOrNull() ?: 0,
+                            )
 
                         // Almost every field on that row is derived from the
                         // messages — but the snooze time, the category and the

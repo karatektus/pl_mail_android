@@ -168,12 +168,16 @@ class AccountPager(
 data class PageStates(val email: String, val thread: String)
 
 /**
- * The mailboxes of every message in a set of conversations, cached or not, back-referenced off the
- * `Thread/get` that names them.
+ * The mailboxes and dates of every message in a set of conversations, cached or not,
+ * back-referenced off the `Thread/get` that names them.
  *
  * A list page caches one message per conversation, so the cache cannot say how many of the rest are
- * in Trash — and a row's count depends on that (`ThreadEntity.binnedCount`). Two properties per
- * message, in a request that is going out anyway.
+ * in Trash, or when the newest one kept arrived — and a row's count and date depend on both
+ * (`ThreadEntity.binnedCount`). Three properties per message, in a request going out anyway.
  */
 internal fun memberMailboxes(accountId: AccountId, threadEmailIds: ResultReference): EmailGet =
-    EmailGet(accountId, idsReference = threadEmailIds, properties = listOf("id", "mailboxIds"))
+    EmailGet(
+        accountId,
+        idsReference = threadEmailIds,
+        properties = listOf("id", "mailboxIds", "receivedAt"),
+    )

@@ -62,6 +62,53 @@ class ThreadCountTest {
         assertEquals(6, row.messagesShown(inBin = true))
     }
 
+    /**
+     * Its date, likewise. A draft deleted this morning dated a conversation last answered on Sunday
+     * as this morning's in the inbox — and only sometimes, depending on which sync wrote its row.
+     */
+    @Test
+    fun `deleted messages date the conversation in Trash and nowhere else`() = runTest {
+        seedMailboxes()
+        val thread = MailThread(ThreadId("t1"), (1..3).map { EmailId("m$it") })
+        val members =
+            listOf(
+                email("m1", "inbox", at = "2026-10-25T15:17:00Z"),
+                email("m2", "trash", at = "2026-10-25T21:48:00Z"),
+                email("m3", "trash", at = "2026-10-26T06:28:00Z"),
+            )
+
+        MailRepository(database)
+            .storeEmails(
+                testAccountKey,
+                listOf(members.first()),
+                listOf(thread),
+                fetchedAt = 0,
+                members = members,
+            )
+
+        val row = database.threads().byUid(StoreKey.objectKey(testAccountKey, "t1"))!!
+        assertEquals(millis("2026-10-25T15:17:00Z"), row.receivedShown(inBin = false))
+        assertEquals(millis("2026-10-26T06:28:00Z"), row.receivedShown(inBin = true))
+    }
+
+    @Test
+    fun `a conversation entirely in Trash keeps a date everywhere`() = runTest {
+        seedMailboxes()
+        val only = email("m1", "trash", at = "2026-10-26T06:28:00Z")
+
+        MailRepository(database)
+            .storeEmails(
+                testAccountKey,
+                listOf(only),
+                listOf(MailThread(ThreadId("t1"), listOf(EmailId("m1")))),
+                fetchedAt = 0,
+                members = listOf(only),
+            )
+
+        val row = database.threads().byUid(StoreKey.objectKey(testAccountKey, "t1"))!!
+        assertEquals(millis("2026-10-26T06:28:00Z"), row.receivedShown(inBin = false))
+    }
+
     @Test
     fun `a message put back in the inbox with the bin still on counts as kept`() = runTest {
         seedMailboxes()
@@ -105,11 +152,13 @@ class ThreadCountTest {
             )
     }
 
-    private fun email(id: String, vararg mailboxes: String) =
+    private fun email(id: String, vararg mailboxes: String, at: String = "2026-10-26T08:00:00Z") =
         Email(
             id = EmailId(id),
             threadId = ThreadId("t1"),
-            receivedAt = "2026-10-26T08:00:00Z",
+            receivedAt = at,
             mailboxIds = mailboxes.associateWith { true },
         )
+
+    private fun millis(at: String) = java.time.Instant.parse(at).toEpochMilli()
 }

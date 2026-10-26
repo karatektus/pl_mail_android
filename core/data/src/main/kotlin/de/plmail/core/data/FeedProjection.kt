@@ -59,6 +59,11 @@ constructor(
         // "is this in the inbox" can be asked of a row at all.
         val inboxKey = database.mailboxes().byRole(accountKey, INBOX_ROLE)?.labelKey()
 
+        // Trash's list, which dates a conversation by its thrown-away messages
+        // where every other list leaves them out -- see ThreadEntity.binnedReceivedAt.
+        val binFeed =
+            database.mailboxes().byRole(accountKey, TRASH_ROLE)?.labelKey()?.let(::labelFeedId)
+
         // Whether this server classifies mail at all, which decides what an
         // unclassified conversation means -- see targetFeeds. Read once for the
         // batch and outside the transaction: it is a fact about the server, and
@@ -87,7 +92,17 @@ constructor(
             if (live.isEmpty()) return@withTransaction
 
             threadIds.forEach { threadId ->
-                project(accountKey, threadId, live, inboxKey, pending, classifies, tabs, wantsTabs)
+                project(
+                    accountKey,
+                    threadId,
+                    live,
+                    inboxKey,
+                    binFeed,
+                    pending,
+                    classifies,
+                    tabs,
+                    wantsTabs,
+                )
             }
         }
     }
@@ -97,6 +112,7 @@ constructor(
         threadId: String,
         live: List<Pair<String, FeedCursorEntity?>>,
         inboxKey: String?,
+        binFeed: String?,
         pending: Set<String>,
         classifies: Boolean,
         tabs: Set<String>?,
@@ -134,8 +150,10 @@ constructor(
                 return@forEach
             }
 
-            if (isWithinWindow(thread, cursor))
-                database.feed().upsertEntries(listOf(entry(feedId, thread)))
+            val sortDate = thread.receivedShown(inBin = feedId == binFeed)
+
+            if (isWithinWindow(sortDate, cursor))
+                database.feed().upsertEntries(listOf(entry(feedId, thread, sortDate)))
         }
     }
 
@@ -151,10 +169,10 @@ constructor(
      * Exhausted is the exception that proves it: a list that has reached the end of its account has
      * no tail left to fall below.
      */
-    private fun isWithinWindow(thread: ThreadEntity, cursor: FeedCursorEntity?): Boolean {
+    private fun isWithinWindow(sortDate: Long, cursor: FeedCursorEntity?): Boolean {
         val tail = cursor?.lastSortDate ?: return true
 
-        return cursor.isExhausted || thread.latestReceivedAt >= tail
+        return cursor.isExhausted || sortDate >= tail
     }
 
     /**
@@ -212,11 +230,11 @@ constructor(
      * time the list pages, and one that nothing can ever remove. `MailActions.restoreToInbox`
      * records what happened the last time this was got wrong.
      */
-    private fun entry(feedId: String, thread: ThreadEntity): FeedEntryEntity =
+    private fun entry(feedId: String, thread: ThreadEntity, sortDate: Long): FeedEntryEntity =
         FeedEntryEntity(
             uid = "$feedId#${thread.uid}",
             feedId = feedId,
-            sortDate = thread.latestReceivedAt,
+            sortDate = sortDate,
             accountKey = thread.accountKey,
             threadId = thread.threadId,
             // The thread id, as `restoreToInbox` also writes. The column names
@@ -229,5 +247,6 @@ constructor(
 
     private companion object {
         const val INBOX_ROLE = "inbox"
+        const val TRASH_ROLE = "trash"
     }
 }
