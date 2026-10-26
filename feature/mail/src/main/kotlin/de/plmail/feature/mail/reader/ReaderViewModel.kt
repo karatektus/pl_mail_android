@@ -21,6 +21,7 @@ import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailRepository
 import de.plmail.core.data.MessageDecryptor
 import de.plmail.core.data.MessageLoader
+import de.plmail.core.data.messagesShown
 import de.plmail.core.database.AttachmentEntity
 import de.plmail.core.database.EmailEntity
 import de.plmail.core.database.StoreKey
@@ -260,6 +261,9 @@ constructor(
     /** Which conversation is open, as the key the cache files it under. */
     private val opened = MutableStateFlow<OpenedThread?>(null)
 
+    /** Whether the conversation was opened from Trash, which shows its thrown-away messages. */
+    private var fromBin = false
+
     /**
      * Decrypted messages and decryptions under way, by message uid (#9).
      *
@@ -299,7 +303,7 @@ constructor(
                             isStarred = thread?.isFlagged == true,
                             labels = known.filter { it.key in carried && !it.isSystem },
                             snoozedUntil = thread?.snoozedUntil,
-                            messageCount = thread?.messageCount ?: 0,
+                            messageCount = thread?.messagesShown(fromBin) ?: 0,
                             accountName =
                                 accounts
                                     .takeIf { it.size > 1 }
@@ -313,9 +317,6 @@ constructor(
                 started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
                 initialValue = ReaderHeaderState(),
             )
-
-    /** Whether the conversation was opened from Trash, which shows its thrown-away messages. */
-    private var fromBin = false
 
     fun open(accountKey: String, threadId: String, subject: String?, fromBin: Boolean = false) {
         _state.update { ReaderUiState(subject = subject, isLoading = true) }

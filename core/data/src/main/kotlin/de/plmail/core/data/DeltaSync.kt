@@ -337,6 +337,10 @@ constructor(
             // scheduled job, becomes true on the device.
             val threads =
                 request.add(ThreadGet.forEmailsOf(accountId, get.reference("/list/*/threadId")))
+            // And the mailboxes of everything in them, for the row's count: a draft
+            // deleted on the web changes no message this page carries.
+            val members =
+                request.add(memberMailboxes(accountId, threads.reference("/list/*/emailIds")))
 
             val results = client.send(request)
             val emails = results.result(get).list
@@ -392,6 +396,7 @@ constructor(
                 emails,
                 conversations,
                 fetchedAt = System.currentTimeMillis(),
+                members = results.resultOrNull(members)?.list.orEmpty(),
             )
 
             // Immediately after the write, because the write is what the

@@ -73,6 +73,7 @@ import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailView
 import de.plmail.core.data.SwipeActions
+import de.plmail.core.data.messagesShown
 import de.plmail.core.data.rowLabels
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PaneTone
@@ -684,7 +685,12 @@ internal fun ThreadList(
                     }
 
                     SwipeableThreadRow(
-                        thread = thread,
+                        // Counted for this list: the deleted messages in Trash,
+                        // the others everywhere else.
+                        thread =
+                            thread.copy(
+                                messageCount = thread.messagesShown(viewing?.role == TRASH_ROLE)
+                            ),
                         isSelected = thread.uid in selection,
                         showsAccount = isMerged,
                         isNew = thread.uid in badgedNew || thread.isNew,
@@ -1059,3 +1065,5 @@ private fun ThreadEntity.target(): ActionTarget =
  */
 private fun LazyPagingItems<ThreadEntity>.targetsFor(selection: Set<String>): List<ActionTarget> =
     (0 until itemCount).mapNotNull { peek(it) }.filter { it.uid in selection }.map { it.target() }
+
+private const val TRASH_ROLE = "trash"

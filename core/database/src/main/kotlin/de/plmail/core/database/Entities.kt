@@ -162,6 +162,14 @@ data class ThreadEntity(
     val participantsAddress: String? = null,
     val snippet: String = "",
     val messageCount: Int = 1,
+    /**
+     * How many of [messageCount] are thrown away: in Trash and not in the inbox.
+     *
+     * Kept beside the total rather than instead of it, because which number a row shows depends on
+     * the list it is in. Trash shows these, every other list the rest; one count for both had a
+     * conversation with six deleted drafts read "8" in the inbox and in Trash alike.
+     */
+    val binnedCount: Int = 0,
     val isUnread: Boolean = false,
     val isFlagged: Boolean = false,
     val hasAttachment: Boolean = false,

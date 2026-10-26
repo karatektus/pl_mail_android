@@ -139,7 +139,7 @@ class AccountPagerTest {
         val stored = mutableListOf<String>()
         val transport = transport(queryIds = listOf("2", "1"), getOrder = listOf("1", "2"))
 
-        pager(transport) { emails, _, _ -> stored += emails.map { it.id.value } }
+        pager(transport) { emails, _, _, _ -> stored += emails.map { it.id.value } }
             .page(null, emptySet(), 10)
 
         // In query order, so what is written matches what is drawn.
@@ -157,7 +157,7 @@ class AccountPagerTest {
 
         val stored = mutableListOf<String>()
         val page =
-            pager(transport) { emails, _, _ -> stored += emails.map { it.id.value } }
+            pager(transport) { emails, _, _, _ -> stored += emails.map { it.id.value } }
                 .page(null, emptySet(), 10)
 
         assertEquals(listOf("1"), page.rows.map { it.id }, "it cannot be placed in a dated list")
@@ -177,7 +177,7 @@ class AccountPagerTest {
         val transport = transport(queryIds = listOf("1"), getOrder = listOf("1"))
 
         var seen: PageStates? = null
-        pager(transport) { _, _, states -> seen = states }.page(null, emptySet(), 10)
+        pager(transport) { _, _, states, _ -> seen = states }.page(null, emptySet(), 10)
 
         assertEquals("e", seen?.email, "without this there is no cursor and delta sync never runs")
         // And the conversations' own, which is where Thread/changes resumes
@@ -209,7 +209,7 @@ class AccountPagerTest {
                 )
 
             var threads = emptyList<MailThread>()
-            pager(transport) { _, fetched, _ -> threads = fetched }.page(null, emptySet(), 10)
+            pager(transport) { _, fetched, _, _ -> threads = fetched }.page(null, emptySet(), 10)
 
             assertEquals(
                 mapOf("t1" to null, "t2" to "2026-08-03T08:00:00Z"),
@@ -228,7 +228,9 @@ class AccountPagerTest {
 
     private fun pager(
         transport: RecordingTransport,
-        onPage: suspend (List<Email>, List<MailThread>, PageStates) -> Unit = { _, _, _ -> },
+        onPage: suspend (List<Email>, List<MailThread>, PageStates, List<Email>) -> Unit =
+            { _, _, _, _ ->
+            },
     ) =
         AccountPager(
             accountKey = "https://nas.local/13",

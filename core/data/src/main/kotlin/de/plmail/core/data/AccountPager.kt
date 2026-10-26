@@ -10,6 +10,7 @@ import de.plmail.jmap.methods.EmailQuery
 import de.plmail.jmap.methods.ThreadGet
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.RequestBuilder
+import de.plmail.jmap.protocol.ResultReference
 import java.time.Instant
 
 /**
@@ -31,15 +32,17 @@ class AccountPager(
     /** The list being paged — an inbox, a label, a search. Null pages everything. */
     private val filter: EmailFilter? = null,
     /**
-     * Receives the page, the conversations it belongs to, *and* the states it was read at.
+     * Receives the page, the conversations it belongs to, *and* the states it was read at — and
+     * last, the mailboxes of every message in those conversations, see [memberMailboxes].
      *
      * The states are what `Email/changes` and `Thread/changes` resume from, and a page is the only
      * place they can be learned: `Email/get` and `Thread/get` report the state their answer
      * reflects. Without recording them here there is no cursor, delta sync has nothing to resume
      * from, and every push arrives and does nothing.
      */
-    private val onPage: suspend (List<Email>, List<MailThread>, PageStates) -> Unit = { _, _, _ ->
-    },
+    private val onPage: suspend (List<Email>, List<MailThread>, PageStates, List<Email>) -> Unit =
+        { _, _, _, _ ->
+        },
 ) : FeedSource {
 
     override suspend fun page(
@@ -79,6 +82,7 @@ class AccountPager(
         // however carefully the undo itself was written.
         val threads =
             request.add(ThreadGet.forEmailsOf(accountId, get.reference("/list/*/threadId")))
+        val members = request.add(memberMailboxes(accountId, threads.reference("/list/*/emailIds")))
 
         val results = client.send(request)
         val ids = results.result(query).ids
@@ -95,7 +99,14 @@ class AccountPager(
         // to order by are the *thread* ids, which this call never asked for
         // directly.
         val threadResult = results.result(threads)
-        onPage(messages, threadResult.list, PageStates(getResult.state, threadResult.state))
+        onPage(
+            messages,
+            threadResult.list,
+            PageStates(getResult.state, threadResult.state),
+            // Optional: without it the count falls back to the cache, which is
+            // a wrong number on a row rather than a list that will not load.
+            results.resultOrNull(members)?.list.orEmpty(),
+        )
 
         val rows =
             messages
@@ -155,3 +166,14 @@ class AccountPager(
  * The `Email/get` and `Thread/get` states a page was read at: the cursors delta sync starts from.
  */
 data class PageStates(val email: String, val thread: String)
+
+/**
+ * The mailboxes of every message in a set of conversations, cached or not, back-referenced off the
+ * `Thread/get` that names them.
+ *
+ * A list page caches one message per conversation, so the cache cannot say how many of the rest are
+ * in Trash — and a row's count depends on that (`ThreadEntity.binnedCount`). Two properties per
+ * message, in a request that is going out anyway.
+ */
+internal fun memberMailboxes(accountId: AccountId, threadEmailIds: ResultReference): EmailGet =
+    EmailGet(accountId, idsReference = threadEmailIds, properties = listOf("id", "mailboxIds"))

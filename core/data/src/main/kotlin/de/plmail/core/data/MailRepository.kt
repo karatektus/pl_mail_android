@@ -169,12 +169,17 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
      * Cached bodies that this page contradicts are dropped first — see [staleBodies]. Every path
      * that writes a message row comes through here, which is what makes this the one place that can
      * see a message change.
+     *
+     * [members] are the mailboxes of every message in [threads], cached or not — see
+     * [memberMailboxes] — and are what [ThreadEntity.binnedCount] is counted from. Without them it
+     * is counted from the cache, which holds the whole conversation only once it has been opened.
      */
     suspend fun storeEmails(
         accountKey: String,
         emails: List<Email>,
         threads: List<MailThread> = emptyList(),
         fetchedAt: Long,
+        members: List<Email> = emptyList(),
     ) {
         if (emails.isEmpty() && threads.isEmpty()) return
 
@@ -213,6 +218,12 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
             // the same reason.
             val inboxKey = database.mailboxes().byRole(accountKey, INBOX_ROLE)?.labelKey()
 
+            val bin = database.mailboxes().byRole(accountKey, TRASH_ROLE)?.mailboxId
+            val inbox = database.mailboxes().byRole(accountKey, INBOX_ROLE)?.mailboxId
+            val memberBoxes = members.associate {
+                it.id.value to it.mailboxIds.filterValues { on -> on }.keys
+            }
+
             // Read back rather than reusing `emails`: the summary has to cover
             // every message the thread now has, not just the ones in this page.
             database
@@ -222,13 +233,19 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
                         val uid = StoreKey.objectKey(accountKey, threadId)
                         val thread = fetched[threadId] ?: MailThread(id = ThreadId(threadId))
 
+                        val cached = database.emails().inThread(accountKey, threadId)
+                        val known = thread.emailIds.mapNotNull { memberBoxes[it.value] }
+                        val binned =
+                            if (known.isNotEmpty() && known.size == thread.emailIds.size) {
+                                known.count { isBinned(it, bin, inbox) }
+                            } else {
+                                cached.count { isBinned(it.mailboxIds.splitIds(), bin, inbox) }
+                            }
+
                         val row =
-                            thread.toEntity(
-                                accountKey,
-                                database.emails().inThread(accountKey, threadId),
-                                bindings,
-                                inboxKey,
-                            )
+                            thread
+                                .toEntity(accountKey, cached, bindings, inboxKey)
+                                .copy(binnedCount = binned)
 
                         // Almost every field on that row is derived from the
                         // messages — but the snooze time, the category and the
@@ -315,11 +332,7 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
         val bin = database.mailboxes().byRole(accountKey, TRASH_ROLE)?.mailboxId ?: return all
         val inbox = database.mailboxes().byRole(accountKey, INBOX_ROLE)?.mailboxId
 
-        return all.filter { email ->
-                val ids = email.mailboxIds.splitIds()
-
-                if (fromBin) bin in ids else bin !in ids || inbox in ids
-            }
+        return all.filter { email -> isBinned(email.mailboxIds.splitIds(), bin, inbox) == fromBin }
             .ifEmpty { all }
     }
 
@@ -442,11 +455,11 @@ class MailRepository @Inject constructor(private val database: PlMailDatabase) {
 
     /** The composite key for one account on one server. */
     fun accountKey(server: String, accountId: String): String = StoreKey.account(server, accountId)
-
-    private companion object {
-        const val INBOX_ROLE = "inbox"
-    }
 }
+
+/** Thrown away: in Trash and not in the inbox. See [MailRepository.messagesInThread] for why. */
+private fun isBinned(mailboxIds: Collection<String>, bin: String?, inbox: String?): Boolean =
+    bin != null && bin in mailboxIds && inbox !in mailboxIds
 
 /**
  * Binding id to label collapse key, as a map.
