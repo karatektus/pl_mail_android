@@ -934,8 +934,8 @@ constructor(
             // Read from the answer where there is one: a rule the server
             // cannot convert is stored verbatim and expands to one
             // occurrence, so a create carrying a recurrence can come back
-            // not recurring. Only plMail's vendor shape answers it; under
-            // the IETF URN the rule that was sent is all there is to go on.
+            // not recurring. Only a server that answers neither name
+            // leaves the rule that was sent as all there is to go on.
             val recurs = created.isRecurring ?: (stored.recurrenceRule != null)
 
             val eventKey = StoreKey.objectKey(calendar.accountKey, created.id.value)
@@ -1378,8 +1378,8 @@ constructor(
                 "timeZone",
                 "showWithoutTime",
                 "status",
-                // What recurring is read from under the IETF URN, which
-                // publishes no `isRecurring`; see CalendarEvent.isRecurring.
+                // Asked for with whether it recurs beside it, which the
+                // server answers better; see CalendarEvent.isRecurring.
                 "recurrenceRule",
                 "sequence",
                 "locations",

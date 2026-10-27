@@ -365,7 +365,7 @@ class CalendarWriteMethodsTest {
             decodeSet(
                 """
                 {"accountId":"1","oldState":"fixed","newState":"fixed",
-                 "created":{"c1":{"id":"10999","uid":"df7a068@plmail","isRecurring":true,
+                 "created":{"c1":{"id":"10999","uid":"df7a068@plmail","plmail.org:isRecurring":true,
                                   "sequence":0}},
                  "notCreated":{},"updated":{},"notUpdated":{},
                  "destroyed":[],"notDestroyed":{}}
@@ -377,9 +377,22 @@ class CalendarWriteMethodsTest {
     }
 
     @Test
-    fun `a created event under the IETF URN says nothing about recurring`() {
-        // The draft has no isRecurring; the server drops it there, and the
-        // caller is left to the rule it sent.
+    fun `a created event under the IETF URN says whether it recurs by its vendor name`() {
+        val answered =
+            decodeSet(
+                """
+                {"accountId":"1","oldState":"s1","newState":"s2",
+                 "created":{"c1":{"id":"10999","calendarIds":{"10542":true},
+                                  "plmail.org:isRecurring":false,"sequence":0}}}
+                """
+            )
+
+        assertEquals(false, answered.created.getValue("c1").isRecurring)
+    }
+
+    @Test
+    fun `a created event from a server that publishes no isRecurring says nothing`() {
+        // The caller is then left to the rule it sent.
         val answered =
             decodeSet(
                 """

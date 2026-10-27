@@ -542,9 +542,9 @@ private fun FakeInstance.startUtc(event: FakeEvent): LocalDateTime =
 /**
  * The series object: its own start, its own title, and the override map published whole.
  *
- * Under the IETF URN a recurring one carries a rule, because that is all the draft says about
- * recurring; which rule does not matter, since the days come from [FakeEvent.days]. Under the
- * vendor URN it carries `isRecurring`, as plMail's earlier shape does.
+ * A recurring one carries a rule; which does not matter, since the days come from [FakeEvent.days].
+ * Whether it recurs is `plmail.org:isRecurring` under the IETF URN and `isRecurring` under the
+ * vendor one, as the real server publishes them.
  */
 private fun FakeEvent.toJson(dialect: CalendarDialect): String = buildString {
     append("""{"id":"$id","uid":"${uid ?: "$id@plmail"}",${calendarJson(dialect)},""")
@@ -553,16 +553,25 @@ private fun FakeEvent.toJson(dialect: CalendarDialect): String = buildString {
     if (showWithoutTime) append(""""showWithoutTime":true,""")
     overrides?.let { append(""""recurrenceOverrides":$it,""") }
 
-    when (dialect) {
-        CalendarDialect.IETF ->
-            if (isRecurring) {
-                append(""""recurrenceRule":{"@type":"RecurrenceRule","frequency":"daily"},""")
-            }
-        CalendarDialect.PLMAIL -> append(""""isRecurring":$isRecurring,""")
+    if (isRecurring) {
+        val rule = """{"@type":"RecurrenceRule","frequency":"daily"}"""
+
+        when (dialect) {
+            CalendarDialect.IETF -> append(""""recurrenceRule":$rule,""")
+            CalendarDialect.PLMAIL -> append(""""recurrenceRules":[$rule],""")
+        }
     }
+
+    append(""""${recurringName(dialect)}":$isRecurring,""")
 
     append(""""status":"confirmed","sequence":0}""")
 }
+
+private fun recurringName(dialect: CalendarDialect): String =
+    when (dialect) {
+        CalendarDialect.IETF -> "plmail.org:isRecurring"
+        CalendarDialect.PLMAIL -> "isRecurring"
+    }
 
 private fun FakeEvent.calendarJson(dialect: CalendarDialect): String =
     when (dialect) {
@@ -593,17 +602,15 @@ private fun FakeEvent.toJson(
     timeZone?.let { append(""""timeZone":"$it",""") }
     if (showWithoutTime) append(""""showWithoutTime":true,""")
     append(""""$rule":null,"recurrenceOverrides":null,""")
-    if (dialect == CalendarDialect.PLMAIL) append(""""isRecurring":true,""")
+    append(""""${recurringName(dialect)}":true,""")
     append(""""status":"${if (instance.cancelled) "cancelled" else "confirmed"}","sequence":0}""")
 }
 
 /**
  * The `CalendarEvent/set` result of a create that worked.
  *
- * Under the vendor URN [isRecurring] is echoed rather than inferred from what was sent, because
- * that is what the server does: a rule it cannot convert is stored verbatim and expands to one
- * occurrence. Under the IETF URN the server says nothing about recurring, and [isRecurring] is
- * ignored.
+ * [isRecurring] is echoed rather than inferred from what was sent, because that is what the server
+ * does: a rule it cannot convert is stored verbatim and expands to one occurrence.
  */
 internal fun createdEvent(
     id: String,
@@ -612,7 +619,8 @@ internal fun createdEvent(
 ): String {
     val decided =
         when (dialect) {
-            CalendarDialect.IETF -> """"calendarIds":{"$TEST_CALENDAR_ID":true}"""
+            CalendarDialect.IETF ->
+                """"calendarIds":{"$TEST_CALENDAR_ID":true},"plmail.org:isRecurring":$isRecurring"""
             CalendarDialect.PLMAIL ->
                 """"calendarId":"$TEST_CALENDAR_ID","isRecurring":$isRecurring"""
         }

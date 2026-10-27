@@ -94,9 +94,11 @@ data class CalendarEvent(
     val created: String? = null,
     val updated: String? = null,
     /**
-     * plMail's derived `isRecurring`, which only its vendor shape publishes. Read [isRecurring].
+     * The server's own answer to whether this event recurs — `plmail.org:isRecurring`, a vendor
+     * property (RFC 8984 §3.3) beside the draft's, or `isRecurring` under plMail's vendor URN. Read
+     * [isRecurring].
      */
-    @SerialName("isRecurring") val publishedRecurring: Boolean? = null,
+    @SerialName(IS_RECURRING) val publishedRecurring: Boolean? = null,
     /**
      * The only way back from an occurrence to something writable — the draft's name for what
      * plMail's vendor shape called `seriesId`.
@@ -129,14 +131,20 @@ data class CalendarEvent(
     /**
      * Whether this event repeats.
      *
-     * plMail's vendor shape says so outright, derived server-side, and that answer wins where it
-     * exists: a rule plMail cannot convert is stored verbatim and expands to a single occurrence,
-     * so an event can carry a rule and still not recur. The draft publishes no such property, so
-     * under it the rule is the answer — wrong only on those imported events, where it errs towards
+     * The server says so outright, derived server-side, and that answer wins: a rule plMail cannot
+     * convert is stored verbatim and expands to a single occurrence, so an event can carry a rule
+     * and still not recur. The draft has no property for it, so plMail publishes one of its own
+     * under that URN — [publishedRecurring]. Only a server that publishes neither leaves the rule
+     * as the answer, and that is wrong only on those imported events, where it errs towards
      * treating a one-off as a series.
      */
     val isRecurring: Boolean
         get() = publishedRecurring ?: (recurrenceRule != null)
+
+    companion object {
+        /** plMail's vendor property for [isRecurring], under the draft's URN. */
+        const val IS_RECURRING = "plmail.org:isRecurring"
+    }
 
     /** Whether this object is one occurrence of a series rather than the series itself. */
     val isOccurrence: Boolean

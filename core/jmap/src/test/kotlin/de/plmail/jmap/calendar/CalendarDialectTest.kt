@@ -27,7 +27,8 @@ import kotlinx.serialization.json.jsonPrimitive
  * The answers here are written out rather than captured, because no seed of the 8002 stack speaks
  * the IETF URN yet; they follow the server's own `IetfCalendarShape`, which is what turns plMail's
  * shape into the draft's under that URN: `calendarIds` for `calendarId`, one `recurrenceRule` for
- * `recurrenceRules`, `baseEventId` for `seriesId`, and no `isRecurring`, `kind` or `source`.
+ * `recurrenceRules`, `baseEventId` for `seriesId`, `plmail.org:isRecurring` for `isRecurring`, and
+ * no `kind` or `source`.
  */
 class CalendarDialectTest {
 
@@ -100,13 +101,34 @@ class CalendarDialectTest {
 
         assertEquals(CalendarId("10542"), standup.calendarId)
         assertEquals("weekly", standup.recurrenceRule?.frequency)
-        assertTrue(standup.isRecurring, "no isRecurring under the draft: the rule is the answer")
+        assertTrue(
+            standup.isRecurring,
+            "a server that publishes no plmail.org:isRecurring leaves the rule as the answer",
+        )
         assertNull(standup.publishedRecurring)
 
         assertTrue(occurrence.isOccurrence)
         assertEquals(CalendarEventId("10867"), occurrence.writableId)
 
         assertFalse(dentist.isRecurring)
+    }
+
+    /** A rule the server could not convert: it is kept, and the event does not recur. */
+    @Test
+    fun `an IETF event's own word on recurring beats its rule`() {
+        val (imported) =
+            get(
+                CalendarDialect.IETF,
+                """
+                {"id":"10870","calendarIds":{"10542":true},"title":"Imported",
+                 "recurrenceRule":{"@type":"RecurrenceRule","frequency":"yearly"},
+                 "plmail.org:isRecurring":false}
+                """,
+            )
+
+        assertEquals("yearly", imported.recurrenceRule?.frequency)
+        assertEquals(false, imported.publishedRecurring)
+        assertFalse(imported.isRecurring)
     }
 
     @Test
@@ -137,12 +159,16 @@ class CalendarDialectTest {
     fun `properties are asked for in the dialect's names`() {
         val asked = listOf("id", "calendarIds", "baseEventId", "recurrenceRule", "title")
 
-        assertEquals(asked, propertiesSent(CalendarDialect.IETF, asked))
+        assertEquals(
+            asked + "plmail.org:isRecurring",
+            propertiesSent(CalendarDialect.IETF, asked),
+            "whether it recurs is asked for wherever the rule is",
+        )
         assertEquals(
             listOf("id", "calendarId", "seriesId", "recurrenceRules", "title", "isRecurring"),
             propertiesSent(CalendarDialect.PLMAIL, asked),
-            "and the vendor shape is asked for isRecurring where the rule is wanted",
         )
+        assertEquals(listOf("id"), propertiesSent(CalendarDialect.IETF, listOf("id")))
     }
 
     // --- writing ---

@@ -1,11 +1,13 @@
 package de.plmail.jmap.methods
 
 import de.plmail.jmap.calendar.CalendarDialect
+import de.plmail.jmap.calendar.CalendarEvent
 import de.plmail.jmap.calendar.RecurrenceRule
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.CalendarEventId
 import de.plmail.jmap.protocol.CalendarId
 import de.plmail.jmap.protocol.JmapMethod
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -346,9 +348,9 @@ data class CalendarEventSetResult(
  * What the server decided about a created event.
  *
  * [isRecurring] is here because it is derived server-side: a rule plMail cannot convert is stored
- * verbatim and expands to one occurrence, so a create carrying a recurrence rule can come back
- * `isRecurring: false`. Only plMail's vendor shape answers it, though; under the IETF URN it is
- * null, and the caller falls back on whether it sent a rule — see
+ * verbatim and expands to one occurrence, so a create carrying a recurrence rule can come back not
+ * recurring. Under the IETF URN it is the vendor property `plmail.org:isRecurring`; null only from
+ * a server that publishes neither, and then the caller falls back on whether it sent a rule — see
  * [de.plmail.jmap.calendar.CalendarEvent.isRecurring].
  */
 @Serializable
@@ -364,7 +366,7 @@ data class CreatedCalendarEvent(
     val uid: String? = null,
     /** The draft's id-to-true map; read it through [calendarId]. */
     val calendarIds: Map<String, Boolean> = emptyMap(),
-    val isRecurring: Boolean? = null,
+    @SerialName(CalendarEvent.IS_RECURRING) val isRecurring: Boolean? = null,
     val sequence: Int = 0,
 ) {
     val calendarId: CalendarId?
