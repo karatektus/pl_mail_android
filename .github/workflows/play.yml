@@ -1,0 +1,82 @@
+name: Google Play
+
+on:
+    # Called by release.yml once the GitHub Release exists, so every tag goes
+    # to Play without anyone opening the Console.
+    workflow_call:
+        inputs:
+            tag:
+                type: string
+                required: true
+            track:
+                type: string
+                default: beta
+    # By hand: to put an older release on Play, or to send one to another
+    # track. This runs the workflow file of the ref it is started from, so
+    # start it from main, not from the tag.
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: 'Release tag whose google AAB to upload, e.g. v0.4.2'
+                type: string
+                required: true
+            track:
+                description: 'Play track. beta is open testing, which Play shows as early access.'
+                type: choice
+                options: [beta, internal, alpha, production]
+                default: beta
+
+permissions:
+    contents: read
+
+concurrency:
+    group: play
+    cancel-in-progress: false
+
+jobs:
+    upload:
+        runs-on: ubuntu-latest
+
+        steps:
+            # A pre-release tag (v1.2.0-rc1) has the same versionCode as its
+            # final release, and Play never takes a versionCode twice, so the
+            # candidate would block the real thing.
+            - name: Refuse pre-releases
+              if: contains(inputs.tag, '-')
+              run: |
+                  echo "::error::${{ inputs.tag }} is a pre-release. Its versionCode equals the final release's, which Play would then refuse."
+                  exit 1
+
+            # The bundle comes from the GitHub Release rather than from a fresh
+            # build: it is the file release.yml already signed and verified,
+            # and rebuilding it here would mean a second set of signing secrets
+            # for a second copy of the same thing.
+            - name: Download the google bundle and its mapping
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  TAG: ${{ inputs.tag }}
+              run: |
+                  set -euo pipefail
+
+                  version="${TAG#v}"
+                  gh release download "$TAG" \
+                      --repo "$GITHUB_REPOSITORY" \
+                      --dir "$RUNNER_TEMP/play" \
+                      --pattern "plmail-$version-google.aab" \
+                      --pattern "plmail-$version-google-mapping.txt"
+
+                  ls -l "$RUNNER_TEMP/play"
+                  echo "APP_VERSION=$version" >> "$GITHUB_ENV"
+
+            # The service account is invited in the Play Console with app
+            # permissions for plMail only. See docs/RELEASING.md.
+            - name: Upload to Google Play
+              uses: r0adkll/upload-google-play@v1.1.5
+              with:
+                  serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+                  packageName: de.pluetzner.plmail
+                  releaseFiles: ${{ runner.temp }}/play/plmail-${{ env.APP_VERSION }}-google.aab
+                  mappingFile: ${{ runner.temp }}/play/plmail-${{ env.APP_VERSION }}-google-mapping.txt
+                  releaseName: ${{ env.APP_VERSION }}
+                  track: ${{ inputs.track }}
+                  status: completed

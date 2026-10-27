@@ -210,3 +210,14 @@ jobs:
                   generate_release_notes: true
                   prerelease: ${{ contains(github.ref_name, '-') }}
                   fail_on_unmatched_files: true
+
+    # Play gets the google bundle from the release just published. Pre-releases
+    # stay on GitHub: their versionCode is the final release's, and Play takes
+    # each versionCode once.
+    play:
+        needs: release
+        if: ${{ !contains(github.ref_name, '-') }}
+        uses: ./.github/workflows/play.yml
+        with:
+            tag: ${{ github.ref_name }}
+        secrets: inherit
