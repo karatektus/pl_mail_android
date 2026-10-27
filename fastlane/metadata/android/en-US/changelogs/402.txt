@@ -1,0 +1,6 @@
+Mostly fixes for syncing, caching and composing:
+- Trashing a conversation moves all its messages, and it no longer comes back after a sync.
+- Drafts in a conversation can be edited and deleted.
+- Replies open without waiting for the network.
+- Fewer and faster requests: one sync for all accounts, and mail in view is loaded ahead on Wi-Fi.
+- Updates keep the mail cache instead of rebuilding it.

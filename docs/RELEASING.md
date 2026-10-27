@@ -15,7 +15,7 @@ private const val VERSION_NAME = "0.1.0"
 So a release is two steps, in this order:
 
 ```bash
-# 1. Bump VERSION_NAME, then commit it.
+# 1. Bump VERSION_NAME, write the Play release notes (see "Google Play"), then commit both.
 git commit -am "chore: 0.2.0"
 
 # 2. Tag that commit and push both.
@@ -62,14 +62,24 @@ After the GitHub Release is published, `.github/workflows/play.yml` downloads
 access. Pre-release tags are not uploaded: their `versionCode` equals the final release's, and Play
 accepts each `versionCode` only once.
 
+The texts live in `fastlane/metadata/android/<locale>/`, the layout F-Droid reads as well:
+
+| File | What it is |
+|---|---|
+| `title.txt` · `short_description.txt` · `full_description.txt` | The store listing (30, 80 and 4000 characters at most). Sent to Play with every release. |
+| `changelogs/<versionCode>.txt` | The release notes ("What's new", 500 characters at most), e.g. `changelogs/402.txt` for 0.4.2. |
+
+The `en-US` release notes are required: without them the upload stops, so commit them before
+tagging. Other languages are sent when their file exists.
+
 Promoting a release from open testing to production is done in the Play Console. To upload an
 older release, or to send one to another track, run the **Google Play** workflow by hand from
 `main` with the tag and the track.
 
 The upload uses a Google Cloud service account. It needs no roles in its Cloud project; its access
 comes from the Play Console (Users and permissions), as app permissions for plMail only: view app
-information, and release to testing tracks (plus release to production, if the workflow should
-ever upload to that track). Its JSON key is the `PLAY_SERVICE_ACCOUNT_JSON` secret.
+information, release to testing tracks, and manage store presence (for the listing), plus release
+to production if the workflow should ever upload to that track. Its JSON key is the `PLAY_SERVICE_ACCOUNT_JSON` secret.
 
 ## Secrets
 

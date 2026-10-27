@@ -1,0 +1,1 @@
+Requires your own self-hosted plMail server. Mail, calendar and live push.
