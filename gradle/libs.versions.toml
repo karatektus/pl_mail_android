@@ -48,7 +48,7 @@ unifiedpush = "3.3.5"
 # Compose BOM does — and unlike the Compose case there is no google-services
 # plugin here to align them instead, because this app has no
 # google-services.json to feed one.
-firebaseBom = "34.17.0"
+firebaseBom = "35.1.0"
 playServicesBase = "18.10.0"
 # Held below 1.2 with the Compose BOM above: 1.2.0 requires Compose 1.12 and
 # pulls it in over the BOM, which is the update the BOM is held back from.
