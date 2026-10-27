@@ -1,0 +1,1 @@
+The calendar now speaks the standard JMAP Calendars interface wherever your plMail server offers it, and plMail's own interface on an older server, so it keeps working whichever of the two you update first.
