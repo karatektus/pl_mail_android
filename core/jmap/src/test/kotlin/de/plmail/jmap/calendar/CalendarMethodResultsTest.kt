@@ -23,16 +23,20 @@ import kotlin.test.assertTrue
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Decoding real calendar responses.
+ * Decoding real calendar responses, as a server that speaks only plMail's vendor calendars URN
+ * sends them.
  *
- * Every fixture here came off the live 8002 stack. The assertions worth having are the ones that
- * contradict the shape a reader would assume from the mail surface: an event whose `timeZone` key
- * is absent entirely, an `isRecurring` that is not `recurrenceRules != null`, and a `state` that is
- * a constant rather than a cursor.
+ * Every fixture here came off the live 8002 stack, from before the server spoke the IETF URN, so
+ * every event method is read through [CalendarDialect.PLMAIL] — which makes this the suite for that
+ * fallback too: each assertion reads the draft's names off a vendor-shaped answer. The assertions
+ * worth having are the ones that contradict the shape a reader would assume from the mail surface:
+ * an event whose `timeZone` key is absent entirely, an `isRecurring` that is not `recurrenceRule !=
+ * null`, and a `state` that is a constant rather than a cursor.
  */
 class CalendarMethodResultsTest {
 
     private val account = AccountId("1")
+    private val vendor = CalendarDialect.PLMAIL
     private val window = CalendarEventFilter("2026-08-01T00:00:00", "2026-09-01T00:00:00")
 
     private fun results(fixture: String) =
@@ -46,7 +50,7 @@ class CalendarMethodResultsTest {
         results("calendar-get.json").result(handle(CalendarGet(account), "c0"))
 
     private fun eventGet(fixture: String, callId: String) =
-        results(fixture).result(handle(CalendarEventGet(account), callId))
+        results(fixture).result(handle(CalendarEventGet(account, dialect = vendor), callId))
 
     // --- Calendar/get ---
 
@@ -127,7 +131,7 @@ class CalendarMethodResultsTest {
     fun `the back-referenced get answers the query's own ids`() {
         val results = results("event-query-get.json")
         val requested = results.result(handle(CalendarEventQuery(account, window), "q0")).ids
-        val returned = results.result(handle(CalendarEventGet(account), "g0"))
+        val returned = results.result(handle(CalendarEventGet(account, dialect = vendor), "g0"))
 
         assertEquals(requested, returned.list.map { it.id })
         assertEquals(
@@ -174,7 +178,7 @@ class CalendarMethodResultsTest {
             results.result(
                 handle(CalendarEventQuery(account, window, expandRecurrences = true), "q0")
             )
-        val events = results.result(handle(CalendarEventGet(account), "g0"))
+        val events = results.result(handle(CalendarEventGet(account, dialect = vendor), "g0"))
 
         assertEquals(5, query.total, "three standups, a dentist and an all-day party")
         assertEquals(query.ids, events.list.map { it.id })
@@ -191,7 +195,7 @@ class CalendarMethodResultsTest {
         assertEquals(
             listOf(CalendarEventId("10867")),
             standups.map { it.writableId }.distinct(),
-            "and all three write through one series id, read off seriesId and not out of the id",
+            "and all three write through one series id, read off baseEventId and not out of the id",
         )
         assertEquals(
             listOf("2026-08-03T10:00:00", "2026-08-05T10:00:00", "2026-08-07T10:00:00"),
@@ -212,11 +216,11 @@ class CalendarMethodResultsTest {
         // response, so a month would draw nothing.
         val occurrence =
             results("event-query-get-expanded.json")
-                .result(handle(CalendarEventGet(account), "g0"))
+                .result(handle(CalendarEventGet(account, dialect = vendor), "g0"))
                 .list
                 .first { it.isOccurrence }
 
-        assertEquals(emptyList(), occurrence.recurrenceRules)
+        assertNull(occurrence.recurrenceRule)
         assertEquals(emptyMap(), occurrence.recurrenceOverrides)
     }
 
@@ -254,7 +258,7 @@ class CalendarMethodResultsTest {
     fun `an occurrence id is refused by set, per object, naming seriesId`() {
         val set =
             results("event-query-get-expanded.json")
-                .result(handle(CalendarEventSet(account), "instance-set"))
+                .result(handle(CalendarEventSet(account, dialect = vendor), "instance-set"))
 
         val error = set.notUpdated.getValue("10867_20260807T080000Z")
 
@@ -307,21 +311,19 @@ class CalendarMethodResultsTest {
     @Test
     fun `isRecurring is read from the wire rather than derived from the rules`() {
         // A rule plMail cannot convert is stored verbatim and expands to one
-        // occurrence, so `recurrenceRules != null` is a different question and
+        // occurrence, so `recurrenceRule != null` is a different question and
         // the two disagree on exactly the imported events users notice.
         val events = eventGet("event-query-get.json", "g0").list
         val standup = events.first()
         val dentist = events.single { it.id.value == "10865" }
 
         assertTrue(standup.isRecurring)
-        assertEquals("weekly", standup.recurrenceRules.single().frequency)
-        assertEquals(
-            listOf("mo", "we", "fr"),
-            standup.recurrenceRules.single().byDay.map { it.day },
-        )
+        assertEquals(true, standup.publishedRecurring, "the vendor shape says so outright")
+        assertEquals("weekly", standup.recurrenceRule?.frequency)
+        assertEquals(listOf("mo", "we", "fr"), standup.recurrenceRule?.byDay?.map { it.day })
 
         assertFalse(dentist.isRecurring)
-        assertEquals(emptyList(), dentist.recurrenceRules)
+        assertNull(dentist.recurrenceRule)
     }
 
     @Test
@@ -336,11 +338,11 @@ class CalendarMethodResultsTest {
     }
 
     @Test
-    fun `plMail's own event extensions survive decoding`() {
+    fun `the vendor shape is read into the draft's names`() {
         val standup = eventGet("event-query-get.json", "g0").list.first()
 
-        assertEquals("manual", standup.source)
-        assertNull(standup.kind, "kind is published as null rather than omitted")
+        assertEquals(mapOf("10542" to true), standup.calendarIds)
+        assertEquals(CalendarId("10542"), standup.calendarId)
         assertEquals("public", standup.privacy)
     }
 
@@ -356,7 +358,7 @@ class CalendarMethodResultsTest {
 
     @Test
     fun `a create echoes only what the server decided`() {
-        val set = results("event-set-create.json").result(handle(CalendarEventSet(account), "s0"))
+        val set = results("event-set-create.json").result(handle(CalendarEventSet(account, dialect = vendor), "s0"))
 
         assertEquals(setOf("e1", "e2", "e3", "e4"), set.created.keys)
 
@@ -376,7 +378,7 @@ class CalendarMethodResultsTest {
             results("event-errors-update-destroy.json")
                 .result(
                     handle(
-                        CalendarEventSet(account),
+                        CalendarEventSet(account, dialect = vendor),
                         "upd",
                     )
                 )
@@ -391,7 +393,7 @@ class CalendarMethodResultsTest {
             results("event-errors-update-destroy.json")
                 .result(
                     handle(
-                        CalendarEventSet(account),
+                        CalendarEventSet(account, dialect = vendor),
                         "upd",
                     )
                 )
@@ -447,7 +449,7 @@ class CalendarMethodResultsTest {
             results("event-errors-update-destroy.json")
                 .result(
                     handle(
-                        CalendarEventSet(account),
+                        CalendarEventSet(account, dialect = vendor),
                         "bad-props",
                     )
                 )
@@ -466,7 +468,7 @@ class CalendarMethodResultsTest {
             results("event-errors-update-destroy.json")
                 .result(
                     handle(
-                        CalendarEventSet(account),
+                        CalendarEventSet(account, dialect = vendor),
                         "bad-start",
                     )
                 )

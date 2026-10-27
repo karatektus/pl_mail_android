@@ -10,9 +10,9 @@ import kotlinx.serialization.json.JsonObject
  * One event, as JSCalendar (RFC 8984) plus plMail's envelope — a series, or **one occurrence of
  * one**.
  *
- * Which of the two it is, is [seriesId]: present means this object came back for an occurrence id,
- * and then [start], [duration] and [status] are that occurrence's own, its override already merged
- * in, with [recurrenceRules] and [recurrenceOverrides] nulled by the server. Absent means the
+ * Which of the two it is, is [baseEventId]: present means this object came back for an occurrence
+ * id, and then [start], [duration] and [status] are that occurrence's own, its override already
+ * merged in, with [recurrenceRule] and [recurrenceOverrides] nulled by the server. Absent means the
  * series, and a one-off event is always the series — its single occurrence *is* the event, so an
  * expanded query names it by its plain id.
  *
@@ -25,6 +25,10 @@ import kotlinx.serialization.json.JsonObject
  * tolerated rather than rejected by `MethodResults.JMAP_JSON`. Nothing here may be treated as the
  * whole object; in particular a round trip through this type is lossy and must never be written
  * back.
+ *
+ * Spelled in the IETF draft's names (`calendarIds`, `recurrenceRule`, `baseEventId`), which is what
+ * the server answers under `urn:ietf:params:jmap:calendars`. A server old enough to speak only
+ * plMail's vendor URN is read into the same shape by [CalendarDialect.PLMAIL].
  */
 @Serializable
 data class CalendarEvent(
@@ -33,7 +37,13 @@ data class CalendarEvent(
     @SerialName("@type") val type: String? = null,
     /** Stable across servers; the id is not. `<hex>@plmail` for events this product created. */
     val uid: String? = null,
-    val calendarId: CalendarId? = null,
+    /**
+     * The calendars this event is in, as the draft's id-to-true map.
+     *
+     * Exactly one on plMail, which files an event in one calendar and says so
+     * (`maxCalendarsPerEvent: 1`); read it through [calendarId].
+     */
+    val calendarIds: Map<String, Boolean> = emptyMap(),
     val title: String? = null,
     val description: String? = null,
     /**
@@ -68,8 +78,8 @@ data class CalendarEvent(
      * stores a place as a label rather than as coordinates.
      */
     val locations: Map<String, EventLocation> = emptyMap(),
-    /** At most one rule; the server refuses a second. */
-    val recurrenceRules: List<RecurrenceRule> = emptyList(),
+    /** The draft's one rule — plMail never stored a second. */
+    val recurrenceRule: RecurrenceRule? = null,
     /**
      * Per-occurrence patches, keyed by the occurrence's original start (a LocalDateTime).
      *
@@ -84,19 +94,12 @@ data class CalendarEvent(
     val created: String? = null,
     val updated: String? = null,
     /**
-     * Derived server-side, and **not** the same question as `recurrenceRules.isNotEmpty()`.
-     *
-     * A rule plMail cannot convert is stored verbatim and expands to a single occurrence, so an
-     * event can carry a rule and still not recur. Read this rather than inferring it; the two
-     * disagree exactly on the imported events a user is most likely to notice.
+     * plMail's derived `isRecurring`, which only its vendor shape publishes. Read [isRecurring].
      */
-    val isRecurring: Boolean = false,
-    /** plMail's extension. May be null; the vocabulary is open. */
-    val kind: String? = null,
-    /** plMail's extension: where the event came from. Seen: `manual`. */
-    val source: String? = null,
+    @SerialName("isRecurring") val publishedRecurring: Boolean? = null,
     /**
-     * plMail's extension, and the only way back from an occurrence to something writable.
+     * The only way back from an occurrence to something writable — the draft's name for what
+     * plMail's vendor shape called `seriesId`.
      *
      * Present exactly when [id] names one occurrence rather than a series. `CalendarEvent/set`
      * **refuses an occurrence id by name** — `invalidArguments`, pointing at this property — so
@@ -108,27 +111,44 @@ data class CalendarEvent(
      * separator is plMail's own choice, and a client that parsed it would be deciding for itself
      * where an occurrence goes.
      */
-    val seriesId: CalendarEventId? = null,
+    val baseEventId: CalendarEventId? = null,
     /**
      * The occurrence's **original** start, as a LocalDateTime — never where an override moved it.
      *
      * The key a `recurrenceOverrides` patch has to be filed under, which is what makes it worth
-     * keeping beside [start]. Read in [recurrenceIdTimeZone] where the server sends one.
+     * keeping beside [start]. Read in [recurrenceIdTimeZone] where the server sends one — plMail's
+     * own server does not, under the draft's URN.
      */
     val recurrenceId: String? = null,
     val recurrenceIdTimeZone: String? = null,
 ) {
+    /** The one calendar this event is in. See [calendarIds]. */
+    val calendarId: CalendarId?
+        get() = calendarIds.entries.firstOrNull { it.value }?.key?.let(::CalendarId)
+
+    /**
+     * Whether this event repeats.
+     *
+     * plMail's vendor shape says so outright, derived server-side, and that answer wins where it
+     * exists: a rule plMail cannot convert is stored verbatim and expands to a single occurrence,
+     * so an event can carry a rule and still not recur. The draft publishes no such property, so
+     * under it the rule is the answer — wrong only on those imported events, where it errs towards
+     * treating a one-off as a series.
+     */
+    val isRecurring: Boolean
+        get() = publishedRecurring ?: (recurrenceRule != null)
+
     /** Whether this object is one occurrence of a series rather than the series itself. */
     val isOccurrence: Boolean
-        get() = seriesId != null
+        get() = baseEventId != null
 
     /**
      * The id an edit is addressed to: the series', which for a one-off is its own.
      *
-     * Never derived from [id]. See [seriesId] for why that matters.
+     * Never derived from [id]. See [baseEventId] for why that matters.
      */
     val writableId: CalendarEventId
-        get() = seriesId ?: id
+        get() = baseEventId ?: id
 }
 
 @Serializable

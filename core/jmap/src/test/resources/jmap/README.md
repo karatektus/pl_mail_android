@@ -85,6 +85,13 @@ surface, neither of which produces a fixture:
 Captured on 2026-08-05 against the same stack, after seeding four events onto the calendars the
 mail seed had already created.
 
+**These are vendor-shaped answers**, from before the server spoke `urn:ietf:params:jmap:calendars`
+(pl_mail#409). The app reads that URN wherever it is advertised and these only from an older
+server, so the suites decode them through `CalendarDialect.PLMAIL`, which reads `calendarId`,
+`recurrenceRules` and `seriesId` into the draft's `calendarIds`, `recurrenceRule` and
+`baseEventId`. The IETF shape has no captures yet; `CalendarDialectTest` writes its answers out,
+following the server's `IetfCalendarShape`. Capture a set once a seeded stack speaks it.
+
 | File | Pins down |
 |---|---|
 | `session-calendars.json` | The vendor calendar capability, at session level *and* per account — and that a **two-account** login carries it on one account only. `primaryAccounts` has its own key for the calendars URN; it happens to equal the mail primary, which is what would let a client reusing `primaryMailAccount` go unnoticed. Note the VAPID key differs from `session.json`: this is a later seed, and that is why it is a second file rather than a replacement. |

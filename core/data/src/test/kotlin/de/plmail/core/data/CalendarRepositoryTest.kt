@@ -3,6 +3,7 @@ package de.plmail.core.data
 import app.cash.turbine.test
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
+import de.plmail.jmap.calendar.CalendarDialect
 import de.plmail.jmap.client.HttpRequest
 import de.plmail.jmap.protocol.CalendarEventId
 import de.plmail.jmap.testing.RecordingTransport
@@ -457,7 +458,7 @@ class CalendarRepositoryTest {
      * of the same, has nothing to parse here and draws nothing.
      *
      * The dates asserted are therefore only reachable through the object's own `start`, and the
-     * series row is only reachable through its `seriesId`.
+     * series row is only reachable through its `baseEventId`.
      */
     @Test
     fun `occurrences are placed from their objects, never from their ids`() = runTest {
@@ -474,15 +475,69 @@ class CalendarRepositoryTest {
         assertEquals(
             "10867",
             database.calendarEvents().byUid(standupKey)?.eventId,
-            "and the series row is keyed by seriesId, which is the id a write is addressed to",
+            "and the series row is keyed by baseEventId, which is the id a write is addressed to",
         )
+    }
+
+    /**
+     * A server from before the IETF calendars URN is read just the same.
+     *
+     * It advertises only plMail's vendor URN and answers in plMail's earlier shape — `calendarId`,
+     * `recurrenceRules`, `seriesId`, `isRecurring` — and refuses a request that declares the IETF
+     * one. Every plMail released before that URN arrived is such a server, and a phone updated
+     * ahead of its server must not lose its calendar to the order the two were upgraded in.
+     */
+    @Test
+    fun `a server that speaks only the vendor calendars URN is still read`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek(), dialect = CalendarDialect.PLMAIL)
+        val repository = calendarStack(database, calendarTransport(server))
+
+        val result = repository.refresh(week) as CalendarRefresh.Refreshed
+
+        assertEquals(1, result.requests)
+        assertEquals(
+            listOf("2026-08-03", "2026-08-05", "2026-08-07"),
+            database.calendarEvents().occurrencesOf(standupKey).map { it.date },
+        )
+        assertEquals(true, database.calendarEvents().byUid(standupKey)?.isRecurring)
+        assertEquals(testCalendarKey, database.calendarEvents().byUid(standupKey)?.calendarKey)
+    }
+
+    @Test
+    fun `a write to a vendor-only server is sent in its names`() = runTest {
+        val server = FakeCalendarServer(events = seededWeek(), dialect = CalendarDialect.PLMAIL)
+        var sent: JsonObject? = null
+
+        server.onSet = { arguments ->
+            sent = arguments["create"]!!.jsonObject.getValue("c1").jsonObject
+            createdEvent(id = "10999", dialect = CalendarDialect.PLMAIL)
+        }
+
+        val repository = calendarStack(database, calendarTransport(server))
+
+        repository.refresh(week)
+
+        val result =
+            repository.create(
+                calendarKey = testCalendarKey,
+                draft =
+                    EventDraft(
+                        title = "Zahnarzt",
+                        start = LocalDateTime.parse("2026-08-06T09:00:00"),
+                        duration = Duration.ofMinutes(30),
+                    ),
+            )
+
+        assertTrue(result is CalendarWriteResult.Applied, "was $result")
+        assertEquals(TEST_CALENDAR_ID, sent?.get("calendarId")?.jsonPrimitive?.content)
+        assertFalse(sent!!.containsKey("calendarIds"))
     }
 
     /**
      * An edit of a recurring series goes to the series id, never to an occurrence's.
      *
      * `CalendarEvent/set` refuses an occurrence id by name — `invalidArguments`, pointing at
-     * `seriesId` — so a cache that had filed a standup under `o2` would have an editor that cannot
+     * `baseEventId` — so a cache that had filed a standup under `o2` would have an editor that cannot
      * save. The occurrence ids never reach a row at all, which is what this asserts from the other
      * end: the id on the wire is the plain one.
      */
