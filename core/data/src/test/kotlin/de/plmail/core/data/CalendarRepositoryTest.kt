@@ -824,7 +824,10 @@ class CalendarRepositoryTest {
      */
     @Test
     fun `a window past the horizon is clamped and reported as possibly incomplete`() = runTest {
-        val server = FakeCalendarServer(events = seededWeek())
+        // Vendor-only, because only that URN publishes the horizon asserted on
+        // below; the IETF one has nothing to say it with, and the clamp is the
+        // client's own line either way.
+        val server = FakeCalendarServer(events = seededWeek(), dialect = CalendarDialect.PLMAIL)
         val repository = calendarStack(database, calendarTransport(server))
 
         val far = CalendarWindow(LocalDate.of(2027, 7, 1), LocalDate.of(2027, 9, 1))
@@ -1612,7 +1615,10 @@ class CalendarRepositoryTest {
         val days = (0 until 120).map { start.plusDays(it.toLong()) }.toSet()
 
         val server =
+            // Vendor-only: a hundred a page is that URN's maxEventsInGet. Under
+            // the IETF one a get takes core's 500, and these would fit on one.
             FakeCalendarServer(
+                dialect = CalendarDialect.PLMAIL,
                 events =
                     mutableListOf(
                         recurring(
@@ -1621,7 +1627,7 @@ class CalendarRepositoryTest {
                             start = "2026-08-03T09:00:00",
                             days = days,
                         )
-                    )
+                    ),
             )
 
         val repository = calendarStack(database, calendarTransport(server))
@@ -1643,8 +1649,9 @@ class CalendarRepositoryTest {
         assertEquals(days.map { it.toString() }.sorted(), cached.map { it.date }.sorted())
     }
 
+    /** Under the IETF URN a get takes core's `maxObjectsInGet`, so the same quarter is one page. */
     @Test
-    fun `the second page asks from where the first stopped, and only for what is left`() = runTest {
+    fun `under the IETF URN a get is held to core's limit rather than a hundred`() = runTest {
         val start = LocalDate.of(2026, 8, 3)
         val days = (0 until 120).map { start.plusDays(it.toLong()) }.toSet()
 
@@ -1659,6 +1666,36 @@ class CalendarRepositoryTest {
                             days = days,
                         )
                     )
+            )
+        val repository = calendarStack(database, calendarTransport(server))
+
+        val result =
+            repository.refresh(CalendarWindow(start, start.plusDays(120)))
+                as CalendarRefresh.Refreshed
+
+        assertEquals(1, result.requests)
+        assertEquals(120, result.occurrences)
+    }
+
+    @Test
+    fun `the second page asks from where the first stopped, and only for what is left`() = runTest {
+        val start = LocalDate.of(2026, 8, 3)
+        val days = (0 until 120).map { start.plusDays(it.toLong()) }.toSet()
+
+        val server =
+            // Vendor-only: a hundred a page is that URN's maxEventsInGet. Under
+            // the IETF one a get takes core's 500, and these would fit on one.
+            FakeCalendarServer(
+                dialect = CalendarDialect.PLMAIL,
+                events =
+                    mutableListOf(
+                        recurring(
+                            id = "10867",
+                            title = "Standup",
+                            start = "2026-08-03T09:00:00",
+                            days = days,
+                        )
+                    ),
             )
 
         val repository = calendarStack(database, calendarTransport(server))
