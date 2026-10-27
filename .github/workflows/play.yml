@@ -68,15 +68,29 @@ jobs:
                   ls -l "$RUNNER_TEMP/play"
                   echo "APP_VERSION=$version" >> "$GITHUB_ENV"
 
+            - name: Checkout
+              uses: actions/checkout@v7
+
+            - name: Set up Python
+              uses: actions/setup-python@v6
+              with:
+                  python-version: '3.13'
+
             # The service account is invited in the Play Console with app
             # permissions for plMail only. See docs/RELEASING.md.
-            - name: Upload to Google Play
-              uses: r0adkll/upload-google-play@v1.1.5
-              with:
-                  serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-                  packageName: de.pluetzner.plmail
-                  releaseFiles: ${{ runner.temp }}/play/plmail-${{ env.APP_VERSION }}-google.aab
-                  mappingFile: ${{ runner.temp }}/play/plmail-${{ env.APP_VERSION }}-google-mapping.txt
-                  releaseName: ${{ env.APP_VERSION }}
-                  track: ${{ inputs.track }}
-                  status: completed
+            #
+            # A script of our own rather than an upload action: Play takes each
+            # versionCode once, so a release that is already in Play (uploaded
+            # by hand, or to another track) has to be put on the track as it
+            # is, which the upload actions cannot do.
+            - name: Put the release on the track
+              env:
+                  PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+                  TRACK: ${{ inputs.track }}
+              run: |
+                  set -euo pipefail
+
+                  pip install --quiet google-api-python-client==2.198.0 google-auth==2.50.0
+                  python .github/scripts/play-upload.py "$APP_VERSION" "$TRACK" \
+                      "$RUNNER_TEMP/play/plmail-$APP_VERSION-google.aab" \
+                      "$RUNNER_TEMP/play/plmail-$APP_VERSION-google-mapping.txt"
