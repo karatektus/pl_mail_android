@@ -8,12 +8,12 @@ targetSdk = "36"
 minSdk = "31"
 jdk = "21"
 
-agp = "9.3.1"
+agp = "9.4.1"
 kotlin = "2.4.21"
 ksp = "2.3.12"
 
 # Libraries
-androidxCore = "1.19.0"
+androidxCore = "1.19.1"
 activityCompose = "1.13.0"
 lifecycle = "2.11.0"
 # Held at 2026.06.01 deliberately. 2026.08.00 builds and passes every test, and
@@ -24,22 +24,22 @@ lifecycle = "2.11.0"
 # why nothing before the release caught it.
 #
 # Do not bump this without installing a *release* build and watching it start.
-composeBom = "2026.06.01"
+composeBom = "2026.09.00"
 material3Adaptive = "1.3.0"
 material3AdaptiveNav = "1.4.0"
-navigation = "2.9.8"
+navigation = "2.10.2"
 hilt = "2.60.1"
 hiltNavigationCompose = "1.4.0"
-room = "2.8.4"
-paging = "3.5.1"
-work = "2.11.2"
-datastore = "1.2.1"
-webkit = "1.17.0"
+room = "2.8.5"
+paging = "3.5.3"
+work = "2.12.0"
+datastore = "1.3.0"
+webkit = "1.18.0"
 camerax = "1.6.1"
 mlkitBarcode = "17.3.0"
 coil = "3.6.3"
-okhttp = "5.5.0"
-kotlinxSerialization = "1.11.0"
+okhttp = "5.5.1"
+kotlinxSerialization = "1.12.0"
 kotlinxCoroutines = "1.11.0"
 kotlinxDatetime = "0.8.0"
 unifiedpush = "3.3.5"
@@ -49,7 +49,7 @@ unifiedpush = "3.3.5"
 # plugin here to align them instead, because this app has no
 # google-services.json to feed one.
 firebaseBom = "34.17.0"
-playServicesBase = "18.10.0"
+playServicesBase = "18.11.1"
 # Held below 1.2 with the Compose BOM above: 1.2.0 requires Compose 1.12 and
 # pulls it in over the BOM, which is the update the BOM is held back from.
 # Dependabot ignores >= 1.2 for the same reason (.github/dependabot.yml).
@@ -62,7 +62,7 @@ richEditor = "1.1.0"
 pgpainless = "2.0.4"
 # CMS for S/MIME (#47). The version PGPainless already brings bcprov and bcpg in
 # at; a second Bouncy Castle release beside it would be two copies of one library.
-bouncycastle = "1.84"
+bouncycastle = "1.86"
 # Reading the MIME message inside an encrypted one (#9). The server parses
 # every other message; the inside of an end-to-end encrypted one only ever
 # exists on the device. mime4j is what Thunderbird for Android parses with.
@@ -75,7 +75,7 @@ jsoup = "1.23.2"
 junit5 = "6.1.3"
 turbine = "1.2.1"
 robolectric = "4.17"
-roborazzi = "1.76.0"
+roborazzi = "1.77.0"
 androidxTestJunit = "1.3.0"
 androidxTestRunner = "1.7.0"
 espresso = "3.7.0"
