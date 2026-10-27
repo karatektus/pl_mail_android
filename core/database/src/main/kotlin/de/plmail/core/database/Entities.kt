@@ -523,10 +523,9 @@ data class CalendarEventEntity(
      *
      * An imported rule plMail cannot convert is stored verbatim and expands to a single occurrence,
      * so an event can carry a rule and still not recur. Only plMail's vendor calendars URN says so;
-     * under the IETF one the draft has no such property, and such an event reads as recurring
-     * here. What a screen does with it: an editor shows
-     * a read-only repeat line rather than the dropdown, and a delete warns that it takes the
-     * series.
+     * under the IETF one the draft has no such property, and such an event reads as recurring here.
+     * What a screen does with it: an editor shows a read-only repeat line rather than the dropdown,
+     * and a delete warns that it takes the series.
      */
     val isRecurring: Boolean = false,
     val sequence: Int = 0,

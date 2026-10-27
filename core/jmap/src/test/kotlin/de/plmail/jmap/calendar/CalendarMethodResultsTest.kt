@@ -358,7 +358,9 @@ class CalendarMethodResultsTest {
 
     @Test
     fun `a create echoes only what the server decided`() {
-        val set = results("event-set-create.json").result(handle(CalendarEventSet(account, dialect = vendor), "s0"))
+        val set =
+            results("event-set-create.json")
+                .result(handle(CalendarEventSet(account, dialect = vendor), "s0"))
 
         assertEquals(setOf("e1", "e2", "e3", "e4"), set.created.keys)
 
@@ -367,7 +369,7 @@ class CalendarMethodResultsTest {
         assertEquals(CalendarEventId("10867"), standup.id)
         assertEquals("df7a06897f850359167280505e68e0ef@plmail", standup.uid)
         assertEquals(CalendarId("10542"), standup.calendarId)
-        assertTrue(standup.isRecurring, "derived server-side, even on the create response")
+        assertEquals(true, standup.isRecurring, "derived server-side, even on the create response")
         assertEquals(0, standup.sequence)
         assertFalse(set.hasFailures)
     }

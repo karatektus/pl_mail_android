@@ -543,8 +543,8 @@ private fun FakeInstance.startUtc(event: FakeEvent): LocalDateTime =
  * The series object: its own start, its own title, and the override map published whole.
  *
  * Under the IETF URN a recurring one carries a rule, because that is all the draft says about
- * recurring; which rule does not matter, since the days come from [FakeEvent.days]. Under the vendor
- * URN it carries `isRecurring`, as plMail's earlier shape does.
+ * recurring; which rule does not matter, since the days come from [FakeEvent.days]. Under the
+ * vendor URN it carries `isRecurring`, as plMail's earlier shape does.
  */
 private fun FakeEvent.toJson(dialect: CalendarDialect): String = buildString {
     append("""{"id":"$id","uid":"${uid ?: "$id@plmail"}",${calendarJson(dialect)},""")
@@ -594,9 +594,7 @@ private fun FakeEvent.toJson(
     if (showWithoutTime) append(""""showWithoutTime":true,""")
     append(""""$rule":null,"recurrenceOverrides":null,""")
     if (dialect == CalendarDialect.PLMAIL) append(""""isRecurring":true,""")
-    append(
-        """"status":"${if (instance.cancelled) "cancelled" else "confirmed"}","sequence":0}"""
-    )
+    append(""""status":"${if (instance.cancelled) "cancelled" else "confirmed"}","sequence":0}""")
 }
 
 /**

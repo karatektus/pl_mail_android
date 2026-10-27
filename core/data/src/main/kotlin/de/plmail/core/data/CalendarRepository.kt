@@ -282,8 +282,8 @@ interface EventEditing {
  *
  * An occurrence id is **opaque** — `42_20260304T090000Z` is the series id and the occurrence's
  * original start, and reading either half back out is the same client-side expansion by a quieter
- * route. Which series an occurrence belongs to is its object's `baseEventId`, and where it goes is its
- * object's `start`.
+ * route. Which series an occurrence belongs to is its object's `baseEventId`, and where it goes is
+ * its object's `start`.
  */
 @Singleton
 class CalendarRepository
@@ -758,7 +758,10 @@ constructor(
                         val q =
                             batch.add(query(accountId, after, before, paging.position, pageSize))
 
-                        q to batch.add(hydrate(session, accountId, q.reference("/ids"), CACHED_PROPERTIES))
+                        q to
+                            batch.add(
+                                hydrate(session, accountId, q.reference("/ids"), CACHED_PROPERTIES)
+                            )
                     }
 
             val occurrenceHandles =
@@ -1197,9 +1200,9 @@ constructor(
      * Which days those are is read off the object the server answered for this occurrence id and
      * from nothing else: its `start` is already resolved against whatever override moved it, so
      * there is no rule to expand, no override map to interpret, and no timestamp to lift out of an
-     * id. [series] is the row it hangs off — [CalendarEvent.baseEventId]'s object, never a prefix of
-     * the occurrence id — and an occurrence whose series did not come back is dropped rather than
-     * orphaned, because nothing joins to a series row that is not there.
+     * id. [series] is the row it hangs off — [CalendarEvent.baseEventId]'s object, never a prefix
+     * of the occurrence id — and an occurrence whose series did not come back is dropped rather
+     * than orphaned, because nothing joins to a series row that is not there.
      *
      * The day an occurrence lands on is the reader's: an event that names a zone is an instant, and
      * is placed where that instant falls on the device's clock — see [toDeviceClock]. An all-day or

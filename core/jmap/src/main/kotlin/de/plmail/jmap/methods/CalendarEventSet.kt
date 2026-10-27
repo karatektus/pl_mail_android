@@ -49,7 +49,9 @@ class CalendarEventSet(
         if (create.isNotEmpty()) {
             put(
                 "create",
-                buildJsonObject { create.forEach { (id, e) -> put(id, dialect.write(e.toJson())) } },
+                buildJsonObject {
+                    create.forEach { (id, e) -> put(id, dialect.write(e.toJson())) }
+                },
             )
         }
 
@@ -76,7 +78,9 @@ class CalendarEventSet(
                     arguments +
                         ("created" to
                             JsonObject(
-                                created.mapValues { (_, e) -> (e as? JsonObject)?.let(dialect::read) ?: e }
+                                created.mapValues { (_, e) ->
+                                    (e as? JsonObject)?.let(dialect::read) ?: e
+                                }
                             ))
                 )
 

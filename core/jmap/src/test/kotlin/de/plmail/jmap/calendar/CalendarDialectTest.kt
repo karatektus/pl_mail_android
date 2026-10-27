@@ -164,7 +164,10 @@ class CalendarDialectTest {
         assertFalse(create.containsKey("calendarIds"))
         assertEquals(
             "daily",
-            create["recurrenceRules"]!!.jsonArray.single().jsonObject["frequency"]
+            create["recurrenceRules"]!!
+                .jsonArray
+                .single()
+                .jsonObject["frequency"]
                 ?.jsonPrimitive
                 ?.content,
         )

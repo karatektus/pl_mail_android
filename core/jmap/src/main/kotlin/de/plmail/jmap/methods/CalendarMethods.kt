@@ -13,8 +13,8 @@ import de.plmail.jmap.protocol.StateToken
 import de.plmail.jmap.protocol.backReference
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -172,8 +172,8 @@ data class CalendarEventQueryResult(
  * plMail's own **100** under the vendor one. Expanded, that ceiling counts occurrences, which a
  * busy month reaches far sooner than it reaches as many series.
  *
- * [properties] and the answer are in the draft's names whatever [dialect] the request declares;
- * see [CalendarDialect].
+ * [properties] and the answer are in the draft's names whatever [dialect] the request declares; see
+ * [CalendarDialect].
  */
 class CalendarEventGet(
     private val accountId: AccountId,
@@ -221,8 +221,8 @@ class CalendarEventGet(
 
     companion object {
         /**
-         * The vendor account capability's value, as a floor to chunk by when no session is to
-         * hand — the lowest ceiling any plMail has published.
+         * The vendor account capability's value, as a floor to chunk by when no session is to hand
+         * — the lowest ceiling any plMail has published.
          *
          * Read `Session.calendars(id).maxEventsInGet` where one is available — an instance
          * configured for more should not be second-guessed by its own client.

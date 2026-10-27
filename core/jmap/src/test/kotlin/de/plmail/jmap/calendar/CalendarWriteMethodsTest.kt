@@ -68,8 +68,7 @@ class CalendarWriteMethodsTest {
         // The opposite of the push URN, which the server advertises and refuses
         // in `using`. Omitting this one fails the calendar call; including mail
         // declares a capability the request never uses.
-        val request =
-            RequestBuilder(CalendarDialect.IETF.using).apply { add(CalendarGet(account)) }
+        val request = RequestBuilder(CalendarDialect.IETF.using).apply { add(CalendarGet(account)) }
 
         val using = request.build()["using"]!!.jsonArray.map { it.jsonPrimitive.content }
 
@@ -166,7 +165,9 @@ class CalendarWriteMethodsTest {
         assertEquals("Event", create["@type"]?.jsonPrimitive?.content)
         assertEquals(
             mapOf("10542" to true),
-            create["calendarIds"]!!.jsonObject.mapValues { it.value.jsonPrimitive.content == "true" },
+            create["calendarIds"]!!.jsonObject.mapValues {
+                it.value.jsonPrimitive.content == "true"
+            },
             "the draft's map, naming the one calendar",
         )
         assertFalse(create.containsKey("privacy"), "published but not settable")

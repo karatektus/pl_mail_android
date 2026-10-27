@@ -80,10 +80,10 @@ import java.time.temporal.ChronoUnit
  * **A full recurrence editor is also out of scope**, and the shape of what is here is what protects
  * elaborate rules rather than a shortcut around writing one. The dropdown appears on a *create*
  * only. Editing an event that already repeats shows a read-only line instead, because an update
- * never sends `recurrenceRule`: the cache stores whether a series recurs and not the rule it
- * recurs by, so a dropdown on an edit could only send a rule derived from nothing — flattening
- * "every second Tuesday" to "every week", or clearing it altogether, because null on that property
- * means "stop recurring".
+ * never sends `recurrenceRule`: the cache stores whether a series recurs and not the rule it recurs
+ * by, so a dropdown on an edit could only send a rule derived from nothing — flattening "every
+ * second Tuesday" to "every week", or clearing it altogether, because null on that property means
+ * "stop recurring".
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

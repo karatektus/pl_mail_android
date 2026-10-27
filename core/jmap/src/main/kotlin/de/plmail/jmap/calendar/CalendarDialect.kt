@@ -13,19 +13,17 @@ import kotlinx.serialization.json.booleanOrNull
  *
  * The app speaks the IETF draft's shape — [CalendarEvent] and every write are spelled in it — and
  * the server answers in it whenever the request declares [Capability.CALENDARS]. [PLMAIL] is for a
- * server released before it did: the same methods under [Capability.PLMAIL_CALENDARS], answering
- * in plMail's earlier shape, which is translated here at the edge and nowhere else. The server
- * does the same thing in reverse (`IetfCalendarShape`), and for the same reason: when the vendor
- * URN goes (pl_mail#409), this enum entry and its three functions go with it and nothing else
- * changes.
+ * server released before it did: the same methods under [Capability.PLMAIL_CALENDARS], answering in
+ * plMail's earlier shape, which is translated here at the edge and nowhere else. The server does
+ * the same thing in reverse (`IetfCalendarShape`), and for the same reason: when the vendor URN
+ * goes (pl_mail#409), this enum entry and its three functions go with it and nothing else changes.
  *
  * The two shapes differ in three names and one property:
  * - an event is filed by a `calendarIds` map in the draft and by one `calendarId` in plMail's;
  * - it repeats by one `recurrenceRule` in the draft and by a `recurrenceRules` list in plMail's;
  * - an occurrence names its series by `baseEventId` in the draft and by `seriesId` in plMail's;
  * - plMail's shape also publishes `isRecurring`, which the draft has nothing to match. Kept on the
- *   way through, because it is the better answer where it exists — see
- *   [CalendarEvent.isRecurring].
+ *   way through, because it is the better answer where it exists — see [CalendarEvent.isRecurring].
  */
 enum class CalendarDialect(val capability: String) {
     IETF(Capability.CALENDARS),

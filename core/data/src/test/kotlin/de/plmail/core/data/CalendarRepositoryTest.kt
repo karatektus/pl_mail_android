@@ -537,9 +537,9 @@ class CalendarRepositoryTest {
      * An edit of a recurring series goes to the series id, never to an occurrence's.
      *
      * `CalendarEvent/set` refuses an occurrence id by name — `invalidArguments`, pointing at
-     * `baseEventId` — so a cache that had filed a standup under `o2` would have an editor that cannot
-     * save. The occurrence ids never reach a row at all, which is what this asserts from the other
-     * end: the id on the wire is the plain one.
+     * `baseEventId` — so a cache that had filed a standup under `o2` would have an editor that
+     * cannot save. The occurrence ids never reach a row at all, which is what this asserts from the
+     * other end: the id on the wire is the plain one.
      */
     @Test
     fun `an edit of a recurring series is addressed to the series id`() = runTest {
