@@ -766,9 +766,9 @@ private val MAILTO = Regex("""^mailto:""", RegexOption.IGNORE_CASE)
  * server's to say, and it does.
  *
  * **Loose, but not punctuation from around it.** `Jane Doe (jane@doe.fr)` and an address at the end
- * of a sentence, `jo@x.fr.`, both reach here as one run with no space in it. Taken as they are, they
- * became chips that looked right and failed only at submission, minutes later. Refused, they stay
- * in the field to be corrected, with the message saying which.
+ * of a sentence, `jo@x.fr.`, both reach here as one run with no space in it. Taken as they are,
+ * they became chips that looked right and failed only at submission, minutes later. Refused, they
+ * stay in the field to be corrected, with the message saying which.
  */
 private fun String.asRecipient(): EmailAddress? {
     val angled = ANGLED.find(this)
