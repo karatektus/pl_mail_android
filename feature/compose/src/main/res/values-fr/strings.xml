@@ -47,6 +47,7 @@
     <string name="compose_scheduled_for">Envoi prévu le %1$s</string>
     <string name="compose_cancel_schedule">Annuler</string>
     <string name="compose_error_no_recipients">Ajoutez un destinataire.</string>
+    <string name="compose_error_not_an_address">« %1$s » n’est pas une adresse e-mail. Corrigez-la dans le champ ou supprimez-la.</string>
     <string name="compose_error_no_identity">Aucun compte ne peut encore envoyer de courrier. Vérifiez que votre serveur est joignable.</string>
     <string name="compose_error_no_original">Ce message n’a pas pu être chargé : il n’y a rien à citer.</string>
     <string name="compose_error_save_failed">Le brouillon n’a pas pu être enregistré : %1$s</string>
