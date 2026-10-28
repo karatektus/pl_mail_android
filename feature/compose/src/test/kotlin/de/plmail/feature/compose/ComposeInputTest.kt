@@ -185,6 +185,23 @@ class ComposeInputTest {
     }
 
     @Test
+    fun `an address in brackets is not taken with its brackets`() {
+        // It used to chip "(jane@doe.fr)", which failed only at submission.
+        val edit = assertIs<RecipientEdit.Commit>(paste("Jane Doe (jane@doe.fr), a@x.test"))
+
+        assertEquals(listOf("a@x.test"), edit.chipped())
+        assertEquals(listOf("Jane", "Doe", "(jane@doe.fr)"), edit.rejected)
+    }
+
+    @Test
+    fun `the full stop of a sentence is not part of the address`() {
+        val edit = assertIs<RecipientEdit.Commit>(paste("a@x.test jo@x.fr."))
+
+        assertEquals(listOf("a@x.test"), edit.chipped())
+        assertEquals(listOf("jo@x.fr."), edit.rejected)
+    }
+
+    @Test
     fun `a pasted name with no address in it is a search, not a mistake`() {
         assertEquals(RecipientEdit.Typing("Jean Dupont"), paste("Jean Dupont"))
     }

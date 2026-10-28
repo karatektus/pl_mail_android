@@ -764,6 +764,11 @@ private val MAILTO = Regex("""^mailto:""", RegexOption.IGNORE_CASE)
  * The web composer also wants a dot in the domain, and this does not: plMail is self-hosted, and
  * `anna@nas` on a home network is an address its owner really uses. Anything stricter is the
  * server's to say, and it does.
+ *
+ * **Loose, but not punctuation from around it.** `Jane Doe (jane@doe.fr)` and an address at the end
+ * of a sentence, `jo@x.fr.`, both reach here as one run with no space in it. Taken as they are, they
+ * became chips that looked right and failed only at submission, minutes later. Refused, they stay
+ * in the field to be corrected, with the message saying which.
  */
 private fun String.asRecipient(): EmailAddress? {
     val angled = ANGLED.find(this)
@@ -773,10 +778,19 @@ private fun String.asRecipient(): EmailAddress? {
 
     if (address.count { it == '@' } != 1) return null
     if (address.startsWith('@') || address.endsWith('@')) return null
-    if (address.any { it.isWhitespace() }) return null
+    if (address.any { it.isWhitespace() || it in NOT_IN_ADDRESS }) return null
+
+    // A dot that begins or ends either half, or two in a row, is never part
+    // of an address: it is the full stop of the sentence it was copied from.
+    if (address.split('@').any { it.startsWith('.') || it.endsWith('.') } || ".." in address) {
+        return null
+    }
 
     return EmailAddress(name = name, email = address)
 }
+
+/** Characters an unquoted address cannot hold: what surrounds one in prose and in headers. */
+private const val NOT_IN_ADDRESS = "()[]<>\",;:\\"
 
 /**
  * Splits on separators that are not inside a quoted display name or an angle-address.
