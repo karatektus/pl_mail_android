@@ -1,0 +1,25 @@
+<b>Diese App braucht einen selbst gehosteten plMail-Server.</b> Sie verbindet sich nicht selbst mit Mail-Anbietern, sondern meldet sich bei einer plMail-Installation an, die du selbst oder jemand, dem du vertraust, betreibt. Ohne Server kann die App nichts. plMail ist freie Software (AGPL-3.0); wie du den Server einrichtest, steht auf github.com/karatektus/pl_mail
+
+Der Server verbindet sich mit den Postfächern, die du schon hast (IMAP, Gmail, Outlook), und führt sie in einem Posteingang zusammen. Diese App bringt diesen Posteingang auf dein Handy.
+
+Die Android-App ist in der Beta: Sie wird täglich benutzt, hat aber noch Ecken und Kanten. Was dir auffällt, melde bitte auf GitHub.
+
+<b>Alle Konten in einem Posteingang</b>
+Lesen, suchen, labeln und ablegen, für alle Konten nebeneinander und in Konversationen. Wische zwischen Konversationen, antworte, leite weiter oder schreibe neue Mails mit deinen Signaturen und Absender-Aliassen.
+
+<b>Ein Kalender neben der Mail</b>
+Wochen- und Monatsansicht von deinem Server, synchronisiert mit Google-, Microsoft- und CalDAV-Kalendern, auf Wunsch mit eigenem Symbol auf dem Startbildschirm.
+
+<b>Neue Mail, sobald sie ankommt</b>
+Benachrichtigungen über Firebase Cloud Messaging, mit dem Firebase-Projekt deines eigenen Servers, oder über einen beliebigen UnifiedPush-Distributor, wenn du Google lieber nicht nutzen willst.
+
+<b>Verschlüsselte Mail</b>
+Lies und sende mit OpenPGP und S/MIME verschlüsselte Mails. Deine Schlüssel bleiben auf dem Gerät, auf Wunsch geschützt durch die Displaysperre.
+
+<b>Gemacht für Server zu Hause</b>
+In Sekunden gekoppelt, indem du einen QR-Code aus den Einstellungen deines Servers scannst. Hostnamen im LAN, Tailscale und eigene Zertifizierungsstellen funktionieren. Mails werden auf dem Gerät zwischengespeichert, damit die App auch benutzbar bleibt, während dein NAS neu startet.
+
+<b>Keine Werbung, kein Tracking</b>
+plMail hat keine Werbung und kein eigenes Tracking. Deine Mails gehen zwischen deinem Handy und deinem eigenen Server hin und her, sonst nirgendwohin.
+
+Dieselbe App gibt es kostenlos auf GitHub. Wer sie hier kauft, bekommt automatische Updates über Google Play und unterstützt das Projekt.

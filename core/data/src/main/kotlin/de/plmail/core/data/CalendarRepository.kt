@@ -10,6 +10,7 @@ import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.jmap.calendar.Calendar
+import de.plmail.jmap.calendar.CalendarDialect
 import de.plmail.jmap.calendar.CalendarEvent
 import de.plmail.jmap.calendar.CalendarEventFilter
 import de.plmail.jmap.calendar.RecurrenceRule
@@ -28,7 +29,6 @@ import de.plmail.jmap.methods.SetError
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.CalendarEventId
 import de.plmail.jmap.protocol.CalendarId
-import de.plmail.jmap.protocol.Capability
 import de.plmail.jmap.protocol.JmapError
 import de.plmail.jmap.protocol.MaterialisedHorizon
 import de.plmail.jmap.protocol.RequestBuilder
@@ -229,7 +229,7 @@ data class EventDraft(
     val description: String? = null,
     val status: String = NewCalendarEvent.STATUS_CONFIRMED,
     /**
-     * **Create only.** An update deliberately never sends `recurrenceRules`.
+     * **Create only.** An update deliberately never sends `recurrenceRule`.
      *
      * The cache stores *whether* an event recurs but not the rule it recurs by — no screen in this
      * app draws a rule — so an update built from a draft would send one derived from nothing, and
@@ -282,8 +282,8 @@ interface EventEditing {
  *
  * An occurrence id is **opaque** — `42_20260304T090000Z` is the series id and the occurrence's
  * original start, and reading either half back out is the same client-side expansion by a quieter
- * route. Which series an occurrence belongs to is its object's `seriesId`, and where it goes is its
- * object's `start`.
+ * route. Which series an occurrence belongs to is its object's `baseEventId`, and where it goes is
+ * its object's `start`.
  */
 @Singleton
 class CalendarRepository
@@ -539,7 +539,7 @@ constructor(
 
                 place(
                     occurrence = occurrence,
-                    // Read from `seriesId`, never from the occurrence id. The
+                    // Read from `baseEventId`, never from the occurrence id. The
                     // two agree on this server and the id is documented opaque,
                     // which is exactly the combination that lets a shortcut go
                     // unnoticed until an id shape changes.
@@ -634,7 +634,7 @@ constructor(
      * **Both are needed, and the second is not the first with extra rows.** `expandRecurrences`
      * answers one id per occurrence, and the object behind an occurrence id is the series with that
      * occurrence's override merged into it — its `start` is that Tuesday's, its `title` may be that
-     * Tuesday's, and `recurrenceRules` comes back null. Those are exactly the properties an editor
+     * Tuesday's, and `recurrenceRule` comes back null. Those are exactly the properties an editor
      * must *not* see: a form seeded from one of them would send that occurrence's date as the
      * series' start and drag a whole standup onto the day somebody happened to be looking at. So
      * the collapsed query answers the series, the expanded one answers the days, and the cache
@@ -758,7 +758,10 @@ constructor(
                         val q =
                             batch.add(query(accountId, after, before, paging.position, pageSize))
 
-                        q to batch.add(hydrate(accountId, q.reference("/ids"), CACHED_PROPERTIES))
+                        q to
+                            batch.add(
+                                hydrate(session, accountId, q.reference("/ids"), CACHED_PROPERTIES)
+                            )
                     }
 
             val occurrenceHandles =
@@ -780,6 +783,7 @@ constructor(
                         q to
                             batch.add(
                                 hydrate(
+                                    session,
                                     accountId,
                                     q.reference("/ids"),
                                     CalendarEventGet.OCCURRENCE_PROPERTIES,
@@ -910,6 +914,7 @@ constructor(
                             mapOf(
                                 CREATION_ID to stored.toNewEvent(CalendarId(calendar.calendarId))
                             ),
+                        dialect = session.dialect,
                     )
                 )
 
@@ -925,6 +930,13 @@ constructor(
                         "serverFail",
                         "The server created no event and gave no reason.",
                     )
+
+            // Read from the answer where there is one: a rule the server
+            // cannot convert is stored verbatim and expands to one
+            // occurrence, so a create carrying a recurrence can come back
+            // not recurring. Only a server that answers neither name
+            // leaves the rule that was sent as all there is to go on.
+            val recurs = created.isRecurring ?: (stored.recurrenceRule != null)
 
             val eventKey = StoreKey.objectKey(calendar.accountKey, created.id.value)
             val row =
@@ -943,11 +955,7 @@ constructor(
                     // `uid` therefore keeps the ordinary id-only reconcile until
                     // the first refresh fills the uid in.
                     eventUid = created.uid?.takeIf { it.isNotBlank() },
-                    // Read from the answer, never inferred from the rule that
-                    // was sent: a rule the server cannot convert is stored
-                    // verbatim and expands to one occurrence, so a create
-                    // carrying a recurrence can come back not recurring.
-                    isRecurring = created.isRecurring,
+                    isRecurring = recurs,
                     sequence = created.sequence,
                 )
 
@@ -958,12 +966,12 @@ constructor(
                 // appear without a round trip. A recurring one cannot be: where
                 // its occurrences land is the server's answer, and the refresh
                 // below is how that is asked.
-                if (!created.isRecurring) {
+                if (!recurs) {
                     database.calendarEvents().upsertOccurrences(row.placeFromItself(zone))
                 }
             }
 
-            if (created.isRecurring) refreshLastWindow()
+            if (recurs) refreshLastWindow()
 
             CalendarWriteResult.Applied(eventKey, created.id)
         }
@@ -1043,6 +1051,7 @@ constructor(
                     CalendarEventSet(
                         accountId = accountId,
                         update = mapOf(CalendarEventId(existing.eventId) to stored.toPatch()),
+                        dialect = session.dialect,
                     )
                 )
 
@@ -1102,6 +1111,7 @@ constructor(
                     CalendarEventSet(
                         accountId = accountId,
                         destroy = listOf(CalendarEventId(existing.eventId)),
+                        dialect = session.dialect,
                     )
                 )
 
@@ -1190,9 +1200,9 @@ constructor(
      * Which days those are is read off the object the server answered for this occurrence id and
      * from nothing else: its `start` is already resolved against whatever override moved it, so
      * there is no rule to expand, no override map to interpret, and no timestamp to lift out of an
-     * id. [series] is the row it hangs off — [CalendarEvent.seriesId]'s object, never a prefix of
-     * the occurrence id — and an occurrence whose series did not come back is dropped rather than
-     * orphaned, because nothing joins to a series row that is not there.
+     * id. [series] is the row it hangs off — [CalendarEvent.baseEventId]'s object, never a prefix
+     * of the occurrence id — and an occurrence whose series did not come back is dropped rather
+     * than orphaned, because nothing joins to a series row that is not there.
      *
      * The day an occurrence lands on is the reader's: an event that names a zone is an instant, and
      * is placed where that instant falls on the device's clock — see [toDeviceClock]. An all-day or
@@ -1296,27 +1306,40 @@ constructor(
             expandRecurrences = expandRecurrences,
         )
 
-    private fun hydrate(accountId: AccountId, ids: ResultReference, properties: List<String>) =
+    private fun hydrate(
+        session: Session,
+        accountId: AccountId,
+        ids: ResultReference,
+        properties: List<String>,
+    ) =
         CalendarEventGet.byReference(
             accountId = accountId,
             queryReference = ids,
             properties = properties,
+            dialect = session.dialect,
         )
 
     /**
      * A request declaring the calendars capability, and nothing else.
      *
-     * `USING_CALENDARS` behaves **oppositely** to the push URN: push is advertised in the session
+     * The calendars URN behaves **oppositely** to the push URN: push is advertised in the session
      * and fails the whole request if it is declared, calendars is advertised and refuses the call
      * if it is not. Mail is deliberately absent — a calendar request needs nothing from it, and
      * declaring a capability a request does not use is how a client breaks on an instance where
      * that one is switched off.
+     *
+     * Which calendars URN is the session's to say — see [Session.calendarDialect]. Every caller has
+     * already found a calendar account, so the session names one.
      */
     private fun request(session: Session): RequestBuilder =
         RequestBuilder(
-            using = Capability.USING_CALENDARS,
+            using = session.dialect.using,
             maxCallsInRequest = session.core.maxCallsInRequest,
         )
+
+    /** See [request]: only ever read once the session has named a calendar account. */
+    private val Session.dialect: CalendarDialect
+        get() = calendarDialect ?: CalendarDialect.IETF
 
     private companion object {
         const val CREATION_ID = "c1"
@@ -1347,7 +1370,7 @@ constructor(
             listOf(
                 "id",
                 "uid",
-                "calendarId",
+                "calendarIds",
                 "title",
                 "description",
                 "start",
@@ -1355,7 +1378,9 @@ constructor(
                 "timeZone",
                 "showWithoutTime",
                 "status",
-                "isRecurring",
+                // Asked for with whether it recurs beside it, which the
+                // server answers better; see CalendarEvent.isRecurring.
+                "recurrenceRule",
                 "sequence",
                 "locations",
                 "recurrenceOverrides",

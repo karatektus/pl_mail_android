@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="onboarding_title">Connexion à votre serveur</string>
+    <string name="onboarding_intro">plMail fonctionne avec un serveur que vous hébergez. Saisissez son adresse, ou scannez le code affiché dans Réglages → Mots de passe d’application.</string>
+    <string name="onboarding_address_label">Adresse du serveur</string>
+    <string name="onboarding_address_hint">nas.local</string>
+    <string name="onboarding_password_label">Mot de passe d’application</string>
+    <string name="onboarding_password_hint">plmail_…</string>
+    <string name="onboarding_connect">Se connecter</string>
+    <string name="onboarding_scan">Scanner le code</string>
+    <string name="scanner_hint">Visez le code affiché dans Réglages → Mots de passe d’application.</string>
+    <string name="scanner_enter_manually">Saisir l’adresse à la place</string>
+    <string name="scanner_no_camera_permission">Sans l’appareil photo, vous pouvez toujours vous connecter en saisissant l’adresse de votre serveur et un mot de passe d’application.</string>
+    <string name="scanner_requesting_camera">En attente de l’autorisation d’accès à l’appareil photo…</string>
+    <string name="onboarding_connecting">Connexion à votre serveur…</string>
+    <string name="onboarding_address_scheme">Seules les adresses http:// et https:// fonctionnent ici, pas %1$s://.</string>
+    <string name="onboarding_address_malformed">Cela ne ressemble pas à une adresse de serveur.</string>
+    <string name="onboarding_address_credentials">Ne mettez ni identifiant ni mot de passe dans l’adresse : le mot de passe d’application va dans le champ ci-dessous.</string>
+    <string name="onboarding_cleartext_warning">Cette adresse n’est pas chiffrée. Votre mot de passe d’application et votre courrier circuleront en clair : ne l’utilisez que sur un réseau de confiance.</string>
+    <string name="onboarding_trust_title">Est-ce bien votre serveur ?</string>
+    <string name="onboarding_trust_body">%1$s utilise un certificat que ce téléphone ne peut pas garantir, ce qui est normal pour un serveur auto-hébergé. Vérifiez que cette empreinte correspond à celle du serveur avant de continuer.</string>
+    <string name="onboarding_trust_accept">C’est mon serveur</string>
+    <string name="onboarding_trust_reject">Annuler</string>
+    <string name="onboarding_confirm_title">Connecté</string>
+    <string name="onboarding_confirm_signed_in_as">Connecté en tant que %1$s</string>
+    <string name="onboarding_confirm_accounts">Boîtes accessibles</string>
+    <string name="onboarding_confirm_save">Enregistrer</string>
+    <string name="onboarding_confirm_cancel">Pas celui-ci</string>
+    <string name="onboarding_error_unauthenticated">Ce mot de passe d’application a été refusé. Créez-en un nouveau dans Réglages → Mots de passe d’application.</string>
+    <string name="onboarding_error_unreachable">Impossible de joindre %1$s. Vérifiez l’adresse et que le serveur fonctionne.</string>
+    <string name="onboarding_error_certificate_changed">Le certificat de %1$s a changé depuis votre dernière connexion. Si ce n’est pas vous qui l’avez changé, n’allez pas plus loin.</string>
+    <string name="onboarding_error_malformed">Quelque chose a répondu à cette adresse, mais ce n’était pas plMail.</string>
+</resources>

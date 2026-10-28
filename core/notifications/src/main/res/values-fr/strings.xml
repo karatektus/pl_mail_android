@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="channel_group_accounts">Comptes</string>
+    <string name="channel_description">Les nouveaux messages de ce compte, pour les libellés que vous avez activés.</string>
+    <string name="notification_you">Vous</string>
+    <string name="no_subject">(sans objet)</string>
+    <string name="encrypted_message">Message chiffré</string>
+    <string name="action_archive">Archiver</string>
+    <string name="action_mark_read">Marquer comme lu</string>
+    <string name="action_reply">Répondre</string>
+    <string name="action_try_again">Réessayer</string>
+    <string name="reply_hint">Votre réponse</string>
+    <string name="reply_sending">Envoi…</string>
+    <string name="reply_not_sent">Réponse non envoyée</string>
+    <string name="reply_failed_offline">Impossible de joindre votre serveur. Votre réponse est toujours là.</string>
+    <string name="reply_failed_unanswerable">Impossible de répondre à ce message depuis la notification. Ouvrez plMail pour répondre.</string>
+    <string name="reply_failed_refused">Votre serveur a refusé la réponse. Ouvrez plMail pour l’envoyer.</string>
+    <plurals name="new_messages">
+        <item quantity="one">%1$d nouveau message</item>
+        <item quantity="many">%1$d nouveaux messages</item>
+        <item quantity="other">%1$d nouveaux messages</item>
+    </plurals>
+    <plurals name="and_more">
+        <item quantity="one">et %1$d autre</item>
+        <item quantity="many">et %1$d autres</item>
+        <item quantity="other">et %1$d autres</item>
+    </plurals>
+    <string name="channel_reminders">Rappels</string>
+    <string name="channel_reminders_description">Les rappels de l’agenda, à l’heure réglée sur l’événement.</string>
+</resources>

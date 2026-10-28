@@ -1,6 +1,7 @@
 package de.plmail.jmap.methods
 
 import de.plmail.jmap.calendar.Calendar
+import de.plmail.jmap.calendar.CalendarDialect
 import de.plmail.jmap.calendar.CalendarEvent
 import de.plmail.jmap.calendar.CalendarEventFilter
 import de.plmail.jmap.protocol.AccountId
@@ -12,6 +13,7 @@ import de.plmail.jmap.protocol.StateToken
 import de.plmail.jmap.protocol.backReference
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
@@ -85,11 +87,11 @@ data class CalendarGetResult(
  * plain series id either way, so a window with nothing recurring in it answers both identically.
  *
  * An occurrence id is **opaque**. It looks like `42_20260304T090000Z` and it must be handed
- * straight back to [CalendarEventGet]; the series it belongs to is that object's `seriesId` and
+ * straight back to [CalendarEventGet]; the series it belongs to is that object's `baseEventId` and
  * never something read out of the id.
  *
- * Expanding is refused with `cannotCalculateOccurrences` when the window reaches past the account's
- * `materialisedHorizon` — collapsed, an overrunning window is merely thin, but the expanded answer
+ * Expanding is refused with `cannotCalculateOccurrences` when the window reaches past the server's
+ * materialised horizon — collapsed, an overrunning window is merely thin, but the expanded answer
  * *is* the list of occurrences, so a series that stops at the horizon would come back as a series
  * that ends. Clamp the window rather than discovering this per request.
  *
@@ -162,18 +164,23 @@ data class CalendarEventQueryResult(
  *
  * Pair it with [CalendarEventQuery] in one request through [byReference] — the pairing works
  * unchanged for an expanded query, which is what makes a month one round trip. An occurrence id
- * answers the series with its override merged in, plus `seriesId`, `recurrenceId` and the
- * occurrence's own `start`/`duration`; `recurrenceRules` and `recurrenceOverrides` come back null.
+ * answers the series with its override merged in, plus `baseEventId`, `recurrenceId` and the
+ * occurrence's own `start`/`duration`; `recurrenceRule` and `recurrenceOverrides` come back null.
  *
- * Note the id ceiling is the account's `maxEventsInGet` — **100**, not core's `maxObjectsInGet` of
- * 500 — because expanding a recurring series costs far more than reading a row. Expanded, that
- * ceiling counts occurrences, which a busy month reaches far sooner than it reaches 100 series.
+ * The id ceiling is [de.plmail.jmap.protocol.CalendarsCapability.maxEventsInGet]: core's
+ * `maxObjectsInGet` under the IETF URN, which gives a client no calendar limit of its own, and
+ * plMail's own **100** under the vendor one. Expanded, that ceiling counts occurrences, which a
+ * busy month reaches far sooner than it reaches as many series.
+ *
+ * [properties] and the answer are in the draft's names whatever [dialect] the request declares; see
+ * [CalendarDialect].
  */
 class CalendarEventGet(
     private val accountId: AccountId,
     private val ids: List<CalendarEventId>? = null,
     private val idsReference: ResultReference? = null,
     private val properties: List<String>? = null,
+    private val dialect: CalendarDialect = CalendarDialect.IETF,
 ) : JmapMethod<CalendarEventGetResult> {
 
     init {
@@ -193,15 +200,29 @@ class CalendarEventGet(
             ids != null -> put("ids", buildJsonArray { ids.forEach { add(it.value) } })
         }
 
-        properties?.let { put("properties", buildJsonArray { it.forEach { p -> add(p) } }) }
+        properties?.let {
+            put("properties", buildJsonArray { dialect.properties(it).forEach { p -> add(p) } })
+        }
     }
 
-    override fun decode(json: Json, arguments: JsonObject): CalendarEventGetResult =
-        json.decodeFromJsonElement(CalendarEventGetResult.serializer(), arguments)
+    override fun decode(json: Json, arguments: JsonObject): CalendarEventGetResult {
+        val list = arguments["list"] as? JsonArray
+        val read =
+            if (list == null) arguments
+            else
+                JsonObject(
+                    arguments +
+                        ("list" to
+                            JsonArray(list.map { (it as? JsonObject)?.let(dialect::read) ?: it }))
+                )
+
+        return json.decodeFromJsonElement(CalendarEventGetResult.serializer(), read)
+    }
 
     companion object {
         /**
-         * The account capability's value, as a floor to chunk by when no session is to hand.
+         * The vendor account capability's value, as a floor to chunk by when no session is to hand
+         * — the lowest ceiling any plMail has published.
          *
          * Read `Session.calendars(id).maxEventsInGet` where one is available — an instance
          * configured for more should not be second-guessed by its own client.
@@ -216,13 +237,13 @@ class CalendarEventGet(
          * participants — so asking for the fields a day view draws from the series would move that
          * text once per occurrence over a domestic uplink.
          *
-         * `seriesId` earns its place twice over: it is the row an occurrence hangs off and the only
-         * id `CalendarEvent/set` will accept back.
+         * `baseEventId` earns its place twice over: it is the row an occurrence hangs off and the
+         * only id `CalendarEvent/set` will accept back.
          */
         val OCCURRENCE_PROPERTIES =
             listOf(
                 "id",
-                "seriesId",
+                "baseEventId",
                 "recurrenceId",
                 "title",
                 "start",
@@ -236,11 +257,13 @@ class CalendarEventGet(
             accountId: AccountId,
             queryReference: ResultReference,
             properties: List<String>? = null,
+            dialect: CalendarDialect = CalendarDialect.IETF,
         ) =
             CalendarEventGet(
                 accountId = accountId,
                 idsReference = queryReference,
                 properties = properties,
+                dialect = dialect,
             )
     }
 }

@@ -1,0 +1,1 @@
+Der Kalender spricht jetzt die Standard-Schnittstelle JMAP Calendars, wo dein plMail-Server sie anbietet, und plMails eigene bei einem älteren Server – er funktioniert also, egal ob du zuerst den Server oder die App aktualisierst.

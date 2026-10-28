@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_placeholder">Rechercher dans le courrier</string>
+    <string name="search_clear">Effacer</string>
+    <string name="search_back">Retour</string>
+    <string name="search_recent">Recherches récentes</string>
+    <string name="search_forget">Oublier « %1$s »</string>
+    <string name="search_empty_no_matches">Aucun message ne correspond.</string>
+    <string name="search_contradiction">is:read et is:unread ensemble ne trouvent rien.</string>
+    <string name="search_account_lacks_mailbox">Le compte %1$s n’a pas ce dossier et n’a pas été parcouru.</string>
+    <string name="chip_from">De : %1$s</string>
+    <string name="chip_to">À : %1$s</string>
+    <string name="chip_subject">Objet : %1$s</string>
+    <string name="chip_attachment">Avec pièce jointe</string>
+    <string name="chip_unread">Non lus</string>
+    <string name="chip_read">Lus</string>
+    <string name="chip_starred">Suivis</string>
+    <string name="chip_in">Dans : %1$s</string>
+    <string name="chip_after">Après le %1$s</string>
+    <string name="chip_before">Avant le %1$s</string>
+</resources>

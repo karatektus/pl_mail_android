@@ -87,6 +87,19 @@ constructor(
     private var handing = false
 
     /**
+     * Draft saves, one at a time and never cut off. Discard, close and send wait on it before they
+     * read the draft's id: see [SaveGate] for the draft a cancelled first save leaves behind.
+     */
+    private val saves = SaveGate()
+
+    /**
+     * Which composer a save belongs to. [finish] moves it on, and a save that comes back after that
+     * — one [saves] let finish while the composer closed — writes nothing into the next composer's
+     * state, which would otherwise open on the last draft's id and save over it.
+     */
+    private var session = 0
+
+    /**
      * What a reply or a forward opened as, before anybody touched it.
      *
      * Those two start with fields already filled in — recipients, a subject, the original's files —
@@ -328,7 +341,10 @@ constructor(
                     return@launch
                 }
 
-                val state = _state.value
+                // After any save already on its way: the first one is what
+                // gives the draft its id, and a send read before it came back
+                // went out as a new message and left the saved draft behind.
+                val state = saves.afterSaves { _state.value }
                 val outgoing =
                     state.draft
                         .outgoing(state.signatureHtml, state.quotedHtml)
@@ -442,57 +458,65 @@ constructor(
      * count as content the user produced.
      */
     fun close(onClosed: () -> Unit) {
-        val state = _state.value
         autosave?.cancel()
 
         viewModelScope.launch {
-            when {
-                // Saving would put an empty message over the one that could not
-                // be opened.
-                state.isUnopenable -> Unit
-                state.draft.isEmpty(state.quotedHtml) ||
-                    isUntouched(state.draft, state.signatureHtml, state.quotedHtml) ->
-                    runCatching { compose.discard(state.draft) }
-                else -> {
-                    // An encrypted message that cannot be encrypted right now is
-                    // not saved at all: saving it in the clear is the one thing
-                    // that must not happen to it. What was saved before stays.
-                    val plan = runCatching { decide() }.getOrNull()
-                    val current = _state.value
-
-                    // Nor saved again when nothing changed: each save of an
-                    // encrypted draft is a new import, and the old one goes to
-                    // Trash for nothing.
-                    val unchanged =
-                        plan?.encrypt == true && current.draft.savedSealed && current.isSaved
-
-                    val worthSaving =
-                        plan != null && !(plan.encrypt && plan.blocked != null) && !unchanged
-
-                    // Protected keys are asked for only when there is something to
-                    // save with them, and a person who declines saves nothing.
-                    if (
-                        plan != null && worthSaving && (!plan.encrypt || compose.openSigningKeys())
-                    ) {
-                        current.draft
-                            .outgoing(current.signatureHtml, current.quotedHtml)
-                            .sealedFor(plan, current.identity)
-                            ?.let { runCatching { compose.save(it) } }
-                    }
-                }
-            }
+            // Read after any save already on its way, for its id: saving without
+            // it created a second copy of the draft, and only one was ever thrown
+            // away.
+            saves.afterSaves { closeAs(_state.value) }
 
             finish()
             onClosed()
         }
     }
 
+    /** What closing does with the composer as it stood once no save was in flight. */
+    private suspend fun closeAs(state: ComposeUiState) {
+        when {
+            // Saving would put an empty message over the one that could not
+            // be opened.
+            state.isUnopenable -> Unit
+            state.draft.isEmpty(state.quotedHtml) ||
+                isUntouched(state.draft, state.signatureHtml, state.quotedHtml) ->
+                runCatching { compose.discard(state.draft) }
+            else -> {
+                // An encrypted message that cannot be encrypted right now is
+                // not saved at all: saving it in the clear is the one thing
+                // that must not happen to it. What was saved before stays.
+                val plan = runCatching { decide() }.getOrNull()
+                val current = _state.value
+
+                // Nor saved again when nothing changed: each save of an
+                // encrypted draft is a new import, and the old one goes to
+                // Trash for nothing.
+                val unchanged =
+                    plan?.encrypt == true && current.draft.savedSealed && current.isSaved
+
+                val worthSaving =
+                    plan != null && !(plan.encrypt && plan.blocked != null) && !unchanged
+
+                // Protected keys are asked for only when there is something to
+                // save with them, and a person who declines saves nothing.
+                if (plan != null && worthSaving && (!plan.encrypt || compose.openSigningKeys())) {
+                    current.draft
+                        .outgoing(current.signatureHtml, current.quotedHtml)
+                        .sealedFor(plan, current.identity)
+                        ?.let { runCatching { compose.save(it) } }
+                }
+            }
+        }
+    }
+
     fun discard(onDiscarded: () -> Unit) {
-        val draft = _state.value.draft
         autosave?.cancel()
 
         viewModelScope.launch {
-            runCatching { compose.discard(draft) }
+            // The draft as the last save left it. Read before that save came
+            // back, a first save in flight had no id yet: nothing was moved to
+            // Trash, and the draft the server then created stayed in Drafts.
+            saves.afterSaves { runCatching { compose.discard(_state.value.draft) } }
+
             finish()
             onDiscarded()
         }
@@ -516,6 +540,7 @@ constructor(
      * change during one composer, which still keeps everything.
      */
     private fun finish() {
+        session++
         opening?.cancel()
         autosave?.cancel()
         keyWatch?.cancel()
@@ -878,42 +903,50 @@ constructor(
                     // a save in the clear would be one it must not get.
                     if (encryption.encrypt || encryption.pending) return@collect
 
-                    runCatching { compose.save(draft.outgoing(signature, quote)) }
-                        .onSuccess { saved ->
-                            // The id and the attachment blobs the save
-                            // assigned, folded back in without touching
-                            // anything the user has typed since -- copying
-                            // the whole draft back would undo those
-                            // keystrokes.
-                            _state.update {
-                                it.copy(
-                                    draft =
-                                        it.draft.copy(
-                                            emailId = saved.emailId,
-                                            attachments =
-                                                if (it.draft.attachments == draft.attachments) {
-                                                    saved.attachments
-                                                } else {
-                                                    it.draft.attachments
-                                                },
-                                            savedAttachments = saved.savedAttachments,
-                                            savedSealed = saved.savedSealed,
-                                        ),
-                                    isSaved = true,
-                                    error = null,
-                                )
+                    val startedIn = session
+
+                    saves.save {
+                        runCatching { compose.save(draft.outgoing(signature, quote)) }
+                            .onSuccess { saved ->
+                                if (session != startedIn) return@onSuccess
+
+                                // The id and the attachment blobs the save
+                                // assigned, folded back in without touching
+                                // anything the user has typed since -- copying
+                                // the whole draft back would undo those
+                                // keystrokes.
+                                _state.update {
+                                    it.copy(
+                                        draft =
+                                            it.draft.copy(
+                                                emailId = saved.emailId,
+                                                attachments =
+                                                    if (it.draft.attachments == draft.attachments) {
+                                                        saved.attachments
+                                                    } else {
+                                                        it.draft.attachments
+                                                    },
+                                                savedAttachments = saved.savedAttachments,
+                                                savedSealed = saved.savedSealed,
+                                            ),
+                                        isSaved = true,
+                                        error = null,
+                                    )
+                                }
                             }
-                        }
-                        .onFailure { failure ->
-                            _state.update {
-                                it.copy(
-                                    error =
-                                        ComposeError.SaveFailed(
-                                            failure.message ?: "The draft could not be saved."
-                                        )
-                                )
+                            .onFailure { failure ->
+                                if (session != startedIn) return@onFailure
+
+                                _state.update {
+                                    it.copy(
+                                        error =
+                                            ComposeError.SaveFailed(
+                                                failure.message ?: "The draft could not be saved."
+                                            )
+                                    )
+                                }
                             }
-                        }
+                    }
                 }
         }
     }

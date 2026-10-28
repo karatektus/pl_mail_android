@@ -2,7 +2,9 @@ package de.plmail.core.data
 
 import androidx.test.core.app.ApplicationProvider
 import de.plmail.core.database.AccountEntity
+import de.plmail.core.database.EmailEntity
 import de.plmail.core.database.IdentityEntity
+import de.plmail.core.database.MailboxEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.database.StoreKey
 import de.plmail.core.datastore.AccountPrefsStore
@@ -549,9 +551,136 @@ class ComposeRepositoryTest {
         )
     }
 
+    // ------------------------------------------------------ discarding a draft
+
+    @Test
+    fun `a draft discarded from the composer leaves the Drafts list at once`() = runTest {
+        seedDraft(threadLabels = listOf(DRAFTS_MAILBOX_ID))
+
+        repository(scripted(UPDATED_RESULT))
+            .discard(ComposeDraft(accountKey = testAccountKey, identityId = "i1", emailId = "42"))
+
+        // The list reads feed_entries. This path used to move the draft to Trash
+        // on the server and touch nothing here, so it stayed in Drafts until the
+        // next sync.
+        assertEquals(emptyList(), database.entryIds(draftsFeed))
+        assertNull(database.emails().byUid(StoreKey.objectKey(testAccountKey, "42")))
+    }
+
+    @Test
+    fun `a draft discarded from the reader leaves the Drafts list too`() = runTest {
+        seedDraft(threadLabels = listOf(DRAFTS_MAILBOX_ID))
+
+        repository(scripted(UPDATED_RESULT)).discardDraft(testAccountKey, "42")
+
+        // The reader path deleted the message row and left the list's row behind.
+        assertEquals(emptyList(), database.entryIds(draftsFeed))
+    }
+
+    @Test
+    fun `a reply drafted inside a conversation leaves Drafts and stays in the inbox`() = runTest {
+        // The conversation it answers is in the inbox; only the draft was in Drafts.
+        seedDraft(threadLabels = listOf(DRAFTS_MAILBOX_ID, INBOX_MAILBOX_ID), withReceived = true)
+
+        repository(scripted(UPDATED_RESULT)).discardDraft(testAccountKey, "42")
+
+        assertEquals(emptyList(), database.entryIds(draftsFeed))
+        assertEquals(
+            listOf("${Feed.UNIFIED_INBOX.id}#${StoreKey.objectKey(testAccountKey, THREAD_ID)}"),
+            database.entryIds(Feed.UNIFIED_INBOX.id),
+        )
+    }
+
+    @Test
+    fun `a discard the server refuses leaves the draft where it is`() = runTest {
+        seedDraft(threadLabels = listOf(DRAFTS_MAILBOX_ID))
+
+        runCatching {
+            repository(scripted(REFUSED_UPDATE_RESULT)).discardDraft(testAccountKey, "42")
+        }
+
+        // Still in Drafts, here as on the server: removing it locally would be a
+        // delete that undoes itself on the next sync.
+        assertEquals(1, database.entryIds(draftsFeed).size)
+        assertNotNull(database.emails().byUid(StoreKey.objectKey(testAccountKey, "42")))
+    }
+
     // ------------------------------------------------------------- fixtures
 
     private val secondAccountKey: String = StoreKey.account(TEST_SERVER, SECOND_ACCOUNT_ID)
+
+    private val draftsFeed: String =
+        labelFeedId(StoreKey.objectKey(testAccountKey, DRAFTS_MAILBOX_ID))
+
+    /**
+     * Draft 42 in conversation [THREAD_ID], listed in Drafts as `storeEmails` and the pager would
+     * have left it, with Drafts, Inbox and Trash bound and both lists live. [withReceived] adds a
+     * received message to the conversation, in the inbox, as when the draft is a reply.
+     */
+    private suspend fun seedDraft(threadLabels: List<String>, withReceived: Boolean = false) {
+        seedAccounts(single = true)
+
+        database
+            .mailboxes()
+            .upsert(
+                listOf(
+                        INBOX_MAILBOX_ID to "inbox",
+                        DRAFTS_MAILBOX_ID to "drafts",
+                        TRASH_MAILBOX_ID to "trash",
+                    )
+                    .map { (id, role) ->
+                        MailboxEntity(
+                            uid = StoreKey.objectKey(testAccountKey, id),
+                            accountKey = testAccountKey,
+                            mailboxId = id,
+                            name = role,
+                            role = role,
+                        )
+                    }
+            )
+
+        database
+            .emails()
+            .upsert(
+                buildList {
+                    add(
+                        EmailEntity(
+                            uid = StoreKey.objectKey(testAccountKey, "42"),
+                            accountKey = testAccountKey,
+                            emailId = "42",
+                            threadId = THREAD_ID,
+                            isDraft = true,
+                            mailboxIds = DRAFTS_MAILBOX_ID,
+                        )
+                    )
+
+                    if (withReceived) {
+                        add(
+                            EmailEntity(
+                                uid = StoreKey.objectKey(testAccountKey, "41"),
+                                accountKey = testAccountKey,
+                                emailId = "41",
+                                threadId = THREAD_ID,
+                                mailboxIds = INBOX_MAILBOX_ID,
+                            )
+                        )
+                    }
+                }
+            )
+
+        database.seedThread(
+            threadId = THREAD_ID,
+            labelKeys = threadLabels.joinToString(",") { StoreKey.objectKey(testAccountKey, it) },
+        )
+
+        database.seedCursor(draftsFeed, isExhausted = true)
+        database.seedEntry(draftsFeed, THREAD_ID)
+
+        if (withReceived) {
+            database.seedCursor(Feed.UNIFIED_INBOX.id, isExhausted = true)
+            database.seedEntry(Feed.UNIFIED_INBOX.id, THREAD_ID)
+        }
+    }
 
     private suspend fun seedAccounts(single: Boolean) {
         val rows = buildList {
@@ -720,6 +849,7 @@ class ComposeRepositoryTest {
             decryptor =
                 MessageDecryptor(BlobStore(context, database, credentials, transports), encryption),
             decryptedFiles = DecryptedFiles(context),
+            projection = FeedProjection(database, emptyOutbox()),
         )
     }
 
@@ -857,6 +987,17 @@ class ComposeRepositoryTest {
             """
             {"methodResponses":[["Email/get",{"accountId":"$TEST_ACCOUNT_ID","state":"s2",
              "list":[{"id":"42","attachments":[]}],"notFound":[]},"c0"]]}
+            """
+
+        const val THREAD_ID = "t42"
+        const val DRAFTS_MAILBOX_ID = "2"
+        const val TRASH_MAILBOX_ID = "3"
+
+        val REFUSED_UPDATE_RESULT =
+            """
+            {"methodResponses":[["Email/set",{"accountId":"$TEST_ACCOUNT_ID",
+             "oldState":"s1","newState":"s1","created":{},"notCreated":{},"updated":{},
+             "notUpdated":{"42":{"type":"notFound"}},"destroyed":[],"notDestroyed":{}},"c0"]]}
             """
 
         val INVALID_PROPERTIES_RESULT =

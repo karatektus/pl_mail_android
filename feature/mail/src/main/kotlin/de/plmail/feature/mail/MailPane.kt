@@ -3,6 +3,7 @@ package de.plmail.feature.mail
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -42,6 +43,7 @@ import de.plmail.core.data.Label
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailView
 import de.plmail.core.database.ThreadEntity
+import de.plmail.core.designsystem.PlMailTheme
 import de.plmail.feature.mail.reader.ReaderScreen
 import kotlinx.coroutines.launch
 
@@ -234,13 +236,26 @@ fun MailPane(
 
                             Box(
                                 modifier =
-                                    Modifier.fillMaxSize().graphicsLayer {
-                                        // From the side the swipe pushed towards: the
-                                        // next conversation comes in from the right.
-                                        translationX =
-                                            arriving.value * towards * size.width * ARRIVAL_SHIFT
-                                        alpha = 1f - arriving.value
-                                    }
+                                    Modifier.fillMaxSize()
+                                        // Outside the layer, so it is neither faded
+                                        // nor shifted. While the arriving reader is
+                                        // still transparent, what shows through is
+                                        // otherwise the window, and the window is
+                                        // painted by the platform DayNight theme --
+                                        // white whenever the system is light, under
+                                        // a dark plMail theme or Nord alike. That was
+                                        // a white flash on every swipe.
+                                        .background(PlMailTheme.colors.surface)
+                                        .graphicsLayer {
+                                            // From the side the swipe pushed towards: the
+                                            // next conversation comes in from the right.
+                                            translationX =
+                                                arriving.value *
+                                                    towards *
+                                                    size.width *
+                                                    ARRIVAL_SHIFT
+                                            alpha = 1f - arriving.value
+                                        }
                             ) {
                                 ReaderScreen(
                                     accountKey = account,

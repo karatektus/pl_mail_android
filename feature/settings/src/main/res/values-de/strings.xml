@@ -89,6 +89,7 @@
     <!-- Endonyme: siehe die englische Fassung. Beide Namen sind in beiden Sprachen dasselbe Wort. -->
     <string name="language_english">English</string>
     <string name="language_german">Deutsch</string>
+    <string name="language_french">Français</string>
     <string name="appearance_language_body">Die Sprache, in der plMail auf diesem Telefon geschrieben ist. Die Einstellung gilt nur für dieses Gerät — sie wird nie an Ihr Konto gesendet und erreicht weder Ihren Browser noch Ihre anderen Geräte.</string>
     <string name="appearance_language_system">Das ist dieselbe Einstellung wie die von Android unter Einstellungen → Apps → plMail → Sprache. Eine Änderung an einer der beiden Stellen ändert beide.</string>
 

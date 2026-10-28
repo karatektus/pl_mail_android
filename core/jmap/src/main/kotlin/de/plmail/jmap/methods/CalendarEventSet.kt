@@ -1,10 +1,13 @@
 package de.plmail.jmap.methods
 
+import de.plmail.jmap.calendar.CalendarDialect
+import de.plmail.jmap.calendar.CalendarEvent
 import de.plmail.jmap.calendar.RecurrenceRule
 import de.plmail.jmap.protocol.AccountId
 import de.plmail.jmap.protocol.CalendarEventId
 import de.plmail.jmap.protocol.CalendarId
 import de.plmail.jmap.protocol.JmapMethod
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -28,12 +31,16 @@ import kotlinx.serialization.json.put
  * Destroying an event is a real delete, unlike `Email/set` where "destroy" means Trash — there is
  * no calendar bin to recover from, so a destructive control here needs its own confirmation rather
  * than borrowing mail's undo.
+ *
+ * Creates and patches are built in the draft's names and sent in [dialect]'s, and so is what
+ * `created` answers; see [CalendarDialect].
  */
 class CalendarEventSet(
     private val accountId: AccountId,
     private val create: Map<String, NewCalendarEvent> = emptyMap(),
     private val update: Map<CalendarEventId, CalendarEventPatch> = emptyMap(),
     private val destroy: List<CalendarEventId> = emptyList(),
+    private val dialect: CalendarDialect = CalendarDialect.IETF,
 ) : JmapMethod<CalendarEventSetResult> {
 
     override val name = "CalendarEvent/set"
@@ -42,13 +49,20 @@ class CalendarEventSet(
         put("accountId", accountId.value)
 
         if (create.isNotEmpty()) {
-            put("create", buildJsonObject { create.forEach { (id, e) -> put(id, e.toJson()) } })
+            put(
+                "create",
+                buildJsonObject {
+                    create.forEach { (id, e) -> put(id, dialect.write(e.toJson())) }
+                },
+            )
         }
 
         if (update.isNotEmpty()) {
             put(
                 "update",
-                buildJsonObject { update.forEach { (id, patch) -> put(id.value, patch.toJson()) } },
+                buildJsonObject {
+                    update.forEach { (id, patch) -> put(id.value, dialect.write(patch.toJson())) }
+                },
             )
         }
 
@@ -57,8 +71,23 @@ class CalendarEventSet(
         }
     }
 
-    override fun decode(json: Json, arguments: JsonObject): CalendarEventSetResult =
-        json.decodeFromJsonElement(CalendarEventSetResult.serializer(), arguments)
+    override fun decode(json: Json, arguments: JsonObject): CalendarEventSetResult {
+        val created = arguments["created"] as? JsonObject
+        val read =
+            if (created == null) arguments
+            else
+                JsonObject(
+                    arguments +
+                        ("created" to
+                            JsonObject(
+                                created.mapValues { (_, e) ->
+                                    (e as? JsonObject)?.let(dialect::read) ?: e
+                                }
+                            ))
+                )
+
+        return json.decodeFromJsonElement(CalendarEventSetResult.serializer(), read)
+    }
 }
 
 /**
@@ -137,7 +166,7 @@ data class NewCalendarEvent(
 ) {
     fun toJson(): JsonObject = buildJsonObject {
         put("@type", "Event")
-        put("calendarId", calendarId.value)
+        put("calendarIds", buildJsonObject { put(calendarId.value, true) })
         uid?.let { put("uid", it) }
         put("title", title)
         description?.let { put("description", it) }
@@ -203,13 +232,17 @@ class CalendarEventPatch private constructor(private val fields: Map<String, Jso
 
         fun status(value: String) = apply { fields["status"] = JsonPrimitive(value) }
 
-        /** Moving an event between calendars is a plain property change. */
-        fun calendarId(id: CalendarId) = apply { fields["calendarId"] = JsonPrimitive(id.value) }
+        /**
+         * Moving an event between calendars is a plain property change: the whole `calendarIds`
+         * map, naming the one calendar it moves to.
+         */
+        fun calendarId(id: CalendarId) = apply {
+            fields["calendarIds"] = buildJsonObject { put(id.value, true) }
+        }
 
         /** Null stops the event recurring. */
         fun recurrenceRule(rule: RecurrenceRule?) = apply {
-            fields["recurrenceRules"] =
-                rule?.let { buildJsonArray { add(it.toJson()) } } ?: JsonNull
+            fields["recurrenceRule"] = rule?.toJson() ?: JsonNull
         }
 
         /** Replaces the whole map. Send every override the series should keep. */
@@ -314,9 +347,11 @@ data class CalendarEventSetResult(
 /**
  * What the server decided about a created event.
  *
- * [isRecurring] is here rather than inferred because it is derived server-side: a rule plMail
- * cannot convert is stored verbatim and expands to one occurrence, so a create carrying a
- * recurrence rule can come back `isRecurring: false`. That is the answer, not a bug to work around.
+ * [isRecurring] is here because it is derived server-side: a rule plMail cannot convert is stored
+ * verbatim and expands to one occurrence, so a create carrying a recurrence rule can come back not
+ * recurring. Under the IETF URN it is the vendor property `plmail.org:isRecurring`; null only from
+ * a server that publishes neither, and then the caller falls back on whether it sent a rule — see
+ * [de.plmail.jmap.calendar.CalendarEvent.isRecurring].
  */
 @Serializable
 data class CreatedCalendarEvent(
@@ -329,10 +364,14 @@ data class CreatedCalendarEvent(
      * one, and one that would compare equal to every other absence.
      */
     val uid: String? = null,
-    val calendarId: CalendarId? = null,
-    val isRecurring: Boolean = false,
+    /** The draft's id-to-true map; read it through [calendarId]. */
+    val calendarIds: Map<String, Boolean> = emptyMap(),
+    @SerialName(CalendarEvent.IS_RECURRING) val isRecurring: Boolean? = null,
     val sequence: Int = 0,
-)
+) {
+    val calendarId: CalendarId?
+        get() = calendarIds.entries.firstOrNull { it.value }?.key?.let(::CalendarId)
+}
 
 /** The write shape of a rule, which is not what `@Serializable` would emit for the read one. */
 internal fun RecurrenceRule.toJson(): JsonObject = buildJsonObject {
@@ -372,7 +411,7 @@ private fun JsonObjectBuilder.putRecurrence(
     rule: RecurrenceRule?,
     overrides: Map<String, RecurrenceOverride>,
 ) {
-    rule?.let { put("recurrenceRules", buildJsonArray { add(it.toJson()) }) }
+    rule?.let { put("recurrenceRule", it.toJson()) }
 
     if (overrides.isNotEmpty()) {
         put(

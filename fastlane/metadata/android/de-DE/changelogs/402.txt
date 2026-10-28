@@ -1,0 +1,6 @@
+Vor allem Korrekturen beim Synchronisieren, Zwischenspeichern und Schreiben:
+- Eine gelöschte Konversation verschiebt alle ihre Nachrichten und kommt nach dem Sync nicht zurück.
+- Entwürfe in einer Konversation lassen sich bearbeiten und löschen.
+- Antworten öffnen sich, ohne aufs Netz zu warten.
+- Weniger und schnellere Anfragen: ein Sync für alle Konten, Mails im Blick werden im WLAN vorab geladen.
+- Updates behalten den Mail-Cache, statt ihn neu aufzubauen.

@@ -4,7 +4,11 @@ import de.plmail.jmap.protocol.CalendarId
 import kotlinx.serialization.Serializable
 
 /**
- * A calendar, from plMail's vendor `urn:plmail:params:jmap:calendars` surface.
+ * A calendar, as `Calendar/get` publishes it under either calendars URN.
+ *
+ * The two answer alike but for additions: under the IETF one the server adds `isSubscribed` and the
+ * draft's finer rights (`mayWriteAll`, `mayRSVP`, …) beside plMail's own, and nothing here needs
+ * them — [CalendarRights.mayAddItems] still answers whether an event can be created.
  *
  * There is no `Calendar/query`, no `Calendar/changes` and no `Calendar/set`: the whole list arrives
  * from one `Calendar/get` and the server reports its state as the literal `"fixed"`. A client that

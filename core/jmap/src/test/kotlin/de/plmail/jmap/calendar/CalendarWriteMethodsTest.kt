@@ -64,17 +64,18 @@ class CalendarWriteMethodsTest {
     // --- using ---
 
     @Test
-    fun `a calendar request declares the vendor URN and not mail`() {
+    fun `a calendar request declares the IETF URN and not mail`() {
         // The opposite of the push URN, which the server advertises and refuses
         // in `using`. Omitting this one fails the calendar call; including mail
         // declares a capability the request never uses.
-        val request = RequestBuilder(Capability.USING_CALENDARS).apply { add(CalendarGet(account)) }
+        val request = RequestBuilder(CalendarDialect.IETF.using).apply { add(CalendarGet(account)) }
 
         val using = request.build()["using"]!!.jsonArray.map { it.jsonPrimitive.content }
 
-        assertEquals(listOf(Capability.CORE, Capability.CALENDARS), using)
+        assertEquals(listOf(Capability.CORE, "urn:ietf:params:jmap:calendars"), using)
         assertFalse(using.contains(Capability.MAIL))
         assertFalse(using.contains(Capability.PUSH))
+        assertFalse(using.contains(Capability.PLMAIL_CALENDARS))
     }
 
     // --- query ---
@@ -158,10 +159,17 @@ class CalendarWriteMethodsTest {
         val create = newEvent().toJson()
 
         assertEquals(
-            setOf("@type", "calendarId", "title", "start", "duration", "status"),
+            setOf("@type", "calendarIds", "title", "start", "duration", "status"),
             create.keys,
         )
         assertEquals("Event", create["@type"]?.jsonPrimitive?.content)
+        assertEquals(
+            mapOf("10542" to true),
+            create["calendarIds"]!!.jsonObject.mapValues {
+                it.value.jsonPrimitive.content == "true"
+            },
+            "the draft's map, naming the one calendar",
+        )
         assertFalse(create.containsKey("privacy"), "published but not settable")
         assertFalse(create.containsKey("isRecurring"), "derived server-side")
     }
@@ -195,7 +203,7 @@ class CalendarWriteMethodsTest {
     }
 
     @Test
-    fun `a recurrence rule is sent as a one-element array with lowercase day codes`() {
+    fun `a recurrence rule is sent as the draft's one rule with lowercase day codes`() {
         // JSCalendar spells days `mo`; iCalendar spells them `MO`. An importer
         // written against RFC 5545 gets this wrong silently.
         val create =
@@ -208,15 +216,13 @@ class CalendarWriteMethodsTest {
                 )
                 .toJson()
 
-        val rules = create["recurrenceRules"]!!.jsonArray
+        val rule = create["recurrenceRule"]!!.jsonObject
 
-        assertEquals(1, rules.size, "the server refuses a second rule")
-        assertEquals("RecurrenceRule", rules[0].jsonObject["@type"]?.jsonPrimitive?.content)
+        assertFalse(create.containsKey("recurrenceRules"), "plMail's vendor spelling")
+        assertEquals("RecurrenceRule", rule["@type"]?.jsonPrimitive?.content)
         assertEquals(
             listOf("mo", "we"),
-            rules[0].jsonObject["byDay"]!!.jsonArray.map {
-                it.jsonObject["day"]!!.jsonPrimitive.content
-            },
+            rule["byDay"]!!.jsonArray.map { it.jsonObject["day"]!!.jsonPrimitive.content },
         )
     }
 
@@ -269,7 +275,7 @@ class CalendarWriteMethodsTest {
     fun `moving an event between calendars is a plain property change`() {
         val patch = CalendarEventPatch.build { calendarId(CalendarId("10543")) }.toJson()
 
-        assertEquals("10543", patch["calendarId"]?.jsonPrimitive?.content)
+        assertEquals(setOf("10543"), patch["calendarIds"]?.jsonObject?.keys)
     }
 
     @Test
@@ -282,10 +288,10 @@ class CalendarWriteMethodsTest {
     }
 
     @Test
-    fun `stopping a series recurring nulls the whole rules array`() {
+    fun `stopping a series recurring nulls the rule`() {
         assertEquals(
             JsonNull,
-            CalendarEventPatch.build { recurrenceRule(null) }.toJson()["recurrenceRules"],
+            CalendarEventPatch.build { recurrenceRule(null) }.toJson()["recurrenceRule"],
         )
     }
 
@@ -359,7 +365,7 @@ class CalendarWriteMethodsTest {
             decodeSet(
                 """
                 {"accountId":"1","oldState":"fixed","newState":"fixed",
-                 "created":{"c1":{"id":"10999","uid":"df7a068@plmail","isRecurring":true,
+                 "created":{"c1":{"id":"10999","uid":"df7a068@plmail","plmail.org:isRecurring":true,
                                   "sequence":0}},
                  "notCreated":{},"updated":{},"notUpdated":{},
                  "destroyed":[],"notDestroyed":{}}
@@ -367,7 +373,39 @@ class CalendarWriteMethodsTest {
             )
 
         assertEquals("df7a068@plmail", answered.created.getValue("c1").uid)
-        assertTrue(answered.created.getValue("c1").isRecurring)
+        assertEquals(true, answered.created.getValue("c1").isRecurring)
+    }
+
+    @Test
+    fun `a created event under the IETF URN says whether it recurs by its vendor name`() {
+        val answered =
+            decodeSet(
+                """
+                {"accountId":"1","oldState":"s1","newState":"s2",
+                 "created":{"c1":{"id":"10999","calendarIds":{"10542":true},
+                                  "plmail.org:isRecurring":false,"sequence":0}}}
+                """
+            )
+
+        assertEquals(false, answered.created.getValue("c1").isRecurring)
+    }
+
+    @Test
+    fun `a created event from a server that publishes no isRecurring says nothing`() {
+        // The caller is then left to the rule it sent.
+        val answered =
+            decodeSet(
+                """
+                {"accountId":"1","oldState":"s1","newState":"s2",
+                 "created":{"c1":{"id":"10999","uid":"df7a068@plmail",
+                                  "calendarIds":{"10542":true},"sequence":0}},
+                 "notCreated":{},"updated":{},"notUpdated":{},
+                 "destroyed":[],"notDestroyed":{}}
+                """
+            )
+
+        assertNull(answered.created.getValue("c1").isRecurring)
+        assertEquals(CalendarId("10542"), answered.created.getValue("c1").calendarId)
     }
 
     private fun decodeSet(json: String): CalendarEventSetResult =

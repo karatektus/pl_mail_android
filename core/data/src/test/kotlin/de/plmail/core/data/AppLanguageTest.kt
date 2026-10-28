@@ -22,9 +22,10 @@ class AppLanguageTest {
     }
 
     @Test
-    fun `the two languages the app ships`() {
+    fun `the three languages the app ships`() {
         assertEquals(AppLanguage.ENGLISH, AppLanguage.of("en"))
         assertEquals(AppLanguage.GERMAN, AppLanguage.of("de"))
+        assertEquals(AppLanguage.FRENCH, AppLanguage.of("fr"))
     }
 
     /**
@@ -39,6 +40,7 @@ class AppLanguageTest {
         assertEquals(AppLanguage.GERMAN, AppLanguage.of("de-DE"))
         assertEquals(AppLanguage.GERMAN, AppLanguage.of("de-AT"))
         assertEquals(AppLanguage.ENGLISH, AppLanguage.of("en-GB"))
+        assertEquals(AppLanguage.FRENCH, AppLanguage.of("fr-CA"))
     }
 
     /**
@@ -63,8 +65,8 @@ class AppLanguageTest {
      */
     @Test
     fun `a language the app does not ship is not an option`() {
-        assertNull(AppLanguage.of("fr"))
-        assertNull(AppLanguage.of("fr-CA"))
+        assertNull(AppLanguage.of("it"))
+        assertNull(AppLanguage.of("it-CH"))
     }
 
     /**
@@ -85,5 +87,6 @@ class AppLanguageTest {
         assertEquals("", AppLanguage.SYSTEM.tag)
         assertEquals("en", AppLanguage.ENGLISH.tag)
         assertEquals("de", AppLanguage.GERMAN.tag)
+        assertEquals("fr", AppLanguage.FRENCH.tag)
     }
 }

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="no_subject">(sans objet)</string>
+    <string name="no_sender">(expéditeur inconnu)</string>
+    <string name="a11y_unread">Non lu</string>
+    <string name="thread_new_badge">Nouveau</string>
+    <string name="a11y_new">Vient d’arriver</string>
+    <string name="a11y_encrypted">chiffré de bout en bout</string>
+    <string name="a11y_has_attachment">avec pièce jointe</string>
+    <string name="a11y_starred">suivi</string>
+    <plurals name="a11y_message_count">
+        <item quantity="one">%1$d message</item>
+        <item quantity="many">%1$d messages</item>
+        <item quantity="other">%1$d messages</item>
+    </plurals>
+    <string name="a11y_labelled">libellé %1$s</string>
+    <plurals name="a11y_more_labels">
+        <item quantity="one">et %1$d autre</item>
+        <item quantity="many">et %1$d autres</item>
+        <item quantity="other">et %1$d autres</item>
+    </plurals>
+    <string name="a11y_separator">, </string>
+</resources>

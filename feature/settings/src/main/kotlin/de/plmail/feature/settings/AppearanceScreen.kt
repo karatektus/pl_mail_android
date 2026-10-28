@@ -905,6 +905,7 @@ private fun AppLanguage.label(): Int =
         AppLanguage.SYSTEM -> R.string.language_system
         AppLanguage.ENGLISH -> R.string.language_english
         AppLanguage.GERMAN -> R.string.language_german
+        AppLanguage.FRENCH -> R.string.language_french
     }
 
 private fun PlMailThemeChoice.label(): Int =

@@ -428,6 +428,7 @@ class SealedDraftsTest {
             decryptor =
                 MessageDecryptor(BlobStore(context, database, credentials, transports), encryption),
             decryptedFiles = DecryptedFiles(context),
+            projection = FeedProjection(database, emptyOutbox()),
         )
     }
 

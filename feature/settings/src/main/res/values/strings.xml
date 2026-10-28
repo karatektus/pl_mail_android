@@ -126,6 +126,7 @@
     <string name="language_system">Follow the system</string>
     <string name="language_english">English</string>
     <string name="language_german">Deutsch</string>
+    <string name="language_french">Français</string>
     <string name="appearance_language_body">The language plMail is written in on this phone. It is a setting on this device only — it is never sent to your account and never reaches your browser or your other devices.</string>
     <!--
       Only shown from Android 13, where the same setting exists in the system's

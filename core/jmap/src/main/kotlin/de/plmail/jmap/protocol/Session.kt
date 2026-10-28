@@ -1,5 +1,6 @@
 package de.plmail.jmap.protocol
 
+import de.plmail.jmap.calendar.CalendarDialect
 import java.time.Duration
 import java.util.Locale
 import kotlinx.serialization.Serializable
@@ -78,10 +79,20 @@ data class Session(
      *
      * Read from `primaryAccounts` under the calendars URN rather than reused from
      * [primaryMailAccount]. The two agree on this server, which is exactly what would let a wrong
-     * assumption go unnoticed until an instance disagreed.
+     * assumption go unnoticed until an instance disagreed. The URN is [calendarDialect]'s, so the
+     * account is the one the request will be declared against.
      */
     val primaryCalendarAccount: AccountId?
-        get() = primaryAccounts[Capability.CALENDARS]?.let(::AccountId)
+        get() = calendarDialect?.let { primaryAccounts[it.capability] }?.let(::AccountId)
+
+    /**
+     * Which calendars URN this server is read through, or null when it serves no calendars.
+     *
+     * The IETF one wherever it is advertised; plMail's vendor one only from a server released
+     * before the IETF one. See [CalendarDialect].
+     */
+    val calendarDialect: CalendarDialect?
+        get() = CalendarDialect.of(capabilities.keys)
 
     /**
      * The calendar limits for one account, or null when that account serves no calendars.
@@ -89,8 +100,15 @@ data class Session(
      * Absence is the signal — the second account in a multi-mailbox login publishes no calendars
      * capability at all — so this doubles as the check for whether calendars may be asked of it.
      */
-    fun calendars(id: AccountId): CalendarsCapability? =
-        account(id)?.accountCapabilities?.get(Capability.CALENDARS)?.let(CalendarsCapability::from)
+    fun calendars(id: AccountId): CalendarsCapability? {
+        val dialect = calendarDialect ?: return null
+        val json = account(id)?.accountCapabilities?.get(dialect.capability) ?: return null
+
+        return when (dialect) {
+            CalendarDialect.IETF -> CalendarsCapability.fromIetf(json, core)
+            CalendarDialect.PLMAIL -> CalendarsCapability.from(json)
+        }
+    }
 
     /**
      * Whether `Email/set` on this account stores the `identityId` a draft names.
@@ -115,9 +133,9 @@ data class Session(
     fun supportsInboxTabs(id: AccountId): Boolean =
         account(id)?.accountCapabilities?.containsKey(Capability.INBOX_TABS) == true
 
-    /** Whether this server exposes calendars at all. */
+    /** Whether this server exposes calendars at all, under either URN. */
     val supportsCalendars: Boolean
-        get() = capabilities.containsKey(Capability.CALENDARS)
+        get() = calendarDialect != null
 
     /**
      * What this account will accept on an `EmailSubmission/set`, scheduling included.
@@ -319,12 +337,16 @@ data class SubmissionCapability(
 }
 
 /**
- * The per-account `urn:plmail:params:jmap:calendars` limits.
+ * The per-account calendar limits, from whichever calendars URN the session is read through.
  *
- * [maxEventsInGet] is **not** core's `maxObjectsInGet`, and the gap is the point: the server allows
- * 500 objects in a general get and 100 events, because expanding a recurring series is far more
- * work than reading a row. A client that chunked its hydration by the core limit would have every
- * calendar request refused.
+ * Under plMail's vendor URN, [maxEventsInGet] is **not** core's `maxObjectsInGet`, and the gap is
+ * the point: that server allows 500 objects in a general get and 100 events, because expanding a
+ * recurring series is far more work than reading a row. A client that chunked its hydration by the
+ * core limit would have every calendar request refused there.
+ *
+ * Under the IETF URN the draft gives a client no calendar limit to obey, so the server holds its
+ * calendar gets to core's `maxObjectsInGet` and that is what [fromIetf] reads. Nor does the draft
+ * publish a [materialisedHorizon]; it is left empty, which the app already treats as "unknown".
  */
 data class CalendarsCapability(
     val maxEventsInGet: Int = 100,
@@ -359,6 +381,15 @@ data class CalendarsCapability(
                     ),
             )
         }
+
+        /** The draft's account capability (draft-ietf-jmap-calendars §1.5), and core's limits. */
+        fun fromIetf(json: JsonObject, core: CoreCapability): CalendarsCapability =
+            CalendarsCapability(
+                maxEventsInGet = core.maxObjectsInGet,
+                maxEventsInSet = core.maxObjectsInSet,
+                mayCreateCalendar =
+                    (json["mayCreateCalendar"] as? JsonPrimitive)?.booleanOrNull ?: false,
+            )
     }
 }
 

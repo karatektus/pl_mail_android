@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_app_name">Agenda plMail</string>
+    <string name="unlock_title">Ouvrir votre courrier chiffré</string>
+    <string name="unlock_subtitle">Confirmez votre identité pour utiliser vos clés sur cet appareil</string>
+</resources>

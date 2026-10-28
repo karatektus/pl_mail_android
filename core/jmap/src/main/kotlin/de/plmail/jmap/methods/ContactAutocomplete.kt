@@ -12,10 +12,16 @@ import kotlinx.serialization.json.put
 /**
  * `Contact/autocomplete` — who to offer while a recipient is being typed.
  *
- * **Not RFC 8621 and not the JMAP Contacts draft**, which is why the verb is `autocomplete` rather
- * than `query`: a `/query` promises ids for a `/get` to resolve, and there is no `Contact/get`, no
- * id space and nothing here a client may create. The suggestion carries the address itself, and the
- * address is the key — the server's own `uniq_contact_user_email` is what makes that true.
+ * **Not RFC 8621 and not RFC 9610**, which is why the verb is `autocomplete` rather than `query`: a
+ * `/query` promises ids for a `/get` to resolve, and a suggestion has no id and nothing here a
+ * client may create. The suggestion carries the address itself, and the address is the key — the
+ * server's own `uniq_contact_user_email` is what makes that true.
+ *
+ * The server does serve contacts with ids — RFC 9610's address books and cards, under
+ * `urn:ietf:params:jmap:contacts` — but that is a different surface for a different job. A contact
+ * list or editor, should the app grow one, reads those `ContactCard` methods; plMail's vendor
+ * `Contact/get`, `/query` and `/set`, which overlap them, are on their way out (pl_mail#409) and
+ * nothing here calls them.
  *
  * The ranking is the server's, deliberately. It is `frequency DESC, lastSeenAt DESC` over the
  * *whole* harvested address book, which is exactly the thing a phone cannot do for itself: a client

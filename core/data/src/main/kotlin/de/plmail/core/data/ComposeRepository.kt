@@ -82,6 +82,7 @@ constructor(
     private val sealing: OutgoingEncryption,
     private val decryptor: MessageDecryptor,
     private val decryptedFiles: DecryptedFiles,
+    private val projection: FeedProjection,
 ) : DraftSender, SubmissionDirectory, ReplySource {
 
     /**
@@ -768,6 +769,8 @@ constructor(
      * An explicit move, never `Email/set` `destroy` — reason (2) at the top of this file.
      * Destroying a draft adds Trash without removing Drafts, so the discarded message stays in the
      * Drafts list and looks like a discard that did nothing.
+     *
+     * The cached copy goes too, for the reason [forgetLocally] gives.
      */
     suspend fun discard(draft: ComposeDraft) {
         val emailId = draft.emailId ?: return
@@ -775,15 +778,16 @@ constructor(
         val client = clients.forAccount(draft.accountKey) ?: return
 
         moveToTrash(client, AccountId(account.accountId), draft.accountKey, emailId)
+
+        forgetLocally(draft.accountKey, emailId)
     }
 
     /**
      * [discard] for a draft the composer does not hold: one listed in a conversation, thrown away
      * from the reader.
      *
-     * The cached copy goes too. The reader draws the conversation from the cache, and a draft still
-     * in it after the server has moved it to Trash is a delete that appears to have done nothing
-     * until the next sync. Thrown when the server could not be asked, so the reader can say so.
+     * The cached copy goes too, for the reason [forgetLocally] gives. Thrown when the server could
+     * not be asked, so the reader can say so.
      */
     suspend fun discardDraft(accountKey: String, emailId: String) {
         val account =
@@ -794,7 +798,35 @@ constructor(
 
         moveToTrash(client, AccountId(account.accountId), accountKey, emailId)
 
-        database.emails().delete(listOf(StoreKey.objectKey(accountKey, emailId)))
+        forgetLocally(accountKey, emailId)
+    }
+
+    /**
+     * Takes a discarded draft out of the cache and out of every list showing it.
+     *
+     * **The lists, not only the message.** They read `feed_entries`, and deleting the message row
+     * left the conversation's row there: the draft stayed in Drafts — from the composer, where the
+     * cache was not touched at all, and from the reader, where only the message went — until the
+     * next sync came round to it. Without push that is up to fifteen minutes of a delete that looks
+     * like it did nothing. Archive, trash and spam have always taken their row out on the spot
+     * (`MailActions.applyLocally`); a discarded draft never did.
+     *
+     * The conversation's labels are recomputed from the messages left, then the conversation goes
+     * through [FeedProjection.reconcile], the same decision the sync makes, rather than a row being
+     * deleted by hand: a reply drafted inside a conversation leaves Drafts and stays in the inbox,
+     * and a draft that was the whole conversation leaves every list. The next sync brings the
+     * message back as it now is on the server, in Trash.
+     */
+    private suspend fun forgetLocally(accountKey: String, emailId: String) {
+        val uid = StoreKey.objectKey(accountKey, emailId)
+        val threadId = database.emails().byUid(uid)?.threadId
+
+        database.emails().delete(listOf(uid))
+
+        if (threadId == null) return
+
+        mail.refreshLabelsOf(accountKey, threadId)
+        projection.reconcile(accountKey, setOf(threadId))
     }
 
     /** Reads the bytes of a picked file. Null when the URI has been revoked since it was staged. */

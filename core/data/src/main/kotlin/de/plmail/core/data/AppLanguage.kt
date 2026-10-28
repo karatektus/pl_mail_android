@@ -5,10 +5,11 @@ import java.util.Locale
 /**
  * The language the app draws itself in.
  *
- * Exactly the languages this build actually ships — `values/` and `values-de/` — plus the option of
- * having no opinion at all. Adding a member here without adding the translations, or without adding
- * the locale to `res/xml/locales_config.xml`, gives the user a control that switches to English
- * silently; `LocalesConfigTest` in `:app` is what keeps the three lists from drifting apart.
+ * Exactly the languages this build actually ships — `values/`, `values-de/` and `values-fr/` — plus
+ * the option of having no opinion at all. Adding a member here without adding the translations, or
+ * without adding the locale to `res/xml/locales_config.xml`, gives the user a control that switches
+ * to English silently; `LocalesConfigTest` in `:app` is what keeps the three lists from drifting
+ * apart.
  *
  * **[SYSTEM] carries the empty tag rather than a null**, because the empty tag is what both sides
  * of the platform already spell "no override": `LocaleList.forLanguageTags("")` is the empty list
@@ -17,13 +18,14 @@ import java.util.Locale
  * accidentally turn "follow the system" into "English".
  *
  * A language name is written in its own language — "Deutsch", not "German" — which is why the
- * labels for these are the same string in both `values/` and `values-de/`. Somebody looking for
- * their own language in a list is looking for the word they use for it.
+ * labels for these are the same string in `values/`, `values-de/` and `values-fr/`. Somebody
+ * looking for their own language in a list is looking for the word they use for it.
  */
 enum class AppLanguage(val tag: String) {
     SYSTEM(""),
     ENGLISH("en"),
-    GERMAN("de");
+    GERMAN("de"),
+    FRENCH("fr");
 
     companion object {
 

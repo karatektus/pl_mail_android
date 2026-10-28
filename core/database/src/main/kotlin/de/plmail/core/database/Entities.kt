@@ -518,7 +518,7 @@ data class CalendarEventEntity(
     val location: String? = null,
     val status: String? = null,
     /**
-     * Derived server-side, and **not** `recurrenceRules != null`.
+     * `CalendarEvent.isRecurring`: derived server-side, and **not** `recurrenceRule != null`.
      *
      * An imported rule plMail cannot convert is stored verbatim and expands to a single occurrence,
      * so an event can carry a rule and still not recur. What a screen does with it: an editor shows

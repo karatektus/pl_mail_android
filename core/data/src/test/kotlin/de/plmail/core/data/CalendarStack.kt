@@ -4,6 +4,7 @@ import de.plmail.core.database.AccountEntity
 import de.plmail.core.database.PlMailDatabase
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.core.datastore.ServerConnection
+import de.plmail.jmap.calendar.CalendarDialect
 import de.plmail.jmap.client.Credential
 import de.plmail.jmap.client.HttpResponse
 import de.plmail.jmap.client.JmapTransport
@@ -83,6 +84,15 @@ internal fun berlinClock(instant: String = "2026-08-05T12:00:00Z"): Clock =
 internal class FakeCalendarServer(
     /** Null publishes no calendars capability at all, which is the no-calendar-account case. */
     var calendarAccount: String? = TEST_ACCOUNT_ID,
+    /**
+     * The one calendars URN this server speaks, and the shape it answers in.
+     *
+     * The IETF one, as plMail does from the release that added it; [CalendarDialect.PLMAIL] for a
+     * server from before, which advertises only its vendor URN and answers in plMail's earlier
+     * shape. A request declaring the other one is refused with `unknownCapability`, as the real
+     * server refuses a URN it does not know — so a client that declared the wrong one fails here.
+     */
+    var dialect: CalendarDialect = CalendarDialect.IETF,
     var events: MutableList<FakeEvent> = mutableListOf(),
     /** The `CalendarEvent/set` result arguments, when a test exercises a write. */
     var onSet: ((JsonObject) -> String)? = null,
@@ -266,14 +276,26 @@ internal fun recurring(
 internal fun calendarTransport(server: FakeCalendarServer): RecordingTransport =
     RecordingTransport { request ->
         val body =
-            if (request.url.endsWith("/.well-known/jmap")) calendarSession(server.calendarAccount)
-            else answer(server, request.body!!.decodeToString())
+            if (request.url.endsWith("/.well-known/jmap")) {
+                calendarSession(server.calendarAccount, server.dialect)
+            } else {
+                answer(server, request.body!!.decodeToString())
+            }
 
         HttpResponse(200, mapOf("Content-Type" to "application/json"), body.encodeToByteArray())
     }
 
 private fun answer(server: FakeCalendarServer, requestBody: String): String {
-    val calls = Json.parseToJsonElement(requestBody).jsonObject["methodCalls"]!!.jsonArray
+    val request = Json.parseToJsonElement(requestBody).jsonObject
+    val using = request["using"]!!.jsonArray.map { it.jsonPrimitive.content }
+    val unknown = using.firstOrNull { it.endsWith(":calendars") && it != server.dialect.capability }
+
+    if (unknown != null) {
+        return """{"type":"urn:ietf:params:jmap:error:unknownCapability","status":400,
+                   "detail":"Unknown capability $unknown"}"""
+    }
+
+    val calls = request["methodCalls"]!!.jsonArray
     val responses = mutableListOf<String>()
 
     // What each query answered, by its call id, so a back-referenced get can be
@@ -437,13 +459,13 @@ private fun FakeCalendarServer.objectFor(id: String): String? {
     events
         .firstOrNull { it.id == id }
         ?.let { series ->
-            return series.toJson()
+            return series.toJson(dialect)
         }
 
     events.forEach { event ->
         event.instances().forEach { instance ->
             if (instanceId(event.id, instance.recurrenceId) == id) {
-                return event.toJson(instance, id)
+                return event.toJson(instance, id, dialect)
             }
         }
     }
@@ -517,36 +539,71 @@ private fun FakeInstance.startUtc(event: FakeEvent): LocalDateTime =
             .withZoneSameInstant(ZoneOffset.UTC)
             .toLocalDateTime()
 
-/** The series object: its own start, its own title, and the override map published whole. */
-private fun FakeEvent.toJson(): String = buildString {
-    append("""{"id":"$id","uid":"${uid ?: "$id@plmail"}","calendarId":"$calendarId",""")
+/**
+ * The series object: its own start, its own title, and the override map published whole.
+ *
+ * A recurring one carries a rule; which does not matter, since the days come from [FakeEvent.days].
+ * Whether it recurs is `plmail.org:isRecurring` under the IETF URN and `isRecurring` under the
+ * vendor one, as the real server publishes them.
+ */
+private fun FakeEvent.toJson(dialect: CalendarDialect): String = buildString {
+    append("""{"id":"$id","uid":"${uid ?: "$id@plmail"}",${calendarJson(dialect)},""")
     append(""""title":"$title","start":"$start","duration":"$duration",""")
     timeZone?.let { append(""""timeZone":"$it",""") }
     if (showWithoutTime) append(""""showWithoutTime":true,""")
     overrides?.let { append(""""recurrenceOverrides":$it,""") }
-    append(""""status":"confirmed","sequence":0,"isRecurring":$isRecurring}""")
+
+    if (isRecurring) {
+        val rule = """{"@type":"RecurrenceRule","frequency":"daily"}"""
+
+        when (dialect) {
+            CalendarDialect.IETF -> append(""""recurrenceRule":$rule,""")
+            CalendarDialect.PLMAIL -> append(""""recurrenceRules":[$rule],""")
+        }
+    }
+
+    append(""""${recurringName(dialect)}":$isRecurring,""")
+
+    append(""""status":"confirmed","sequence":0}""")
 }
+
+private fun recurringName(dialect: CalendarDialect): String =
+    when (dialect) {
+        CalendarDialect.IETF -> "plmail.org:isRecurring"
+        CalendarDialect.PLMAIL -> "isRecurring"
+    }
+
+private fun FakeEvent.calendarJson(dialect: CalendarDialect): String =
+    when (dialect) {
+        CalendarDialect.IETF -> """"calendarIds":{"$calendarId":true}"""
+        CalendarDialect.PLMAIL -> """"calendarId":"$calendarId""""
+    }
 
 /**
  * One occurrence as `CalendarEvent/get` resolves it.
  *
- * The series with the override merged in, its own `start` and `duration`, `seriesId` and
- * `recurrenceId` — and `recurrenceRules`/`recurrenceOverrides` explicitly **null**, as the draft
- * requires, which is also a decoding case worth exercising: an absent key and a null one are not
- * the same thing to a deserialiser.
+ * The series with the override merged in, its own `start` and `duration`, `baseEventId` (or
+ * `seriesId`, under the vendor URN) and `recurrenceId` — and the rule and `recurrenceOverrides`
+ * explicitly **null**, as the draft requires, which is also a decoding case worth exercising: an
+ * absent key and a null one are not the same thing to a deserialiser.
  */
-private fun FakeEvent.toJson(instance: FakeInstance, occurrenceId: String): String = buildString {
-    append("""{"id":"$occurrenceId","seriesId":"$id","uid":"${uid ?: "$id@plmail"}",""")
-    append(""""calendarId":"$calendarId","title":"${instance.title}",""")
+private fun FakeEvent.toJson(
+    instance: FakeInstance,
+    occurrenceId: String,
+    dialect: CalendarDialect,
+): String = buildString {
+    val series = if (dialect == CalendarDialect.IETF) "baseEventId" else "seriesId"
+    val rule = if (dialect == CalendarDialect.IETF) "recurrenceRule" else "recurrenceRules"
+
+    append("""{"id":"$occurrenceId","$series":"$id","uid":"${uid ?: "$id@plmail"}",""")
+    append("""${calendarJson(dialect)},"title":"${instance.title}",""")
     append(""""start":"${instance.start.toWire()}","duration":"${instance.duration}",""")
     append(""""recurrenceId":"${instance.recurrenceId.toWire()}",""")
     timeZone?.let { append(""""timeZone":"$it",""") }
     if (showWithoutTime) append(""""showWithoutTime":true,""")
-    append(""""recurrenceRules":null,"recurrenceOverrides":null,""")
-    append(
-        """"status":"${if (instance.cancelled) "cancelled" else "confirmed"}",""" +
-            """"sequence":0,"isRecurring":true}"""
-    )
+    append(""""$rule":null,"recurrenceOverrides":null,""")
+    append(""""${recurringName(dialect)}":true,""")
+    append(""""status":"${if (instance.cancelled) "cancelled" else "confirmed"}","sequence":0}""")
 }
 
 /**
@@ -555,13 +612,25 @@ private fun FakeEvent.toJson(instance: FakeInstance, occurrenceId: String): Stri
  * [isRecurring] is echoed rather than inferred from what was sent, because that is what the server
  * does: a rule it cannot convert is stored verbatim and expands to one occurrence.
  */
-internal fun createdEvent(id: String, isRecurring: Boolean = false): String =
-    """
-    {"accountId":"$TEST_ACCOUNT_ID","oldState":"fixed","newState":"fixed",
-     "created":{"c1":{"id":"$id","uid":"$id@plmail","calendarId":"$TEST_CALENDAR_ID",
-                      "isRecurring":$isRecurring,"sequence":0}},
-     "notCreated":{},"updated":{},"notUpdated":{},"destroyed":[],"notDestroyed":{}}
-    """
+internal fun createdEvent(
+    id: String,
+    isRecurring: Boolean = false,
+    dialect: CalendarDialect = CalendarDialect.IETF,
+): String {
+    val decided =
+        when (dialect) {
+            CalendarDialect.IETF ->
+                """"calendarIds":{"$TEST_CALENDAR_ID":true},"plmail.org:isRecurring":$isRecurring"""
+            CalendarDialect.PLMAIL ->
+                """"calendarId":"$TEST_CALENDAR_ID","isRecurring":$isRecurring"""
+        }
+
+    return """
+        {"accountId":"$TEST_ACCOUNT_ID","oldState":"fixed","newState":"fixed",
+         "created":{"c1":{"id":"$id","uid":"$id@plmail",$decided,"sequence":0}},
+         "notCreated":{},"updated":{},"notUpdated":{},"destroyed":[],"notDestroyed":{}}
+        """
+}
 
 /** A per-object refusal, which is how this surface reports one — not a method-level error. */
 internal fun refusedCreate(type: String, description: String): String =
@@ -624,32 +693,39 @@ private val CALENDARS_RESULT =
     """
 
 /**
- * The session, with the calendars capability where [calendarAccount] says there is one.
+ * The session, with [dialect]'s calendars capability where [calendarAccount] says there is one.
  *
  * `maxCallsInRequest` is 32, as the real server publishes. A refresh needs five of them —
  * `Calendar/get`, two queries and two back-referenced gets — so an instance publishing RFC 8620's
  * default of 16 has room to spare, and a fake that omitted the value would silently be testing that
  * case instead of this one.
  */
-private fun calendarSession(calendarAccount: String?): String {
+private fun calendarSession(calendarAccount: String?, dialect: CalendarDialect): String {
+    val urn = dialect.capability
     val capability =
-        if (calendarAccount == null) ""
-        else
-            """
-            "urn:plmail:params:jmap:calendars":{
-              "maxEventsInGet":100,"maxEventsInSet":500,"mayCreateCalendar":false,
-              "materialisedHorizon":{"past":"-1 year","future":"+2 years"}},
-            """
+        when {
+            calendarAccount == null -> ""
+            dialect == CalendarDialect.IETF ->
+                """
+                "$urn":{
+                  "maxCalendarsPerEvent":1,"maxExpandedQueryDuration":"P1Y",
+                  "maxParticipantsPerEvent":0,"mayCreateCalendar":false},
+                """
+            else ->
+                """
+                "$urn":{
+                  "maxEventsInGet":100,"maxEventsInSet":500,"mayCreateCalendar":false,
+                  "materialisedHorizon":{"past":"-1 year","future":"+2 years"}},
+                """
+        }
 
-    val primary =
-        if (calendarAccount == null) ""
-        else ""","urn:plmail:params:jmap:calendars":"$calendarAccount""""
+    val primary = if (calendarAccount == null) "" else ""","$urn":"$calendarAccount""""
 
     return """
         {
           "capabilities": {
             "urn:ietf:params:jmap:core": {"maxCallsInRequest": 32, "maxConcurrentRequests": 4},
-            ${if (calendarAccount == null) "" else "\"urn:plmail:params:jmap:calendars\": {},"}
+            ${if (calendarAccount == null) "" else "\"$urn\": {},"}
             "urn:ietf:params:jmap:mail": {}
           },
           "accounts": {

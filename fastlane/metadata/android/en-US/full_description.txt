@@ -1,0 +1,25 @@
+<b>This app requires a self-hosted plMail server.</b> It does not connect to mail providers by itself: it signs in to a plMail installation that you, or someone you trust, runs. Without one the app can do nothing. plMail is free software (AGPL-3.0), and setting up the server is described at github.com/karatektus/pl_mail
+
+The server connects to the mailboxes you already have (IMAP, Gmail, Outlook) and keeps them in one inbox. This app brings that inbox to your phone.
+
+The Android app is in beta: it is used every day, but expect rough edges, and please report what you find on GitHub.
+
+<b>Every account in one inbox</b>
+Read, search, label and file mail from all your accounts side by side, in conversations. Swipe between conversations, and reply, forward or write new mail with your signatures and sending aliases.
+
+<b>A calendar beside the mail</b>
+The week and month views from your server, synced with Google, Microsoft and CalDAV calendars, available as a separate launcher icon if you want one.
+
+<b>New mail as it arrives</b>
+Notifications through Firebase Cloud Messaging, using your own server's Firebase project, or through any UnifiedPush distributor if you would rather not use Google.
+
+<b>Encrypted mail</b>
+Read and send OpenPGP and S/MIME encrypted mail. Your keys stay on the device, optionally protected by the screen lock.
+
+<b>Built for servers at home</b>
+Pair in seconds by scanning a QR code from your server's settings. LAN host names, Tailscale and private certificate authorities all work. Mail is cached on the device, so the app stays usable while your NAS restarts.
+
+<b>No ads, no tracking</b>
+plMail has no advertising and no tracking of its own. Your mail goes between your phone and your own server, nowhere else.
+
+The same app is free on GitHub. Buying it here pays for automatic updates through Google Play and supports the project.

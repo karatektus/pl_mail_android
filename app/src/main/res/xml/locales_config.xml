@@ -6,7 +6,7 @@
   Language offers, and it is taken at its word: a locale listed here with no
   values- directory behind it gives the user a language they can select and
   which then renders in English, silently, because resource resolution falls
-  back rather than failing. So the list is exactly values/ and values-de/, and
+  back rather than failing. So the list is exactly values/, values-de/ and values-fr/, and
   LocalesConfigTest asserts that against the source tree so the two cannot drift
   apart when a translation is added or dropped.
 
@@ -26,4 +26,5 @@
 <locale-config xmlns:android="http://schemas.android.com/apk/res/android">
     <locale android:name="en" />
     <locale android:name="de" />
+    <locale android:name="fr" />
 </locale-config>

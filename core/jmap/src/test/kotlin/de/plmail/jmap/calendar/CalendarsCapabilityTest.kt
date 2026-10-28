@@ -17,7 +17,9 @@ import kotlinx.serialization.json.JsonObject
  * How the session announces calendars.
  *
  * Captured from a two-account login, which is the shape that matters: only one of the two accounts
- * serves calendars, and the difference is invisible from the session's top level.
+ * serves calendars, and the difference is invisible from the session's top level. Captured before
+ * the server spoke the IETF URN, too, so this is a vendor-only session — the fallback; see
+ * [CalendarDialectTest] for a server that speaks both.
  */
 class CalendarsCapabilityTest {
 
@@ -26,6 +28,7 @@ class CalendarsCapabilityTest {
     @Test
     fun `the vendor URN is advertised at the session level`() {
         assertTrue(session.supportsCalendars)
+        assertEquals(CalendarDialect.PLMAIL, session.calendarDialect)
         assertFalse(
             Fixture.decode<Session>("session.json").supportsCalendars,
             "an instance without the extension must degrade rather than fail",
@@ -39,7 +42,7 @@ class CalendarsCapabilityTest {
         // disagreed.
         assertEquals(AccountId("1"), session.primaryCalendarAccount)
         assertEquals(session.primaryMailAccount, session.primaryCalendarAccount)
-        assertEquals("1", session.primaryAccounts[Capability.CALENDARS])
+        assertEquals("1", session.primaryAccounts[Capability.PLMAIL_CALENDARS])
     }
 
     @Test
