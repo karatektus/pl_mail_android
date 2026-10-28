@@ -8,6 +8,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.data.CalendarRepository
 import de.plmail.core.data.PushTransportManager
 import de.plmail.core.data.SyncWorker
+import de.plmail.core.data.UpdateCheckWorker
 import de.plmail.core.datastore.CredentialStore
 import de.plmail.core.datastore.KeyVault
 import de.plmail.feature.compose.ComposeRequest
@@ -103,6 +104,10 @@ constructor(
                     ConnectionState.None
                 } else {
                     SyncWorker.schedule(context)
+
+                    // Daily, and a no-op on a build that cannot update
+                    // itself -- the worker checks that, so this does not.
+                    UpdateCheckWorker.schedule(context)
 
                     // Push is an upgrade, never a requirement. Re-applying the
                     // user's stored choice is attempted and allowed to fail: a

@@ -59,6 +59,9 @@ abstract class DataModule {
     /** Declared for the reason the set above is: a graph with nobody listening must still build. */
     @Multibinds abstract fun reminderListeners(): Set<ReminderListener>
 
+    /** Declared for the same reason again: an update found with nobody to tell is still fine. */
+    @Multibinds abstract fun updateListeners(): Set<UpdateListener>
+
     /**
      * The queue's view of the label list.
      *

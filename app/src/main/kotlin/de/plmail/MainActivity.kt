@@ -261,6 +261,15 @@ private fun PlMailApp(
         } ?: searchPick
 
     LaunchedEffect(notification) {
+        // An update notice opens diagnostics, which is where the version
+        // section lives. Consumed at once: it carries nothing to hand down.
+        if (notification == NotificationRequest.OpenUpdate) {
+            isSearching = false
+            isDiagnosing = true
+            onNotificationHandled()
+            return@LaunchedEffect
+        }
+
         val reply = notification as? NotificationRequest.Reply ?: return@LaunchedEffect
 
         // Search would otherwise still be on screen behind the composer after a

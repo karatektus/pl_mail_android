@@ -27,4 +27,8 @@
     </plurals>
     <string name="channel_reminders">Rappels</string>
     <string name="channel_reminders_description">Les rappels de l’agenda, à l’heure réglée sur l’événement.</string>
+    <string name="channel_updates">Mises à jour de l’application</string>
+    <string name="channel_updates_description">Une nouvelle version de plMail est disponible sur GitHub.</string>
+    <string name="update_available_title">plMail %1$s est disponible</string>
+    <string name="update_available_text">Touchez pour voir les nouveautés et l’installer.</string>
 </resources>

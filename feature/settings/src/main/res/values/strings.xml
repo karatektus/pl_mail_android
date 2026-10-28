@@ -415,4 +415,19 @@
     <string name="encryption_forget_explains">Encrypted mail cannot be opened here until you bring the keys back by pairing or with your password. Nothing changes on your server.</string>
     <string name="encryption_forget_confirm">Remove</string>
     <string name="encryption_forget_cancel">Keep</string>
+
+    <!-- The version section at the top of diagnostics, and the in-app updater. -->
+    <string name="updates_title">Version</string>
+    <string name="updates_installed">Installed</string>
+    <string name="updates_available">Available</string>
+    <string name="updates_not_supported">This build is updated by wherever it came from: Google Play, F-Droid, or your own build.</string>
+    <string name="updates_check">Check for updates</string>
+    <string name="updates_check_explains">Asks GitHub for the latest release. Your mail server is not contacted.</string>
+    <string name="updates_up_to_date">This is the latest release.</string>
+    <string name="updates_install">Download and install</string>
+    <string name="updates_downloading">Downloading… %1$d%%</string>
+    <string name="updates_open_installer">Open the installer</string>
+    <string name="updates_retry">Try again</string>
+    <string name="updates_failed">Update failed: %1$s</string>
+    <string name="updates_auto_check">Check for updates daily</string>
 </resources>

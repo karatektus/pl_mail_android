@@ -232,4 +232,17 @@
     <string name="encryption_forget_explains">Le courrier chiffré ne pourra plus être ouvert ici tant que vous n’aurez pas réimporté les clés, par association ou avec votre mot de passe. Rien ne change sur votre serveur.</string>
     <string name="encryption_forget_confirm">Retirer</string>
     <string name="encryption_forget_cancel">Garder</string>
+    <string name="updates_title">Version</string>
+    <string name="updates_installed">Installée</string>
+    <string name="updates_available">Disponible</string>
+    <string name="updates_not_supported">Cette version est mise à jour par sa source d’installation : Google Play, F-Droid ou votre propre build.</string>
+    <string name="updates_check">Rechercher les mises à jour</string>
+    <string name="updates_check_explains">Demande à GitHub la dernière version. Votre serveur de courrier n’est pas contacté.</string>
+    <string name="updates_up_to_date">C’est la dernière version.</string>
+    <string name="updates_install">Télécharger et installer</string>
+    <string name="updates_downloading">Téléchargement… %1$d %%</string>
+    <string name="updates_open_installer">Ouvrir l’installateur</string>
+    <string name="updates_retry">Réessayer</string>
+    <string name="updates_failed">Échec de la mise à jour : %1$s</string>
+    <string name="updates_auto_check">Rechercher les mises à jour chaque jour</string>
 </resources>

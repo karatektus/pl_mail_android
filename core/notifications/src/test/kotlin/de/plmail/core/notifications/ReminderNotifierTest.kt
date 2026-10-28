@@ -44,6 +44,8 @@ class ReminderNotifierTest {
 
         override fun openCalendar(): PendingIntent = broadcast("calendar")
 
+        override fun openUpdate(): PendingIntent = broadcast("update")
+
         private fun broadcast(key: String): PendingIntent {
             val context = ApplicationProvider.getApplicationContext<Context>()
 

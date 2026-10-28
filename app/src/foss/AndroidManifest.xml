@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      The in-app updater, foss flavour only.
+
+      Merged into this flavour's manifest and absent from the google one, for
+      the reason Firebase is absent from foss: Google Play forbids an app
+      updating itself outside Play and restricts this permission, so the Play
+      build must not declare it. It lets the app hand an APK to the system
+      installer; the user still confirms every install, and Android still
+      refuses one signed by any other key.
+    -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application>
+        <!--
+          How the downloaded APK reaches the system installer: a content://
+          grant, as for attachments. A subclass rather than FileProvider itself,
+          because :core:data already declares androidx.core.content.FileProvider
+          for blobs and two providers with one class name merge into one.
+        -->
+        <provider
+            android:name=".update.UpdateFileProvider"
+            android:authorities="${applicationId}.updates"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/update_paths" />
+        </provider>
+    </application>
+
+</manifest>

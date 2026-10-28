@@ -22,4 +22,7 @@ interface MailDestinations {
 
     /** Opens the calendar, for a reminder that was tapped. */
     fun openCalendar(): PendingIntent
+
+    /** Opens the app on the version section, for an update notice that was tapped. */
+    fun openUpdate(): PendingIntent
 }

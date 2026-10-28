@@ -81,6 +81,26 @@ comes from the Play Console (Users and permissions), as app permissions for plMa
 information, release to testing tracks, and manage store presence (for the listing), plus release
 to production if the workflow should ever upload to that track. Its JSON key is the `PLAY_SERVICE_ACCOUNT_JSON` secret.
 
+## The in-app updater
+
+The `foss` build checks `/releases/latest` once a day and offers the `plmail-<version>-foss.apk`
+asset of a newer release, which it downloads, checks against the size and the SHA-256 GitHub
+publishes for the asset, and hands to the system installer. Nothing about cutting a release changes
+for it, with three things to know:
+
+- **The asset names are its contract.** It looks for an asset ending in `-foss.apk`; renaming the
+  assets in the workflow switches every install's updater off without an error anywhere.
+- **Pre-releases are never offered.** `/releases/latest` skips them, so a `v0.5.0-rc1` reaches
+  only the people who install it by hand.
+- **It only runs on builds signed with the release key.** `FossAppUpdater` compares the app's
+  signing certificate with `RELEASE_CERT_SHA256`, the SHA-256 that
+  `apksigner verify --print-certs` prints for a released APK. Debug builds, forks and anything
+  F-Droid signs with its own key show the version and no update button. If the release key is ever
+  replaced, that constant has to change in the same release.
+
+The `google` flavour has no updater at all: Play updates it, and Play's policy forbids anything
+else, so `REQUEST_INSTALL_PACKAGES` is declared in the foss manifest only.
+
 ## Secrets
 
 Five, set under **Settings → Secrets and variables → Actions**. Without the first four the release

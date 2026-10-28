@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -98,6 +99,7 @@ fun DiagnosticsScreen(onBack: () -> Unit, viewModel: DiagnosticsViewModel = hilt
                     ),
             verticalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.large),
         ) {
+            UpdatesSection()
             Server(report)
             Accounts(report.accounts, report.repagedAccounts)
             Push(report, onRetry = viewModel::retryPush)
@@ -390,13 +392,20 @@ internal fun Fact(label: String, value: String, isMonospace: Boolean = false) {
 
 /** A short block of prose that carries a tone — something is wrong, or worth knowing. */
 @Composable
-internal fun Note(text: String, tone: PaneTone, isMonospace: Boolean = false) {
+internal fun Note(
+    text: String,
+    tone: PaneTone,
+    isMonospace: Boolean = false,
+    maxLines: Int = Int.MAX_VALUE,
+) {
     PlMailPane(modifier = Modifier.fillMaxWidth(), tone = tone) {
         Text(
             text = text,
             style = MaterialTheme.typography.bodySmall,
             fontFamily = if (isMonospace) FontFamily.Monospace else null,
             color = PlMailTheme.colors.inkSoft,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(PlMailTheme.spacing.small),
         )
     }

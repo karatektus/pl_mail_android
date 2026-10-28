@@ -35,4 +35,9 @@
     -->
     <string name="channel_reminders">Erinnerungen</string>
     <string name="channel_reminders_description">Kalendererinnerungen, zu der Zeit, die du am Termin eingestellt hast.</string>
+
+    <string name="channel_updates">App-Updates</string>
+    <string name="channel_updates_description">Eine neue plMail-Version ist auf GitHub verfügbar.</string>
+    <string name="update_available_title">plMail %1$s ist verfügbar</string>
+    <string name="update_available_text">Tippen, um die Änderungen zu sehen und sie zu installieren.</string>
 </resources>

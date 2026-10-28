@@ -48,6 +48,21 @@ constructor(@param:ApplicationContext private val context: Context) : MailDestin
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+    /**
+     * The main activity on the version section. One request code: every update notice opens the
+     * same place, and there is only ever one of them in the shade.
+     */
+    override fun openUpdate(): PendingIntent =
+        PendingIntent.getActivity(
+            context,
+            UPDATE_REQUEST,
+            Intent(context, MainActivity::class.java).apply {
+                action = ACTION_OPEN_UPDATE
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
     private fun activity(
         action: String,
         accountKey: String,
@@ -91,6 +106,9 @@ sealed interface NotificationRequest {
     data class OpenConversation(val accountKey: String, val threadId: String) : NotificationRequest
 
     data class Reply(val accountKey: String, val emailId: String) : NotificationRequest
+
+    /** A newer release was announced; show the version section with its notes. */
+    data object OpenUpdate : NotificationRequest
 }
 
 /**
@@ -101,6 +119,10 @@ sealed interface NotificationRequest {
  * inbox instead of the conversation, silently and only in release.
  */
 fun Intent.notificationRequest(): NotificationRequest? {
+    // The one request that is about the app rather than a mailbox, so it
+    // carries no account and is read before the extras are demanded.
+    if (action == ACTION_OPEN_UPDATE) return NotificationRequest.OpenUpdate
+
     val account = getStringExtra(EXTRA_ACCOUNT) ?: return null
     val objectId = getStringExtra(EXTRA_OBJECT) ?: return null
 
@@ -113,6 +135,8 @@ fun Intent.notificationRequest(): NotificationRequest? {
 
 private const val ACTION_OPEN_CONVERSATION = "de.plmail.OPEN_CONVERSATION"
 private const val ACTION_REPLY = "de.plmail.REPLY"
+private const val ACTION_OPEN_UPDATE = "de.plmail.OPEN_UPDATE"
 private const val EXTRA_ACCOUNT = "account"
 private const val EXTRA_OBJECT = "object"
 private const val CALENDAR_REQUEST = 0x63616c
+private const val UPDATE_REQUEST = 0x757064

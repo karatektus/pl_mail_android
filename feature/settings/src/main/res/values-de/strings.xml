@@ -267,4 +267,18 @@
     <string name="encryption_forget_explains">Verschlüsselte Mails lassen sich hier erst wieder öffnen, wenn du die Schlüssel per Kopplung oder mit deinem Passwort zurückholst. Auf deinem Server ändert sich nichts.</string>
     <string name="encryption_forget_confirm">Entfernen</string>
     <string name="encryption_forget_cancel">Behalten</string>
+
+    <string name="updates_title">Version</string>
+    <string name="updates_installed">Installiert</string>
+    <string name="updates_available">Verfügbar</string>
+    <string name="updates_not_supported">Diese Version wird über ihre Bezugsquelle aktualisiert: Google Play, F-Droid oder dein eigener Build.</string>
+    <string name="updates_check">Nach Updates suchen</string>
+    <string name="updates_check_explains">Fragt GitHub nach der neuesten Version. Dein Mailserver wird nicht kontaktiert.</string>
+    <string name="updates_up_to_date">Das ist die neueste Version.</string>
+    <string name="updates_install">Herunterladen und installieren</string>
+    <string name="updates_downloading">Wird heruntergeladen… %1$d%%</string>
+    <string name="updates_open_installer">Installation öffnen</string>
+    <string name="updates_retry">Erneut versuchen</string>
+    <string name="updates_failed">Update fehlgeschlagen: %1$s</string>
+    <string name="updates_auto_check">Täglich nach Updates suchen</string>
 </resources>

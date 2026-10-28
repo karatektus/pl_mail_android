@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The one directory the updater downloads into, and nothing above it — the
+  same rule as plmail_blob_paths: a grant on the APK is not a grant on the
+  rest of the app's files.
+-->
+<paths>
+    <files-path name="updates" path="updates/" />
+</paths>
