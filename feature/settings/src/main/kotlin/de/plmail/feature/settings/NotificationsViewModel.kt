@@ -35,6 +35,12 @@ constructor(private val settings: NotificationSettingsRepository) : ViewModel() 
             initialValue = NotifiableScopes(),
         )
 
+    init {
+        // The switches may have been changed in a browser since the phone last
+        // looked; the screen is where that matters most.
+        viewModelScope.launch { settings.refresh() }
+    }
+
     fun setEnabled(key: String, enabled: Boolean) {
         viewModelScope.launch { settings.setEnabled(key, enabled) }
     }

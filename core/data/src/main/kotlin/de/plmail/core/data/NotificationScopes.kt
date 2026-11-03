@@ -84,17 +84,26 @@ sealed interface NotifyScope {
 /**
  * Whether one scope key may interrupt.
  *
- * Three states rather than two, and the third is the reason [NotificationPrefs] holds two sets:
- * "never said" is not the same as "said no". Only the first is allowed to fall through to the
- * default, which is why switching Primary off stays off across a restart instead of being helpfully
- * restored by a store that could not tell the difference.
+ * Where the server keeps the switches ([NotificationPrefs.server]) its list decides alone.
+ * Otherwise, three states rather than two, and the third is the reason [NotificationPrefs] holds
+ * two sets: "never said" is not the same as "said no". Only the first is allowed to fall through to
+ * the default, which is why switching Primary off stays off across a restart instead of being
+ * helpfully restored by a store that could not tell the difference.
  */
-fun NotificationPrefs.allows(key: String): Boolean =
-    when {
+fun NotificationPrefs.allows(key: String): Boolean {
+    // The server's list, where it keeps one (pl_mail#369), is the whole answer:
+    // the user chose once for every device, and its default is already spelled
+    // out in it.
+    server?.let {
+        return key in it
+    }
+
+    return when {
         key in disabled -> false
         key in enabled -> true
         else -> key == NotifyScope.PRIMARY.key
     }
+}
 
 /**
  * Every scope one arriving message falls under.

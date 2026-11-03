@@ -48,6 +48,7 @@ class NotificationPrefsStore @Inject constructor(private val preferences: DataSt
                 NotificationPrefs(
                     enabled = stored[ENABLED].split().toSet(),
                     disabled = stored[DISABLED].split().toSet(),
+                    server = stored[SERVER]?.split()?.toSet(),
                 )
             }
             // The settings screen and the sync path both read this, and the file
@@ -84,9 +85,30 @@ class NotificationPrefsStore @Inject constructor(private val preferences: DataSt
         }
     }
 
+    /**
+     * The server's list of switches that are on, as last read or written (pl_mail#369).
+     *
+     * Kept beside the two local sets rather than in place of them. On a server that keeps the
+     * switches this list is the whole answer and the local sets are not read; on one that does not
+     * — an older plMail, or after switching to one — [clearServer] puts the phone's own choices
+     * back exactly as they were. Nothing is copied between the two: the user decided against
+     * carrying the phone's choices up to the server.
+     */
+    suspend fun setServer(scopes: Collection<String>) {
+        preferences.edit { store -> store[SERVER] = scopes.distinct().joinToString(SEPARATOR) }
+    }
+
+    /** The server no longer keeps the switches; the phone's own apply again. */
+    suspend fun clearServer() {
+        preferences.edit { store -> store.remove(SERVER) }
+    }
+
     private companion object {
         val ENABLED = stringPreferencesKey("notify_scopes_enabled")
         val DISABLED = stringPreferencesKey("notify_scopes_disabled")
+
+        /** Absent: the server keeps no list. Present and empty: it keeps one, and nothing is on. */
+        val SERVER = stringPreferencesKey("notify_scopes_server")
 
         /**
          * Newline, exactly as [AccountPrefsStore] uses, and for the same reason: a label key is
@@ -110,4 +132,9 @@ class NotificationPrefsStore @Inject constructor(private val preferences: DataSt
 data class NotificationPrefs(
     val enabled: Set<String> = emptySet(),
     val disabled: Set<String> = emptySet(),
+    /**
+     * The server's list of switches that are on, or null where the server keeps none. When it is
+     * there it is the whole answer: a key is on exactly when it is in it.
+     */
+    val server: Set<String>? = null,
 )

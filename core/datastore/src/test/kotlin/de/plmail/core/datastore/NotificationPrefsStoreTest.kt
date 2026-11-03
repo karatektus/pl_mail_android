@@ -3,6 +3,7 @@ package de.plmail.core.datastore
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
@@ -86,5 +87,27 @@ class NotificationPrefsStoreTest {
 
         assertEquals(setOf(work), prefs.enabled)
         assertEquals(setOf(primary), prefs.disabled)
+    }
+
+    /**
+     * pl_mail#369. The server's list sits beside the phone's own sets and never touches them, so a
+     * server that stops keeping the switches puts the phone's choices back exactly as they were.
+     */
+    @Test
+    fun `the server's list is kept apart and clearing it restores the phone's own`() = runTest {
+        val store = NotificationPrefsStore(EmittingDataStore())
+
+        store.setEnabled(work, enabled = true)
+        store.setServer(listOf(primary, primary))
+
+        assertEquals(setOf(primary), store.prefs.first().server)
+        assertEquals(setOf(work), store.prefs.first().enabled)
+
+        store.setServer(emptyList())
+        assertEquals(emptySet(), store.prefs.first().server, "kept, and empty: nothing is on")
+
+        store.clearServer()
+        assertNull(store.prefs.first().server)
+        assertEquals(setOf(work), store.prefs.first().enabled)
     }
 }

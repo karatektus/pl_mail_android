@@ -168,6 +168,13 @@ data class Session(
         get() = capabilities[Capability.CONTACTS]?.let(ContactsCapability::from)
 
     /**
+     * Whether the server keeps the user's notification switches (pl_mail#369). False on an older
+     * server, where the switches stay on the phone.
+     */
+    val hasNotificationSettings: Boolean
+        get() = capabilities.containsKey(Capability.NOTIFICATIONS)
+
+    /**
      * What the server already knows about how this user wants the app to look.
      *
      * Null means the instance has no appearance extension, which is a supported instance rather
