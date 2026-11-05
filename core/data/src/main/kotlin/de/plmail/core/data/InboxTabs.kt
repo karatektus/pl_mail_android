@@ -8,6 +8,8 @@ import de.plmail.core.database.ThreadEntity
 import de.plmail.jmap.client.JmapClient
 import de.plmail.jmap.mail.EmailFilter
 import de.plmail.jmap.mail.InboxTab
+import de.plmail.jmap.methods.AppearancePatch
+import de.plmail.jmap.methods.AppearanceSet
 import de.plmail.jmap.methods.EmailQuery
 import de.plmail.jmap.methods.EmailQueryResult
 import de.plmail.jmap.methods.InboxTabChanges
@@ -195,6 +197,7 @@ constructor(
     private val database: PlMailDatabase,
     private val clients: AccountClients,
     private val mail: MailRepository,
+    private val repages: RepageSignal,
 ) : InboxTabRefresh {
 
     /**
@@ -214,6 +217,41 @@ constructor(
      */
     val wantsTabs: Flow<Boolean> =
         database.accounts().observeAll().map { it.wantInboxTabs() }.distinctUntilChanged()
+
+    /** Whether this server has inbox tabs at all: the one place switching them means anything. */
+    val serverHasTabs: Flow<Boolean> = cached.map { it.isNotEmpty() }.distinctUntilChanged()
+
+    /**
+     * Switches the inbox between tabs and one list, for this person everywhere (#11): the web's
+     * Inbox tabs switch, written through `Appearance/set`.
+     *
+     * On the device as soon as the server has it — every account row, and a re-page of each one
+     * whose answer changed, which is what a Session saying so would have done. The cached Session
+     * is dropped too, or the next directory refresh would read the old answer out of it and switch
+     * the tabs straight back.
+     *
+     * False where it did not land: no connection, a server that cannot be reached, or one older
+     * than pl_mail v0.4.2, which refuses the property. Nothing changes on the device then.
+     */
+    suspend fun setWantsTabs(wanted: Boolean): Boolean {
+        val client = clients.current() ?: return false
+
+        val landed = runCatching {
+            val request = RequestBuilder(using = Capability.USING_APPEARANCE)
+            val set = request.add(AppearanceSet(AppearancePatch.build { inboxTabs(wanted) }))
+            client.send(request).result(set).refusal == null
+        }
+            .getOrDefault(false)
+
+        if (!landed) return false
+
+        val changed = database.accounts().all().filter { it.wantsInboxTabs != wanted }
+        database.accounts().setWantsInboxTabs(wanted)
+        changed.forEach { repages.repage(it.uid) }
+        runCatching { client.invalidateSession() }
+
+        return true
+    }
 
     /**
      * The tabs to draw, in order: the enabled ones the server listed, or the five built-ins where

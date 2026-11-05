@@ -23,6 +23,10 @@ interface AccountDao {
     @Query("UPDATE accounts SET emailState = :state WHERE uid = :uid")
     suspend fun setEmailState(uid: String, state: String?)
 
+    /** The user-level tabs answer, on every account, as `replaceAccounts` writes it (#11). */
+    @Query("UPDATE accounts SET wantsInboxTabs = :wanted")
+    suspend fun setWantsInboxTabs(wanted: Boolean)
+
     /**
      * The first cursor an account is given, and only the first.
      *

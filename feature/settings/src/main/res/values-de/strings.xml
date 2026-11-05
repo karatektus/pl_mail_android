@@ -274,4 +274,8 @@
     <string name="encryption_forget_explains">Verschlüsselte Mails lassen sich hier erst wieder öffnen, wenn du die Schlüssel per Kopplung oder mit deinem Passwort zurückholst. Auf deinem Server ändert sich nichts.</string>
     <string name="encryption_forget_confirm">Entfernen</string>
     <string name="encryption_forget_cancel">Behalten</string>
+    <string name="appearance_inbox">Posteingang</string>
+    <string name="appearance_inbox_tabs">Tabs im Posteingang</string>
+    <string name="appearance_inbox_tabs_body">Allgemein, Soziale Netzwerke, Werbung und die übrigen. Aus zeigt den Posteingang als eine Liste. Derselbe Schalter wie im Web, er ändert den Posteingang also auch dort.</string>
+    <string name="appearance_inbox_tabs_failed">Der Schalter konnte nicht geändert werden. Der Server ist vielleicht nicht erreichbar oder älter als plMail 0.4.2; schalten Sie ihn stattdessen im Web um.</string>
 </resources>

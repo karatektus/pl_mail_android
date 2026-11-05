@@ -422,4 +422,8 @@
     <string name="encryption_forget_explains">Encrypted mail cannot be opened here until you bring the keys back by pairing or with your password. Nothing changes on your server.</string>
     <string name="encryption_forget_confirm">Remove</string>
     <string name="encryption_forget_cancel">Keep</string>
+    <string name="appearance_inbox">Inbox</string>
+    <string name="appearance_inbox_tabs">Inbox tabs</string>
+    <string name="appearance_inbox_tabs_body">Primary, Social, Promotions and the rest. Off shows the inbox as one list. The same switch as on the web, so it changes the inbox there too.</string>
+    <string name="appearance_inbox_tabs_failed">Could not change it. The server may be unreachable, or older than plMail 0.4.2; switch it on the web instead.</string>
 </resources>

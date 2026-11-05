@@ -239,4 +239,8 @@
     <string name="encryption_forget_explains">Le courrier chiffré ne pourra plus être ouvert ici tant que vous n’aurez pas réimporté les clés, par association ou avec votre mot de passe. Rien ne change sur votre serveur.</string>
     <string name="encryption_forget_confirm">Retirer</string>
     <string name="encryption_forget_cancel">Garder</string>
+    <string name="appearance_inbox">Boîte de réception</string>
+    <string name="appearance_inbox_tabs">Onglets de la boîte de réception</string>
+    <string name="appearance_inbox_tabs_body">Principal, Réseaux sociaux, Promotions et les autres. Désactivé, la boîte de réception s’affiche en une seule liste. C’est le même réglage que sur le web, il change donc aussi la boîte de réception là-bas.</string>
+    <string name="appearance_inbox_tabs_failed">Impossible de le modifier. Le serveur est peut-être injoignable ou antérieur à plMail 0.4.2 ; changez-le plutôt sur le web.</string>
 </resources>

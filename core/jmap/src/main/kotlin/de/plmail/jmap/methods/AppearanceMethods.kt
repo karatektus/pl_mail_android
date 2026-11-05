@@ -209,12 +209,13 @@ data class Appearance(
 /**
  * `Appearance/set` — a patch of the singleton, and only ever a patch.
  *
- * **Nothing in this app calls it.** The method is modelled because the server has it and this
- * module's job is to describe the protocol, not to decide policy — but the one client that used to
- * send it does not any more. Theming a phone is not a statement about the browser on somebody's
- * desk, and while this was wired up, choosing a darker theme on a train restyled a desktop session.
- * See `AppearanceRepository`, which reads the appearance and layers local choices on top without
- * ever writing one. Before reaching for this, be sure you have a reason the phone gets to decide.
+ * **One property is sent, and nothing else**: [Builder.inboxTabs] (#11), the web's Inbox tabs
+ * switch, which is a choice about the person's mail rather than about how this phone looks. For the
+ * appearance itself, the one client that used to send it does not any more. Theming a phone is not
+ * a statement about the browser on somebody's desk, and while this was wired up, choosing a darker
+ * theme on a train restyled a desktop session. See `AppearanceRepository`, which reads the
+ * appearance and layers local choices on top without ever writing one. Before reaching for this, be
+ * sure you have a reason the phone gets to decide.
  *
  * `create` and `destroy` are answered with the spec's `singleton` `SetError`, so neither is offered
  * here. What is offered is one `update` of named properties, which matters for a reason that is not
@@ -299,6 +300,14 @@ class AppearancePatch private constructor(private val fields: Map<String, JsonEl
 
         /** See [accountCorner] — a real JSON boolean, never `"1"`. */
         fun listAvatars(shown: Boolean) = apply { fields["listAvatars"] = JsonPrimitive(shown) }
+
+        /**
+         * The web's Inbox tabs switch (pl_mail#479, android#11): the inbox in category tabs, or one
+         * list. Stored with the category settings rather than the appearance, served on the
+         * singleton since pl_mail v0.4.2; an older server refuses it as an unknown property. A real
+         * JSON boolean, like [accountCorner].
+         */
+        fun inboxTabs(shown: Boolean) = apply { fields["inboxTabs"] = JsonPrimitive(shown) }
 
         /**
          * How many lines of preview a list row shows: none, one or two.
