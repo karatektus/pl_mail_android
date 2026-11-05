@@ -579,6 +579,9 @@ interface FeedDao {
     @Query("DELETE FROM feed_cursors WHERE feedId = :feedId")
     suspend fun clearCursors(feedId: String)
 
+    @Query("DELETE FROM feed_cursors WHERE feedId = :feedId AND accountKey = :accountKey")
+    suspend fun clearCursor(feedId: String, accountKey: String)
+
     /**
      * Every list this account has actually been paged into.
      *

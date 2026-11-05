@@ -1,5 +1,6 @@
 package de.plmail.core.data
 
+import androidx.room.withTransaction
 import de.plmail.core.database.AccountEntity
 import de.plmail.core.database.InboxTabEntity
 import de.plmail.core.database.PlMailDatabase
@@ -169,6 +170,10 @@ internal fun ThreadEntity.inboxFeedId(
             tabKey(enabled)?.let(::tabFeedId) ?: MailCategory.PRIMARY.feedId.takeIf { !classifies }
     }
 
+/** The lists the inbox is divided into: a built-in category's, or a tab of the reader's own. */
+private fun isInboxFeed(feedId: String): Boolean =
+    MailCategory.entries.any { it.feedId == feedId } || feedId.startsWith(TAB_FEED_PREFIX)
+
 /**
  * Refreshes one account's tabs. A seam rather than the repository, for the reason
  * [ReachableAccounts] is one: the push path needs this one method and none of the rest.
@@ -197,7 +202,6 @@ constructor(
     private val database: PlMailDatabase,
     private val clients: AccountClients,
     private val mail: MailRepository,
-    private val repages: RepageSignal,
 ) : InboxTabRefresh {
 
     /**
@@ -225,10 +229,10 @@ constructor(
      * Switches the inbox between tabs and one list, for this person everywhere (#11): the web's
      * Inbox tabs switch, written through `Appearance/set`.
      *
-     * On the device as soon as the server has it — every account row, and a re-page of each one
-     * whose answer changed, which is what a Session saying so would have done. The cached Session
-     * is dropped too, or the next directory refresh would read the old answer out of it and switch
-     * the tabs straight back.
+     * On the device as soon as the server has it — every account row, and the inbox lists that were
+     * divided by the old answer, emptied so they are paged again under the new one. The cached
+     * Session is dropped too, or the next directory refresh would read the old answer out of it and
+     * switch the tabs straight back.
      *
      * False where it did not land: no connection, a server that cannot be reached, or one older
      * than pl_mail v0.4.2, which refuses the property. Nothing changes on the device then.
@@ -246,8 +250,24 @@ constructor(
         if (!landed) return false
 
         val changed = database.accounts().all().filter { it.wantsInboxTabs != wanted }
-        database.accounts().setWantsInboxTabs(wanted)
-        changed.forEach { repages.repage(it.uid) }
+
+        database.withTransaction {
+            database.accounts().setWantsInboxTabs(wanted)
+
+            // The inbox lists those accounts were paged into were filtered by
+            // the old answer: Primary held only primary mail, and the tabs held
+            // the rest. Dropped, and not re-paged from here: a re-page runs in
+            // whichever pager is collecting, and that pager was built under the
+            // old answer, so it put the old filter's rows straight back (#11,
+            // seen on a phone). The mail list rebuilds its pager when this
+            // answer changes, and a pager over an empty feed pages it afresh.
+            changed.forEach { account ->
+                database.feed().feedsPagedBy(account.uid).filter(::isInboxFeed).forEach { feed ->
+                    database.feed().clearAccountFromFeed(feed, account.uid)
+                    database.feed().clearCursor(feed, account.uid)
+                }
+            }
+        }
         runCatching { client.invalidateSession() }
 
         return true

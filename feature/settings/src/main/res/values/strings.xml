@@ -154,7 +154,7 @@
       discovered afterwards.
     -->
     <string name="appearance_sync">Match the web</string>
-    <string name="appearance_sync_body">Anything you have not set here follows plMail in your browser. Turn it off to freeze this phone\'s look where it is. Nothing you change on this screen ever reaches your browser either way. Turning it back on takes the browser\'s settings again and discards the phone\'s.</string>
+    <string name="appearance_sync_body">Anything you have not set here follows plMail in your browser. Turn it off to freeze this phone\'s look where it is. Nothing you change on this screen reaches your browser either way, except Inbox tabs below, which is the same switch as on the web. Turning it back on takes the browser\'s settings again and discards the phone\'s.</string>
 
     <string name="appearance_theme">Theme</string>
     <string name="theme_system">Follow the system</string>

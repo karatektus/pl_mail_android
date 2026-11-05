@@ -9,10 +9,10 @@ import de.plmail.jmap.testing.RecordingTransport
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -211,8 +211,13 @@ class InboxTabsTest {
 
     /** #11: the switch is the server's, and the device follows only once the server has it. */
     @Test
-    fun `switching the tabs off writes the web's switch and re-pages the inbox`() = runTest {
+    fun `switching the tabs off writes the web's switch and empties the divided lists`() = runTest {
         database.seedAccount()
+        database.seedInbox()
+        database.seedThread("t1")
+        database.seedEntry(MailCategory.PRIMARY.feedId, "t1")
+        database.seedCursor(MailCategory.PRIMARY.feedId)
+        database.seedCursor(Feed.UNIFIED_INBOX.id)
         val asked = mutableListOf<String>()
         val transport =
             serving(TEST_SESSION) { body ->
@@ -221,18 +226,19 @@ class InboxTabsTest {
                    {"oldState":"a","newState":"b","updated":{"singleton":null},
                     "notUpdated":{}},"c0"]]}"""
             }
-        val repaged = mutableListOf<String>()
-        val collecting = backgroundScope.launch { repages.accounts.collect { repaged += it } }
-        testScheduler.runCurrent()
-
         assertTrue(repository(transport).setWantsTabs(false))
-        testScheduler.runCurrent()
 
         assertTrue(asked.single().contains(""""inboxTabs":false"""))
         assertTrue(asked.single().contains("urn:plmail:params:jmap:appearance"))
         assertFalse(database.accounts().byUid(testAccountKey)!!.wantsInboxTabs)
-        assertEquals(listOf(testAccountKey), repaged)
-        collecting.cancel()
+        // Dropped, so the list -- rebuilt on the new answer -- pages Primary as
+        // the whole inbox rather than keeping the primary mail it held.
+        assertEquals(emptyList(), database.entryIds(MailCategory.PRIMARY.feedId))
+        assertNull(database.feed().cursor(MailCategory.PRIMARY.feedId, testAccountKey))
+        assertNotNull(
+            database.feed().cursor(Feed.UNIFIED_INBOX.id, testAccountKey),
+            "the unified inbox is not divided, so it is left alone",
+        )
     }
 
     /** An older server refuses the property; nothing on the device may claim otherwise. */
@@ -519,9 +525,7 @@ class InboxTabsTest {
         )
 
     private suspend fun repository(transport: RecordingTransport) =
-        InboxTabRepository(database, testClients(transport), MailRepository(database), repages)
-
-    private val repages = RepageSignal()
+        InboxTabRepository(database, testClients(transport), MailRepository(database))
 
     /** A `Thread/set` that accepted the move, or refused it the way the server refuses a key. */
     private fun threadSet(updated: Boolean): String {

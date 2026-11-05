@@ -94,7 +94,7 @@
     <string name="appearance_language_system">Das ist dieselbe Einstellung wie die von Android unter Einstellungen → Apps → plMail → Sprache. Eine Änderung an einer der beiden Stellen ändert beide.</string>
 
     <string name="appearance_sync">Wie im Web</string>
-    <string name="appearance_sync_body">Was Sie hier nicht selbst einstellen, folgt plMail in Ihrem Browser. Ausgeschaltet bleibt dieses Telefon bei dem, was es gerade zeigt. Was Sie auf diesem Bildschirm ändern, erreicht Ihren Browser so oder so nie. Beim Wiedereinschalten gelten wieder die Einstellungen des Browsers; die des Telefons werden verworfen.</string>
+    <string name="appearance_sync_body">Was Sie hier nicht selbst einstellen, folgt plMail in Ihrem Browser. Ausgeschaltet bleibt dieses Telefon bei dem, was es gerade zeigt. Was Sie auf diesem Bildschirm ändern, erreicht Ihren Browser so oder so nicht – außer „Tabs im Posteingang“ unten, derselbe Schalter wie im Web. Beim Wiedereinschalten gelten wieder die Einstellungen des Browsers; die des Telefons werden verworfen.</string>
 
     <string name="appearance_theme">Farbschema</string>
     <string name="theme_system">Wie das System</string>
