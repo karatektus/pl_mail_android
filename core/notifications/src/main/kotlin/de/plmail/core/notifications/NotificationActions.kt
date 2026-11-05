@@ -13,12 +13,13 @@ import de.plmail.core.data.ApplicationScope
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailActions
 import de.plmail.core.data.NewMessage
+import de.plmail.core.data.ShadeAction
 import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
- * Archive and mark-read, straight from the shade.
+ * The notification's buttons — archive, mark read, delete or star (#93) — straight from the shade.
  *
  * A broadcast rather than an activity, because the point of these is that the phone stays in the
  * user's pocket: an action that unlocks the device and opens the app to archive one message is one
@@ -51,14 +52,11 @@ class NotificationActionReceiver : BroadcastReceiver() {
         if (notificationId != 0) manager.cancel(notificationId)
         tidySummary(context, manager, accountKey)
 
-        val action =
-            when (intent.action) {
-                ACTION_ARCHIVE -> MailAction.Archive
-                ACTION_MARK_READ -> MailAction.MarkRead(seen = true)
-                // A plain dismissal. The summary tidy-up above was the whole
-                // point of hearing about it.
-                else -> return
-            }
+        // A plain dismissal has no button behind it, and the summary tidy-up
+        // above was the whole point of hearing about it.
+        val action: MailAction =
+            SHADE_INTENTS.entries.firstOrNull { it.value == intent.action }?.key?.mailAction
+                ?: return
 
         if (threadId == null) return
 
@@ -117,11 +115,20 @@ internal fun tidySummary(
 /** Builds the intents [NotificationActionReceiver] answers. */
 internal object NotificationActions {
 
-    fun archive(context: Context, message: NewMessage, notificationId: Int): PendingIntent =
-        pending(context, ACTION_ARCHIVE, message.accountKey, message.threadId, notificationId)
-
-    fun markRead(context: Context, message: NewMessage, notificationId: Int): PendingIntent =
-        pending(context, ACTION_MARK_READ, message.accountKey, message.threadId, notificationId)
+    /** One of the buttons beside Reply (#93). Never asked for [ShadeAction.NONE]. */
+    fun button(
+        context: Context,
+        message: NewMessage,
+        notificationId: Int,
+        button: ShadeAction,
+    ): PendingIntent =
+        pending(
+            context,
+            SHADE_INTENTS.getValue(button),
+            message.accountKey,
+            message.threadId,
+            notificationId,
+        )
 
     /** Fired by the system when the user swipes the notification away. */
     fun dismissed(context: Context, accountKey: String, notificationId: Int): PendingIntent =
@@ -160,8 +167,18 @@ internal object NotificationActions {
     }
 }
 
-private const val ACTION_ARCHIVE = "de.plmail.notifications.ARCHIVE"
-private const val ACTION_MARK_READ = "de.plmail.notifications.MARK_READ"
+/**
+ * The intent action each button fires. Archive and Mark read keep the strings they always had, so a
+ * notification posted by the previous build still works after an update.
+ */
+private val SHADE_INTENTS =
+    mapOf(
+        ShadeAction.ARCHIVE to "de.plmail.notifications.ARCHIVE",
+        ShadeAction.MARK_READ to "de.plmail.notifications.MARK_READ",
+        ShadeAction.TRASH to "de.plmail.notifications.TRASH",
+        ShadeAction.STAR to "de.plmail.notifications.STAR",
+    )
+
 private const val ACTION_DISMISSED = "de.plmail.notifications.DISMISSED"
 
 private const val EXTRA_ACCOUNT = "account"

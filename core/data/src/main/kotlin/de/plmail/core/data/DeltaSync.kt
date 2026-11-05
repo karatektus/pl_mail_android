@@ -21,6 +21,7 @@ import de.plmail.jmap.protocol.JmapError
 import de.plmail.jmap.protocol.MethodHandle
 import de.plmail.jmap.protocol.RequestBuilder
 import de.plmail.jmap.protocol.StateToken
+import de.plmail.jmap.protocol.ThreadId
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -329,15 +330,20 @@ constructor(
             val result = results.result(changes)
             val threadResult = threadChanges?.let { results.result(it) }
 
+            // Conversations that lost a message this round. Read before the
+            // delete, because the delete is what forgets which ones they were.
+            val shrunk = mutableSetOf<String>()
+
             if (result.destroyed.isNotEmpty()) {
-                database
-                    .emails()
-                    .delete(result.destroyed.map { StoreKey.objectKey(accountKey, it.value) })
+                val uids = result.destroyed.map { StoreKey.objectKey(accountKey, it.value) }
+                shrunk += database.emails().threadIdsOf(uids)
+                database.emails().delete(uids)
 
                 destroyed += result.destroyed.size
             }
 
-            fetched += hydrate(client, accountId, accountKey, result.changed)
+            val hydrated = mutableSetOf<String>()
+            fetched += hydrate(client, accountId, accountKey, result.changed, hydrated)
 
             // After the hydration, so a merge has already re-filed the messages
             // under the conversation they joined before the one they left goes.
@@ -345,6 +351,21 @@ constructor(
                 mail.forgetThreads(accountKey, threads.destroyed.map { it.value })
                 destroyed += threads.destroyed.size
             }
+
+            // #72: a conversation that loses a message and survives. Nothing
+            // above rebuilds its row -- the hydration only covers conversations
+            // that gained or changed a message -- so it kept its old count,
+            // participants and preview: two discarded reply drafts went on
+            // reading "3 messages" with the draft as the preview. The ones the
+            // hydration already summarised, and the ones the server destroyed
+            // outright, need nothing more.
+            val gone = threadResult?.destroyed.orEmpty().map { it.value }.toSet()
+            resummarise(
+                client,
+                accountId,
+                accountKey,
+                shrunk + threadResult?.updated.orEmpty().map { it.value } - gone - hydrated,
+            )
 
             cursor = StateToken(result.newState)
             threadCursor = threadResult?.let { StateToken(it.newState) }
@@ -371,6 +392,54 @@ constructor(
         else SyncResult.Updated(fetched, destroyed)
     }
 
+    /**
+     * Rebuilds the rows of conversations that changed without any of their messages changing (#72):
+     * a message destroyed out of them, which `Email/changes` reports as the message alone.
+     *
+     * Only conversations the device already holds. `Thread/changes` reports every conversation on
+     * the server, and a row made here for one nobody has paged would be a conversation with no
+     * messages in it.
+     *
+     * Every remaining message comes with the conversation, as list-row properties, so the row is
+     * summarised from what the conversation now holds rather than from whatever the cache happened
+     * to have of it. Nothing is announced: a message that is left over is not new mail.
+     */
+    private suspend fun resummarise(
+        client: JmapClient,
+        accountId: AccountId,
+        accountKey: String,
+        threadIds: Set<String>,
+    ) {
+        val held =
+            threadIds.filter {
+                database.threads().byUid(StoreKey.objectKey(accountKey, it)) != null
+            }
+
+        held.chunked(HYDRATION_CHUNK).forEach { chunk ->
+            val request = RequestBuilder()
+            val threads = request.add(ThreadGet(accountId, ids = chunk.map(::ThreadId)))
+            val emails =
+                request.add(EmailGet(accountId, idsReference = threads.reference("/list/*/emailIds")))
+
+            val results = client.send(request)
+            val conversations = results.result(threads)
+            val remaining = results.resultOrNull(emails)?.list.orEmpty()
+
+            // Gone by the time it was asked: what Thread/changes will say next round.
+            mail.forgetThreads(accountKey, conversations.notFound.map { it.value })
+
+            mail.storeEmails(
+                accountKey,
+                remaining,
+                conversations.list,
+                fetchedAt = System.currentTimeMillis(),
+                members = remaining,
+            )
+
+            projection.reconcile(accountKey, conversations.list.map { it.id.value }.toSet())
+        }
+    }
+
     private suspend fun discardCursors(accountKey: String) {
         database.accounts().setEmailState(accountKey, null)
         database.accounts().setThreadState(accountKey, null)
@@ -388,6 +457,8 @@ constructor(
         accountId: AccountId,
         accountKey: String,
         ids: List<EmailId>,
+        /** Collects every conversation this hydration summarised. */
+        summarised: MutableSet<String>,
     ): Int {
         var count = 0
 
@@ -517,11 +588,12 @@ constructor(
             // The same union of thread ids storeEmails summarised: a page
             // carrying one reply comes with its conversation, and a message
             // whose Thread/get did not answer still moved a list it is in.
-            projection.reconcile(
-                accountKey,
+            val touched =
                 (conversations.map { it.id.value } + emails.mapNotNull { it.threadId?.value })
-                    .toSet(),
-            )
+                    .toSet()
+            summarised += touched
+
+            projection.reconcile(accountKey, touched)
 
             count += emails.size
 

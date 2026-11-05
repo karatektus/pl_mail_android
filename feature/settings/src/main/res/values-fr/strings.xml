@@ -173,6 +173,13 @@
     <string name="notifications_labels">Libellés</string>
     <string name="notifications_labels_explains">Activez un libellé pour être prévenu du courrier qui y arrive, même quand une règle de votre serveur l’a tenu hors de la boîte de réception.</string>
     <string name="notifications_no_labels">Aucun libellé n’a encore été synchronisé sur cet appareil.</string>
+    <string name="notifications_buttons">Boutons</string>
+    <string name="notifications_buttons_explains">Les deux boutons qu’une notification de courrier affiche à côté de Répondre. Sur ce téléphone uniquement.</string>
+    <string name="notifications_button_first">Premier bouton</string>
+    <string name="notifications_button_second">Deuxième bouton</string>
+    <string name="notifications_button_none">Aucun bouton</string>
+    <string name="notifications_button_read">Marquer comme lu</string>
+    <string name="notifications_button_star">Suivre</string>
     <string name="notifications_scope_a11y">Me prévenir pour %1$s</string>
     <string name="swipe_title">Balayage des lignes</string>
     <string name="swipe_to_end">Balayer vers la droite</string>

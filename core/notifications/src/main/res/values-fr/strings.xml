@@ -7,6 +7,8 @@
     <string name="encrypted_message">Message chiffré</string>
     <string name="action_archive">Archiver</string>
     <string name="action_mark_read">Marquer comme lu</string>
+    <string name="action_trash">Supprimer</string>
+    <string name="action_star">Suivre</string>
     <string name="action_reply">Répondre</string>
     <string name="action_try_again">Réessayer</string>
     <string name="reply_hint">Votre réponse</string>

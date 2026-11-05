@@ -9,6 +9,8 @@
 
     <string name="action_archive">Archivieren</string>
     <string name="action_mark_read">Als gelesen markieren</string>
+    <string name="action_trash">Löschen</string>
+    <string name="action_star">Markieren</string>
     <string name="action_reply">Antworten</string>
     <string name="action_try_again">Erneut versuchen</string>
 

@@ -390,6 +390,13 @@ interface EmailDao {
     @Query("DELETE FROM emails WHERE uid IN (:uids)") suspend fun delete(uids: List<String>)
 
     /**
+     * The conversations these messages are filed under, read before a delta sync deletes them
+     * (#72): a conversation that loses a message and survives has to have its row worked out again.
+     */
+    @Query("SELECT DISTINCT threadId FROM emails WHERE uid IN (:uids) AND threadId IS NOT NULL")
+    suspend fun threadIdsOf(uids: List<String>): List<String>
+
+    /**
      * Which of these the cache already holds.
      *
      * The question a sync asks to work out what is *new to this device*, which is a different

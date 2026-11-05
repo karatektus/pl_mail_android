@@ -348,6 +348,13 @@
     <string name="notifications_labels">Labels</string>
     <string name="notifications_labels_explains">Switch a label on to be told about mail that lands there, even when a rule on your server kept it out of the inbox.</string>
     <string name="notifications_no_labels">No labels have been synced to this device yet.</string>
+    <string name="notifications_buttons">Buttons</string>
+    <string name="notifications_buttons_explains">The two buttons a mail notification shows beside Reply. On this phone only.</string>
+    <string name="notifications_button_first">First button</string>
+    <string name="notifications_button_second">Second button</string>
+    <string name="notifications_button_none">No button</string>
+    <string name="notifications_button_read">Mark read</string>
+    <string name="notifications_button_star">Star</string>
 
     <!-- Names the scope, because every row's switch is otherwise identical. -->
     <string name="notifications_scope_a11y">Notify me about %1$s</string>

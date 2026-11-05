@@ -26,6 +26,8 @@
 
     <string name="action_archive">Archive</string>
     <string name="action_mark_read">Mark read</string>
+    <string name="action_trash">Delete</string>
+    <string name="action_star">Star</string>
     <string name="action_reply">Reply</string>
     <string name="action_try_again">Try again</string>
 

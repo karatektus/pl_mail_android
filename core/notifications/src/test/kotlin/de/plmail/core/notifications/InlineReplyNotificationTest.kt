@@ -12,6 +12,8 @@ import androidx.core.app.RemoteInput
 import androidx.test.core.app.ApplicationProvider
 import de.plmail.core.data.InlineReplyResult
 import de.plmail.core.data.NewMessage
+import de.plmail.core.data.ShadeAction
+import de.plmail.core.data.ShadeActions
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -335,11 +337,63 @@ class InlineReplyNotificationTest {
     }
 
     @Test
+    fun `the shade offers archive and mark read unless somebody chose otherwise`() {
+        assertEquals(
+            listOf(
+                context.getString(R.string.action_archive),
+                context.getString(R.string.action_mark_read),
+            ),
+            actionsOf(conversation()).filter { it.remoteInputs.isNullOrEmpty() }.map { it.title },
+        )
+    }
+
+    /** #93: Delete instead of Mark read, and Reply where it always was. */
+    @Test
+    fun `the buttons beside reply are the ones chosen in settings`() {
+        val shown =
+            conversationNotification(
+                context,
+                message,
+                "channel",
+                groupKey(message.accountKey),
+                Destinations,
+                ShadeActions(first = ShadeAction.TRASH, second = ShadeAction.STAR),
+            )
+
+        assertEquals(
+            listOf(
+                context.getString(R.string.action_trash),
+                context.getString(R.string.action_star),
+            ),
+            actionsOf(shown).filter { it.remoteInputs.isNullOrEmpty() }.map { it.title },
+        )
+        assertNotNull(replyAction(shown))
+    }
+
+    @Test
+    fun `no button and the same button twice leave one action beside reply`() {
+        val shown =
+            conversationNotification(
+                context,
+                message,
+                "channel",
+                groupKey(message.accountKey),
+                Destinations,
+                ShadeActions(first = ShadeAction.NONE, second = ShadeAction.TRASH),
+            )
+        val twice =
+            ShadeActions(first = ShadeAction.ARCHIVE, second = ShadeAction.ARCHIVE).shown
+
+        assertEquals(2, actionsOf(shown).size)
+        assertEquals(listOf(ShadeAction.ARCHIVE), twice)
+    }
+
+    @Test
     fun `an empty reply puts the conversation back exactly as it was`() {
         // The system has already swapped the row for a spinner and is waiting for
         // this app to post something. Posting nothing leaves it spinning until
         // the phone is rebooted.
-        notifications().restore(message)
+        notifications().restore(message, ShadeActions())
 
         val shown = assertNotNull(posted(notificationId(message)))
         val messages = messagesIn(shown)

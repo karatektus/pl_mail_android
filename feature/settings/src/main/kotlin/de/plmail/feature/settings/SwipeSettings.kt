@@ -210,7 +210,27 @@ private fun Direction(
 }
 
 @Composable
-private fun SwipeChoice(title: String, chosen: SwipeAction, onChoose: (SwipeAction) -> Unit) {
+private fun SwipeChoice(title: String, chosen: SwipeAction, onChoose: (SwipeAction) -> Unit) =
+    MenuChoice(
+        title = title,
+        chosen = chosen,
+        options = SwipeAction.entries,
+        label = { stringResource(it.label()) },
+        onChoose = onChoose,
+    )
+
+/**
+ * A title and a menu of answers, the chosen one shown in the closed box. Shared by the swipe
+ * directions and the notification buttons, which ask the same kind of question.
+ */
+@Composable
+internal fun <T> MenuChoice(
+    title: String,
+    chosen: T,
+    options: List<T>,
+    label: @Composable (T) -> String,
+    onChoose: (T) -> Unit,
+) {
     val theme = PlMailTheme.values
     val shape = RoundedCornerShape(theme.radii.control)
 
@@ -240,7 +260,7 @@ private fun SwipeChoice(title: String, chosen: SwipeAction, onChoose: (SwipeActi
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = stringResource(chosen.label()),
+                    text = label(chosen),
                     style = MaterialTheme.typography.bodyMedium,
                     color = theme.colors.ink,
                 )
@@ -252,9 +272,9 @@ private fun SwipeChoice(title: String, chosen: SwipeAction, onChoose: (SwipeActi
             }
 
             DropdownMenu(expanded = isOpen, onDismissRequest = { isOpen = false }) {
-                SwipeAction.entries.forEach { action ->
+                options.forEach { action ->
                     DropdownMenuItem(
-                        text = { Text(stringResource(action.label())) },
+                        text = { Text(label(action)) },
                         onClick = {
                             isOpen = false
                             onChoose(action)

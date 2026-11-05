@@ -14,6 +14,8 @@ import de.plmail.core.data.ApplicationScope
 import de.plmail.core.data.InlineReplies
 import de.plmail.core.data.InlineReplyResult
 import de.plmail.core.data.NewMessage
+import de.plmail.core.data.ShadeActions
+import de.plmail.core.data.ShadeActionsRepository
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -60,6 +62,8 @@ class InlineReplyReceiver : BroadcastReceiver() {
 
     @Inject lateinit var notifications: ReplyNotifications
 
+    @Inject lateinit var shadeActions: ShadeActionsRepository
+
     @Inject @ApplicationScope lateinit var scope: CoroutineScope
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -73,7 +77,7 @@ class InlineReplyReceiver : BroadcastReceiver() {
         // and waits for this app to post something, so an early `return` here
         // leaves a notification spinning until the user reboots.
         if (typed.isNullOrBlank()) {
-            notifications.restore(message)
+            scope.launch { notifications.restore(message, shadeActions.current()) }
             return
         }
 
@@ -109,7 +113,8 @@ class InlineReplyReceiver : BroadcastReceiver() {
                     // Not reachable -- the text was checked above -- but the
                     // exhaustive `when` is what keeps it that way if the rule
                     // for "empty" ever moves into :core:data alone.
-                    InlineReplyResult.NothingTyped -> notifications.restore(message)
+                    InlineReplyResult.NothingTyped ->
+                        notifications.restore(message, shadeActions.current())
                     is InlineReplyResult.NotSent ->
                         notifications.failed(message, typed, result.reason)
                 }
@@ -277,7 +282,7 @@ constructor(
      * something has to be posted to take it away, and the honest something is the notification that
      * was there before the user opened the field.
      */
-    fun restore(message: NewMessage) {
+    fun restore(message: NewMessage, buttons: ShadeActions) {
         val channelId = channels.channelFor(message.accountKey, message.accountName)
 
         manager.notifySafely(
@@ -288,6 +293,7 @@ constructor(
                 channelId,
                 groupKey(message.accountKey),
                 destinations,
+                buttons,
             ),
         )
     }
