@@ -10,7 +10,11 @@ jdk = "21"
 
 agp = "9.5.0"
 kotlin = "2.4.21"
-ksp = "2.3.13"
+# 2.3.12, not 2.3.13: on 2.3.13 a module's processing intermittently came out
+# empty (:feature:mail generated no Hilt bindings, so the app crashed on launch
+# creating SidebarViewModel) or failed to see :core:data's types (CI,
+# :feature:calendar:kspReleaseKotlin). Seen twice on 2026-11-05 (#96).
+ksp = "2.3.12"
 
 # Libraries
 androidxCore = "1.19.1"
