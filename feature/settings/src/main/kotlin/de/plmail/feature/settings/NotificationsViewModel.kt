@@ -5,6 +5,9 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import de.plmail.core.data.NotifiableScopes
 import de.plmail.core.data.NotificationSettingsRepository
+import de.plmail.core.data.ShadeAction
+import de.plmail.core.data.ShadeActions
+import de.plmail.core.data.ShadeActionsRepository
 import javax.inject.Inject
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -22,7 +25,10 @@ import kotlinx.coroutines.launch
 @HiltViewModel
 class NotificationsViewModel
 @Inject
-constructor(private val settings: NotificationSettingsRepository) : ViewModel() {
+constructor(
+    private val settings: NotificationSettingsRepository,
+    private val shadeActions: ShadeActionsRepository,
+) : ViewModel() {
 
     val scopes: StateFlow<NotifiableScopes> =
         settings.scopes.stateIn(
@@ -35,6 +41,14 @@ constructor(private val settings: NotificationSettingsRepository) : ViewModel() 
             initialValue = NotifiableScopes(),
         )
 
+    /** The two buttons beside Reply (#93). This phone's alone; nothing goes to the server. */
+    val buttons: StateFlow<ShadeActions> =
+        shadeActions.actions.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = ShadeActions(),
+        )
+
     init {
         // The switches may have been changed in a browser since the phone last
         // looked; the screen is where that matters most.
@@ -43,6 +57,14 @@ constructor(private val settings: NotificationSettingsRepository) : ViewModel() 
 
     fun setEnabled(key: String, enabled: Boolean) {
         viewModelScope.launch { settings.setEnabled(key, enabled) }
+    }
+
+    fun setFirstButton(action: ShadeAction) {
+        viewModelScope.launch { shadeActions.setFirst(action) }
+    }
+
+    fun setSecondButton(action: ShadeAction) {
+        viewModelScope.launch { shadeActions.setSecond(action) }
     }
 
     private companion object {

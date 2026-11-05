@@ -94,7 +94,7 @@
     <string name="appearance_language_system">Das ist dieselbe Einstellung wie die von Android unter Einstellungen → Apps → plMail → Sprache. Eine Änderung an einer der beiden Stellen ändert beide.</string>
 
     <string name="appearance_sync">Wie im Web</string>
-    <string name="appearance_sync_body">Was Sie hier nicht selbst einstellen, folgt plMail in Ihrem Browser. Ausgeschaltet bleibt dieses Telefon bei dem, was es gerade zeigt. Was Sie auf diesem Bildschirm ändern, erreicht Ihren Browser so oder so nie. Beim Wiedereinschalten gelten wieder die Einstellungen des Browsers; die des Telefons werden verworfen.</string>
+    <string name="appearance_sync_body">Was Sie hier nicht selbst einstellen, folgt plMail in Ihrem Browser. Ausgeschaltet bleibt dieses Telefon bei dem, was es gerade zeigt. Was Sie auf diesem Bildschirm ändern, erreicht Ihren Browser so oder so nicht – außer „Tabs im Posteingang“ unten, derselbe Schalter wie im Web. Beim Wiedereinschalten gelten wieder die Einstellungen des Browsers; die des Telefons werden verworfen.</string>
 
     <string name="appearance_theme">Farbschema</string>
     <string name="theme_system">Wie das System</string>
@@ -206,6 +206,13 @@
     <string name="notifications_labels">Labels</string>
     <string name="notifications_labels_explains">Schalten Sie ein Label ein, um über Post dort informiert zu werden — auch dann, wenn eine Regel auf Ihrem Server sie am Posteingang vorbeigeleitet hat.</string>
     <string name="notifications_no_labels">Auf dieses Gerät wurden noch keine Labels synchronisiert.</string>
+    <string name="notifications_buttons">Schaltflächen</string>
+    <string name="notifications_buttons_explains">Die zwei Schaltflächen, die eine Mail-Benachrichtigung neben „Antworten“ zeigt. Nur auf diesem Telefon.</string>
+    <string name="notifications_button_first">Erste Schaltfläche</string>
+    <string name="notifications_button_second">Zweite Schaltfläche</string>
+    <string name="notifications_button_none">Keine Schaltfläche</string>
+    <string name="notifications_button_read">Als gelesen markieren</string>
+    <string name="notifications_button_star">Markieren</string>
 
     <string name="notifications_scope_a11y">Über %1$s benachrichtigen</string>
     <string name="swipe_title">Wischgesten</string>
@@ -267,4 +274,8 @@
     <string name="encryption_forget_explains">Verschlüsselte Mails lassen sich hier erst wieder öffnen, wenn du die Schlüssel per Kopplung oder mit deinem Passwort zurückholst. Auf deinem Server ändert sich nichts.</string>
     <string name="encryption_forget_confirm">Entfernen</string>
     <string name="encryption_forget_cancel">Behalten</string>
+    <string name="appearance_inbox">Posteingang</string>
+    <string name="appearance_inbox_tabs">Tabs im Posteingang</string>
+    <string name="appearance_inbox_tabs_body">Allgemein, Soziale Netzwerke, Werbung und die übrigen. Aus zeigt den Posteingang als eine Liste. Derselbe Schalter wie im Web, er ändert den Posteingang also auch dort.</string>
+    <string name="appearance_inbox_tabs_failed">Der Schalter konnte nicht geändert werden. Der Server ist vielleicht nicht erreichbar oder älter als plMail 0.4.2; schalten Sie ihn stattdessen im Web um.</string>
 </resources>

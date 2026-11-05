@@ -33,6 +33,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.plmail.core.data.MailCategory
 import de.plmail.core.data.NotifiableScope
+import de.plmail.core.data.ShadeAction
 import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailPane
@@ -61,6 +62,7 @@ import de.plmail.core.designsystem.PlMailTheme
 @Composable
 fun NotificationsScreen(onBack: () -> Unit, viewModel: NotificationsViewModel = hiltViewModel()) {
     val scopes by viewModel.scopes.collectAsStateWithLifecycle()
+    val buttons by viewModel.buttons.collectAsStateWithLifecycle()
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -148,6 +150,31 @@ fun NotificationsScreen(onBack: () -> Unit, viewModel: NotificationsViewModel = 
                 LabelRow(scope) { viewModel.setEnabled(scope.key, it) }
 
                 if (index != scopes.labels.lastIndex) PlMailDivider()
+            }
+
+            // #93. Last, because it is about what a notification offers once it
+            // is there, and everything above decides whether there is one.
+            Section(stringResource(R.string.notifications_buttons)) {
+                Text(
+                    text = stringResource(R.string.notifications_buttons_explains),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = PlMailTheme.colors.inkMuted,
+                )
+
+                MenuChoice(
+                    title = stringResource(R.string.notifications_button_first),
+                    chosen = buttons.first,
+                    options = ShadeAction.entries,
+                    label = { stringResource(it.label()) },
+                    onChoose = viewModel::setFirstButton,
+                )
+                MenuChoice(
+                    title = stringResource(R.string.notifications_button_second),
+                    chosen = buttons.second,
+                    options = ShadeAction.entries,
+                    label = { stringResource(it.label()) },
+                    onChoose = viewModel::setSecondButton,
+                )
             }
         }
     }
@@ -262,3 +289,12 @@ private fun Note(text: String, tone: PaneTone) {
         )
     }
 }
+
+private fun ShadeAction.label(): Int =
+    when (this) {
+        ShadeAction.NONE -> R.string.notifications_button_none
+        ShadeAction.ARCHIVE -> R.string.swipe_archive
+        ShadeAction.MARK_READ -> R.string.notifications_button_read
+        ShadeAction.TRASH -> R.string.swipe_trash
+        ShadeAction.STAR -> R.string.notifications_button_star
+    }

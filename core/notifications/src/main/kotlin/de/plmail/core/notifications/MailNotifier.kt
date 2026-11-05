@@ -11,6 +11,8 @@ import androidx.core.content.ContextCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import de.plmail.core.data.NewMailListener
 import de.plmail.core.data.NewMessage
+import de.plmail.core.data.ShadeActions
+import de.plmail.core.data.ShadeActionsRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -48,6 +50,7 @@ constructor(
     @param:ApplicationContext private val context: Context,
     private val channels: MailChannels,
     private val destinations: MailDestinations,
+    private val shadeActions: ShadeActionsRepository,
 ) : NewMailListener {
 
     private val manager = NotificationManagerCompat.from(context)
@@ -63,10 +66,13 @@ constructor(
         // phone is quiet.
         if (!isPermitted()) return
 
-        messages.groupBy { it.accountKey }.forEach { (accountKey, forAccount) -> post(forAccount) }
+        // Read once per delivery: the buttons are the same for every account.
+        val buttons = shadeActions.current()
+
+        messages.groupBy { it.accountKey }.forEach { (_, forAccount) -> post(forAccount, buttons) }
     }
 
-    private fun post(messages: List<NewMessage>) {
+    private fun post(messages: List<NewMessage>, buttons: ShadeActions) {
         val first = messages.first()
         val channelId = channels.channelFor(first.accountKey, first.accountName)
         val group = groupKey(first.accountKey)
@@ -74,7 +80,7 @@ constructor(
         messages.forEach { message ->
             manager.notifySafely(
                 notificationId(message),
-                conversationNotification(context, message, channelId, group, destinations),
+                conversationNotification(context, message, channelId, group, destinations, buttons),
             )
         }
 

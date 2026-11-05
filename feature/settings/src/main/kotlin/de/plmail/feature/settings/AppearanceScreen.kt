@@ -147,6 +147,7 @@ fun AppearanceScreen(onBack: () -> Unit, viewModel: AppearanceViewModel = hiltVi
                 onPaneAlpha = viewModel::setPaneAlpha,
             )
             HomeScreen()
+            InboxTabsSection()
         }
     }
 }

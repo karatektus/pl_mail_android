@@ -7,7 +7,9 @@ import de.plmail.core.database.StoreKey
 import de.plmail.jmap.client.HttpResponse
 import de.plmail.jmap.testing.RecordingTransport
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.flow.first
@@ -205,6 +207,53 @@ class InboxTabsTest {
         assertEquals(false, database.accounts().byUid(testAccountKey)?.wantsInboxTabs)
 
         assertEquals(emptyList(), mail.replaceAccounts(TEST_SERVER, single), "nothing changed")
+    }
+
+    /** #11: the switch is the server's, and the device follows only once the server has it. */
+    @Test
+    fun `switching the tabs off writes the web's switch and empties the divided lists`() = runTest {
+        database.seedAccount()
+        database.seedInbox()
+        database.seedThread("t1")
+        database.seedEntry(MailCategory.PRIMARY.feedId, "t1")
+        database.seedCursor(MailCategory.PRIMARY.feedId)
+        database.seedCursor(Feed.UNIFIED_INBOX.id)
+        val asked = mutableListOf<String>()
+        val transport =
+            serving(TEST_SESSION) { body ->
+                asked += body
+                """{"sessionState":"s","methodResponses":[["Appearance/set",
+                   {"oldState":"a","newState":"b","updated":{"singleton":null},
+                    "notUpdated":{}},"c0"]]}"""
+            }
+        assertTrue(repository(transport).setWantsTabs(false))
+
+        assertTrue(asked.single().contains(""""inboxTabs":false"""))
+        assertTrue(asked.single().contains("urn:plmail:params:jmap:appearance"))
+        assertFalse(database.accounts().byUid(testAccountKey)!!.wantsInboxTabs)
+        // Dropped, so the list -- rebuilt on the new answer -- pages Primary as
+        // the whole inbox rather than keeping the primary mail it held.
+        assertEquals(emptyList(), database.entryIds(MailCategory.PRIMARY.feedId))
+        assertNull(database.feed().cursor(MailCategory.PRIMARY.feedId, testAccountKey))
+        assertNotNull(
+            database.feed().cursor(Feed.UNIFIED_INBOX.id, testAccountKey),
+            "the unified inbox is not divided, so it is left alone",
+        )
+    }
+
+    /** An older server refuses the property; nothing on the device may claim otherwise. */
+    @Test
+    fun `a server that refuses the switch changes nothing on the device`() = runTest {
+        database.seedAccount()
+        val transport =
+            serving(
+                """{"sessionState":"s","methodResponses":[["Appearance/set",
+                   {"oldState":"a","newState":"a","updated":{},
+                    "notUpdated":{"singleton":{"type":"invalidProperties"}}},"c0"]]}"""
+            )
+
+        assertFalse(repository(transport).setWantsTabs(false))
+        assertTrue(database.accounts().byUid(testAccountKey)!!.wantsInboxTabs)
     }
 
     // -- Moving a conversation into a tab -----------------------------------

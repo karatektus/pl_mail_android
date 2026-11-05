@@ -136,3 +136,26 @@ internal fun Project.disableRacyUnitTestLint() {
         if (name.startsWith("lintAnalyze") && name.endsWith("UnitTest")) enabled = false
     }
 }
+
+/**
+ * Every `androidx.lifecycle` artifact at the catalog's version, in every module.
+ *
+ * A module that never names lifecycle still gets it through Compose and Activity, at whatever
+ * version those were built against — `:core:designsystem` resolved `lifecycle-runtime` 2.9.4 while
+ * the app ran 2.11.0. The lint checks inside that older jar call Kotlin analysis APIs that AGP
+ * 9.5's lint no longer has, lint reports them as `ObsoleteLintCustomCheck`, and with
+ * `warningsAsErrors` on that fails the build (#92). The artifacts are released together, so one
+ * version for all of them is also simply what runs on the phone.
+ */
+internal fun Project.alignLifecycle() {
+    val version = catalogVersion("lifecycle")
+
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "androidx.lifecycle") {
+                useVersion(version)
+                because("one lifecycle across modules; older lint jars break AGP 9.5 lint")
+            }
+        }
+    }
+}

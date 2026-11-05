@@ -175,6 +175,7 @@ class AndroidApplicationConventionPlugin : Plugin<Project> {
                 ?.set(javaToolchainVersion())
 
             configureKotlin()
+            alignLifecycle()
             disableRacyUnitTestLint()
             configureUnitTestPlatform()
         }

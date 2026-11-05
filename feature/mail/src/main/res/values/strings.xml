@@ -341,4 +341,12 @@
     <string name="crypto_signed_key_changed">Signed with a different key than the one plMail knows for this sender</string>
     <string name="crypto_signed_pending">Signed — checking the signature…</string>
     <string name="crypto_signer">Signed by %1$s</string>
+    <string name="reader_to_summary">to %1$s</string>
+    <string name="reader_more_recipients">+%1$d</string>
+    <string name="reader_show_recipients">Show all recipients</string>
+    <string name="reader_hide_recipients">Hide recipients</string>
+    <string name="reader_from">From</string>
+    <string name="reader_to">To</string>
+    <string name="reader_cc">Cc</string>
+    <string name="reader_bcc">Bcc</string>
 </resources>

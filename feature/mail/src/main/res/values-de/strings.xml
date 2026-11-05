@@ -241,4 +241,12 @@
     <string name="crypto_signed_key_changed">Mit einem anderen Schlüssel signiert als dem, den plMail für diesen Absender kennt</string>
     <string name="crypto_signed_pending">Signiert — die Signatur wird geprüft …</string>
     <string name="crypto_signer">Signiert von %1$s</string>
+    <string name="reader_to_summary">an %1$s</string>
+    <string name="reader_more_recipients">+%1$d</string>
+    <string name="reader_show_recipients">Alle Empfänger zeigen</string>
+    <string name="reader_hide_recipients">Empfänger ausblenden</string>
+    <string name="reader_from">Von</string>
+    <string name="reader_to">An</string>
+    <string name="reader_cc">Cc</string>
+    <string name="reader_bcc">Bcc</string>
 </resources>

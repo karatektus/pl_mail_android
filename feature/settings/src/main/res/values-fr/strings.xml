@@ -79,7 +79,7 @@
     <string name="appearance_language_body">La langue de plMail sur ce téléphone. Ce réglage ne concerne que cet appareil : il n’est jamais envoyé à votre compte et n’atteint ni votre navigateur ni vos autres appareils.</string>
     <string name="appearance_language_system">C’est le même réglage que celui d’Android, dans Paramètres → Applications → plMail → Langue. Le changer à un endroit le change aux deux.</string>
     <string name="appearance_sync">Suivre le web</string>
-    <string name="appearance_sync_body">Tout ce que vous n’avez pas réglé ici suit plMail dans votre navigateur. Désactivez-le pour figer l’apparence de ce téléphone. De toute façon, rien de ce que vous changez sur cet écran n’atteint votre navigateur. Le réactiver reprend les réglages du navigateur et abandonne ceux du téléphone.</string>
+    <string name="appearance_sync_body">Tout ce que vous n’avez pas réglé ici suit plMail dans votre navigateur. Désactivez-le pour figer l’apparence de ce téléphone. De toute façon, rien de ce que vous changez sur cet écran n’atteint votre navigateur, sauf « Onglets de la boîte de réception » plus bas, le même réglage que sur le web. Le réactiver reprend les réglages du navigateur et abandonne ceux du téléphone.</string>
     <string name="appearance_theme">Thème</string>
     <string name="theme_system">Suivre le système</string>
     <string name="theme_light">Clair</string>
@@ -173,6 +173,13 @@
     <string name="notifications_labels">Libellés</string>
     <string name="notifications_labels_explains">Activez un libellé pour être prévenu du courrier qui y arrive, même quand une règle de votre serveur l’a tenu hors de la boîte de réception.</string>
     <string name="notifications_no_labels">Aucun libellé n’a encore été synchronisé sur cet appareil.</string>
+    <string name="notifications_buttons">Boutons</string>
+    <string name="notifications_buttons_explains">Les deux boutons qu’une notification de courrier affiche à côté de Répondre. Sur ce téléphone uniquement.</string>
+    <string name="notifications_button_first">Premier bouton</string>
+    <string name="notifications_button_second">Deuxième bouton</string>
+    <string name="notifications_button_none">Aucun bouton</string>
+    <string name="notifications_button_read">Marquer comme lu</string>
+    <string name="notifications_button_star">Suivre</string>
     <string name="notifications_scope_a11y">Me prévenir pour %1$s</string>
     <string name="swipe_title">Balayage des lignes</string>
     <string name="swipe_to_end">Balayer vers la droite</string>
@@ -232,4 +239,8 @@
     <string name="encryption_forget_explains">Le courrier chiffré ne pourra plus être ouvert ici tant que vous n’aurez pas réimporté les clés, par association ou avec votre mot de passe. Rien ne change sur votre serveur.</string>
     <string name="encryption_forget_confirm">Retirer</string>
     <string name="encryption_forget_cancel">Garder</string>
+    <string name="appearance_inbox">Boîte de réception</string>
+    <string name="appearance_inbox_tabs">Onglets de la boîte de réception</string>
+    <string name="appearance_inbox_tabs_body">Principal, Réseaux sociaux, Promotions et les autres. Désactivé, la boîte de réception s’affiche en une seule liste. C’est le même réglage que sur le web, il change donc aussi la boîte de réception là-bas.</string>
+    <string name="appearance_inbox_tabs_failed">Impossible de le modifier. Le serveur est peut-être injoignable ou antérieur à plMail 0.4.2 ; changez-le plutôt sur le web.</string>
 </resources>

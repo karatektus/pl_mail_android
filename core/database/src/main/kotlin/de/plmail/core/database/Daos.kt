@@ -23,6 +23,10 @@ interface AccountDao {
     @Query("UPDATE accounts SET emailState = :state WHERE uid = :uid")
     suspend fun setEmailState(uid: String, state: String?)
 
+    /** The user-level tabs answer, on every account, as `replaceAccounts` writes it (#11). */
+    @Query("UPDATE accounts SET wantsInboxTabs = :wanted")
+    suspend fun setWantsInboxTabs(wanted: Boolean)
+
     /**
      * The first cursor an account is given, and only the first.
      *
@@ -390,6 +394,13 @@ interface EmailDao {
     @Query("DELETE FROM emails WHERE uid IN (:uids)") suspend fun delete(uids: List<String>)
 
     /**
+     * The conversations these messages are filed under, read before a delta sync deletes them
+     * (#72): a conversation that loses a message and survives has to have its row worked out again.
+     */
+    @Query("SELECT DISTINCT threadId FROM emails WHERE uid IN (:uids) AND threadId IS NOT NULL")
+    suspend fun threadIdsOf(uids: List<String>): List<String>
+
+    /**
      * Which of these the cache already holds.
      *
      * The question a sync asks to work out what is *new to this device*, which is a different
@@ -567,6 +578,9 @@ interface FeedDao {
      */
     @Query("DELETE FROM feed_cursors WHERE feedId = :feedId")
     suspend fun clearCursors(feedId: String)
+
+    @Query("DELETE FROM feed_cursors WHERE feedId = :feedId AND accountKey = :accountKey")
+    suspend fun clearCursor(feedId: String, accountKey: String)
 
     /**
      * Every list this account has actually been paged into.

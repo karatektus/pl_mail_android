@@ -154,7 +154,7 @@
       discovered afterwards.
     -->
     <string name="appearance_sync">Match the web</string>
-    <string name="appearance_sync_body">Anything you have not set here follows plMail in your browser. Turn it off to freeze this phone\'s look where it is. Nothing you change on this screen ever reaches your browser either way. Turning it back on takes the browser\'s settings again and discards the phone\'s.</string>
+    <string name="appearance_sync_body">Anything you have not set here follows plMail in your browser. Turn it off to freeze this phone\'s look where it is. Nothing you change on this screen reaches your browser either way, except Inbox tabs below, which is the same switch as on the web. Turning it back on takes the browser\'s settings again and discards the phone\'s.</string>
 
     <string name="appearance_theme">Theme</string>
     <string name="theme_system">Follow the system</string>
@@ -348,6 +348,13 @@
     <string name="notifications_labels">Labels</string>
     <string name="notifications_labels_explains">Switch a label on to be told about mail that lands there, even when a rule on your server kept it out of the inbox.</string>
     <string name="notifications_no_labels">No labels have been synced to this device yet.</string>
+    <string name="notifications_buttons">Buttons</string>
+    <string name="notifications_buttons_explains">The two buttons a mail notification shows beside Reply. On this phone only.</string>
+    <string name="notifications_button_first">First button</string>
+    <string name="notifications_button_second">Second button</string>
+    <string name="notifications_button_none">No button</string>
+    <string name="notifications_button_read">Mark read</string>
+    <string name="notifications_button_star">Star</string>
 
     <!-- Names the scope, because every row's switch is otherwise identical. -->
     <string name="notifications_scope_a11y">Notify me about %1$s</string>
@@ -415,4 +422,8 @@
     <string name="encryption_forget_explains">Encrypted mail cannot be opened here until you bring the keys back by pairing or with your password. Nothing changes on your server.</string>
     <string name="encryption_forget_confirm">Remove</string>
     <string name="encryption_forget_cancel">Keep</string>
+    <string name="appearance_inbox">Inbox</string>
+    <string name="appearance_inbox_tabs">Inbox tabs</string>
+    <string name="appearance_inbox_tabs_body">Primary, Social, Promotions and the rest. Off shows the inbox as one list. The same switch as on the web, so it changes the inbox there too.</string>
+    <string name="appearance_inbox_tabs_failed">Could not change it. The server may be unreachable, or older than plMail 0.4.2; switch it on the web instead.</string>
 </resources>

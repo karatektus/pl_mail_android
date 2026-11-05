@@ -239,4 +239,12 @@
     <string name="crypto_signed_key_changed">Signé avec une autre clé que celle que plMail connaît pour cet expéditeur</string>
     <string name="crypto_signed_pending">Signé : vérification de la signature…</string>
     <string name="crypto_signer">Signé par %1$s</string>
+    <string name="reader_to_summary">à %1$s</string>
+    <string name="reader_more_recipients">+%1$d</string>
+    <string name="reader_show_recipients">Afficher tous les destinataires</string>
+    <string name="reader_hide_recipients">Masquer les destinataires</string>
+    <string name="reader_from">De</string>
+    <string name="reader_to">À</string>
+    <string name="reader_cc">Cc</string>
+    <string name="reader_bcc">Cci</string>
 </resources>

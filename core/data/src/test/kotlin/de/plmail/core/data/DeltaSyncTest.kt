@@ -121,6 +121,92 @@ class DeltaSyncTest {
     }
 
     /**
+     * #72: drafts discarded on the web out of a conversation that survives them.
+     *
+     * `Email/changes` reports the drafts destroyed and the conversation merely updated, so before
+     * the fix the row kept saying "3 messages" with a draft as its preview until the app's data was
+     * cleared.
+     */
+    @Test
+    fun `a conversation that loses messages is summarised again`() = runTest {
+        database.seedAccount(emailState = "s5", threadState = "h5")
+        database.seedInbox()
+        database.seedThread("t1", messageCount = 3, sender = "Priya, me")
+        database.seedEntry(Feed.UNIFIED_INBOX.id, "t1")
+        database
+            .emails()
+            .upsert(
+                listOf(
+                    cached("10", preview = "The shelf is 80 cm wide"),
+                    cached("11", preview = "> The shelf is", isDraft = true),
+                    cached("12", preview = "", isDraft = true),
+                )
+            )
+
+        val transport = RecordingTransport { request ->
+            val asked = request.body?.decodeToString().orEmpty()
+            val body =
+                when {
+                    request.url.endsWith("/.well-known/jmap") -> TEST_SESSION
+                    asked.contains("Email/changes") ->
+                        """
+                        {"sessionState":"s","methodResponses":[
+                          ["Email/changes",
+                           {"accountId":"$TEST_ACCOUNT_ID","oldState":"s5","newState":"s6",
+                            "hasMoreChanges":false,"created":[],"updated":[],
+                            "destroyed":["11","12"]},"c0"],
+                          ["Thread/changes",
+                           {"accountId":"$TEST_ACCOUNT_ID","oldState":"h5","newState":"h6",
+                            "hasMoreChanges":false,"created":[],"updated":["t1"],
+                            "destroyed":[]},"c1"]]}
+                        """
+                    else ->
+                        """
+                        {"sessionState":"s","methodResponses":[
+                          ["Thread/get",
+                           {"accountId":"$TEST_ACCOUNT_ID","state":"h6","list":[
+                             {"id":"t1","emailIds":["10"]}],"notFound":[]},"c0"],
+                          ["Email/get",
+                           {"accountId":"$TEST_ACCOUNT_ID","state":"s6","list":[
+                             {"id":"10","threadId":"t1","receivedAt":"2026-08-01T10:00:00Z",
+                              "preview":"The shelf is 80 cm wide",
+                              "mailboxIds":{"$INBOX_MAILBOX_ID":true}}]},"c1"]]}
+                        """
+                }
+
+            HttpResponse(200, mapOf("Content-Type" to "application/json"), body.encodeToByteArray())
+        }
+
+        val result = syncStack(database, transport).sync(testAccountKey)
+
+        assertEquals(SyncResult.Updated(fetched = 0, destroyed = 2), result)
+        val row = assertNotNull(database.threads().byUid(StoreKey.objectKey(testAccountKey, "t1")))
+        assertEquals(1, row.messageCount)
+        assertEquals("The shelf is 80 cm wide", row.snippet)
+        assertEquals(
+            listOf("unified.inbox#https://nas.local/13#t1"),
+            database.entryIds(Feed.UNIFIED_INBOX.id),
+            "and it stays in the inbox",
+        )
+        assertEquals(
+            listOf("10"),
+            database.emails().inThread(testAccountKey, "t1").map { it.emailId },
+        )
+    }
+
+    private fun cached(id: String, preview: String, isDraft: Boolean = false) =
+        de.plmail.core.database.EmailEntity(
+            uid = StoreKey.objectKey(testAccountKey, id),
+            accountKey = testAccountKey,
+            emailId = id,
+            threadId = "t1",
+            receivedAt = id.toLong(),
+            preview = preview,
+            isDraft = isDraft,
+            mailboxIds = INBOX_MAILBOX_ID,
+        )
+
+    /**
      * Nothing changed: said by every account in one request, and nothing more asked of the server
      * about mail. Each account was asked on its own before, one after another.
      */

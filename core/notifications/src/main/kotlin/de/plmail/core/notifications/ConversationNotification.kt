@@ -5,6 +5,8 @@ import android.content.Context
 import androidx.core.app.NotificationCompat
 import androidx.core.app.Person
 import de.plmail.core.data.NewMessage
+import de.plmail.core.data.ShadeAction
+import de.plmail.core.data.ShadeActions
 import de.plmail.crypto.EncryptedMessages
 
 /**
@@ -27,6 +29,8 @@ internal fun conversationNotification(
     channelId: String,
     group: String,
     destinations: MailDestinations,
+    /** The two buttons beside Reply, as chosen in Settings → Notifications (#93). */
+    buttons: ShadeActions = ShadeActions(),
 ): Notification {
     val notificationId = notificationId(message)
     val sender = Person.Builder().setName(message.sender).build()
@@ -67,22 +71,17 @@ internal fun conversationNotification(
             .setDeleteIntent(
                 NotificationActions.dismissed(context, message.accountKey, notificationId)
             )
-            .addAction(
-                NotificationCompat.Action.Builder(
-                        R.drawable.ic_notification_archive,
-                        context.getString(R.string.action_archive),
-                        NotificationActions.archive(context, message, notificationId),
-                    )
-                    .build()
-            )
-            .addAction(
-                NotificationCompat.Action.Builder(
-                        R.drawable.ic_notification_read,
-                        context.getString(R.string.action_mark_read),
-                        NotificationActions.markRead(context, message, notificationId),
-                    )
-                    .build()
-            )
+
+    buttons.shown.forEach { button ->
+        builder.addAction(
+            NotificationCompat.Action.Builder(
+                    button.icon(),
+                    context.getString(button.title()),
+                    NotificationActions.button(context, message, notificationId, button),
+                )
+                .build()
+        )
+    }
 
     // Answering from the shade sends in the clear, and an encrypted
     // conversation is the one place that must not happen by accident.
@@ -102,3 +101,22 @@ internal fun messagingStyle(context: Context): NotificationCompat.MessagingStyle
     NotificationCompat.MessagingStyle(
         Person.Builder().setName(context.getString(R.string.notification_you)).build()
     )
+
+private fun ShadeAction.icon(): Int =
+    when (this) {
+        ShadeAction.ARCHIVE -> R.drawable.ic_notification_archive
+        ShadeAction.MARK_READ -> R.drawable.ic_notification_read
+        ShadeAction.TRASH -> R.drawable.ic_notification_trash
+        ShadeAction.STAR -> R.drawable.ic_notification_star
+        // Never drawn: ShadeActions.shown leaves it out.
+        ShadeAction.NONE -> R.drawable.ic_notification_mail
+    }
+
+private fun ShadeAction.title(): Int =
+    when (this) {
+        ShadeAction.ARCHIVE -> R.string.action_archive
+        ShadeAction.MARK_READ -> R.string.action_mark_read
+        ShadeAction.TRASH -> R.string.action_trash
+        ShadeAction.STAR -> R.string.action_star
+        ShadeAction.NONE -> R.string.action_archive
+    }

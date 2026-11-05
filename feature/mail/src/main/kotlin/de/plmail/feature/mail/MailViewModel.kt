@@ -517,7 +517,14 @@ constructor(
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     val threads: Flow<PagingData<ThreadEntity>> =
-        shownFeed.flatMapLatest { view -> feed.forView(view) }.cachedIn(viewModelScope)
+        // Rebuilt when the inbox switches between tabs and one list as well
+        // (#11): a pager reads that answer once, when it is built, so the one
+        // on screen would go on paging Primary under the old filter -- and
+        // refill it with the old filter's rows after the switch had cleared
+        // them.
+        combine(shownFeed, inboxTabs.wantsTabs) { view, _ -> view }
+            .flatMapLatest { view -> feed.forView(view) }
+            .cachedIn(viewModelScope)
 
     /**
      * How many conversations the list on screen actually holds, or null before that is known.
