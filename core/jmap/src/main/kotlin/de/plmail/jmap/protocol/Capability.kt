@@ -69,6 +69,13 @@ object Capability {
      */
     const val KEYS = "urn:plmail:params:jmap:keys"
 
+    /**
+     * Which mail may interrupt, chosen once per user (pl_mail#369): `NotificationSettings/get` and
+     * `/set`. Per user at the top level. Its absence is a server older than the extension, and the
+     * app then keeps its own switches on the phone, exactly as before.
+     */
+    const val NOTIFICATIONS = "urn:plmail:params:jmap:notifications"
+
     /** The usual declaration for a mail request. */
     val USING_MAIL = listOf(CORE, MAIL)
 
@@ -99,4 +106,7 @@ object Capability {
 
     /** For `Appearance/get` and `Appearance/set`. Per user, so no mail capability is involved. */
     val USING_APPEARANCE = listOf(CORE, APPEARANCE)
+
+    /** For `NotificationSettings/get` and `/set`. Per user, like appearance. */
+    val USING_NOTIFICATIONS = listOf(CORE, NOTIFICATIONS)
 }

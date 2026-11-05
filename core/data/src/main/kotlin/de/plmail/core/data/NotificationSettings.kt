@@ -1,8 +1,13 @@
 package de.plmail.core.data
 
 import de.plmail.core.datastore.NotificationPrefsStore
+import de.plmail.jmap.methods.NotificationSettingsGet
+import de.plmail.jmap.methods.NotificationSettingsSet
+import de.plmail.jmap.protocol.Capability
+import de.plmail.jmap.protocol.RequestBuilder
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -82,6 +87,7 @@ constructor(
     private val labels: LabelRepository,
     private val store: NotificationPrefsStore,
     private val tabs: InboxTabRepository,
+    private val clients: AccountClients,
 ) {
 
     val scopes: Flow<NotifiableScopes> =
@@ -124,9 +130,60 @@ constructor(
      * Takes the key rather than the scope, because the screen already holds it and round-tripping a
      * `Label` through here would mean this method having an opinion about a label that was deleted
      * between the draw and the tap.
+     *
+     * Where the server keeps the switches (pl_mail#369) the change is written there, for every
+     * device of the user, and stored here only once the server has taken it: a switch that showed
+     * on while the server still had it off would be a phone that disagrees with the browser it was
+     * meant to match. A write that fails leaves the switch where it was, and the screen shows that.
      */
     suspend fun setEnabled(key: String, enabled: Boolean) {
-        store.setEnabled(key, enabled)
+        val server = store.current().server ?: return store.setEnabled(key, enabled)
+
+        val scopes = if (enabled) server + key else server - key
+
+        try {
+            val client = clients.current() ?: return
+            val request = RequestBuilder(using = Capability.USING_NOTIFICATIONS)
+            val set = request.add(NotificationSettingsSet(scopes.toList()))
+
+            if (client.send(request).result(set).refusal == null) store.setServer(scopes)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            // See the docblock: the switch stays where the server has it.
+        }
+    }
+
+    /**
+     * Reads the user's switches from the server, where it keeps them.
+     *
+     * Called beside [AppearanceRepository.refresh] — on sync and on coming to the foreground — and
+     * when the notification screen opens, for the same reason: the list has no push and no
+     * `/changes`, so a box ticked in a browser reaches the phone the next time it looks. Failures
+     * are swallowed; the last list read stays in force, which is the right answer for a phone that
+     * is offline.
+     *
+     * A server without the extension clears the stored list, and the phone's own switches apply
+     * again exactly as they were.
+     */
+    suspend fun refresh() {
+        try {
+            val client = clients.current() ?: return
+
+            if (!client.session().hasNotificationSettings) {
+                store.clearServer()
+                return
+            }
+
+            val request = RequestBuilder(using = Capability.USING_NOTIFICATIONS)
+            val get = request.add(NotificationSettingsGet())
+
+            client.send(request).result(get).settings?.let { store.setServer(it.scopes) }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Throwable) {
+            // See the docblock.
+        }
     }
 
     private companion object {

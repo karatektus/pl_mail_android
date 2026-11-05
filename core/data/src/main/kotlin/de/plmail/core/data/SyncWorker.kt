@@ -48,6 +48,8 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
 
         fun appearance(): AppearanceRepository
 
+        fun notificationSettings(): NotificationSettingsRepository
+
         fun bodies(): BodyPrefetcher
 
         fun decryptedMail(): DecryptedMailKeeper
@@ -71,6 +73,12 @@ class SyncWorker(context: Context, parameters: WorkerParameters) :
         // this run is worth retrying, and a queue that could not drain will
         // still be there next time by construction.
         runCatching { dependencies.mailActions().flush() }
+
+        // Before the sync, because the sync is what announces new mail and the
+        // switches decide which of it rings: a box ticked in a browser since
+        // the last run should count for this one. Swallows its own failures,
+        // and the last list read stays in force.
+        dependencies.notificationSettings().refresh()
 
         val outcomes = accounts.map { dependencies.deltaSync().sync(it.uid) }
 

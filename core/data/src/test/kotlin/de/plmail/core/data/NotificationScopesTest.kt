@@ -48,6 +48,28 @@ class NotificationScopesTest {
         assertFalse(untouched.allows("label:lbl-7"))
     }
 
+    /**
+     * pl_mail#369: where the server keeps the switches, its list is the whole answer — the phone's
+     * own sets, made before the server kept them, are not consulted at all.
+     */
+    @Test
+    fun `the server's list decides alone where there is one`() {
+        val shared =
+            NotificationPrefs(
+                enabled = setOf("category:social"),
+                disabled = setOf("label:lbl-7"),
+                server = setOf("label:lbl-7"),
+            )
+
+        assertTrue(shared.allows("label:lbl-7"))
+        assertFalse(shared.allows("category:social"), "the phone's own choice no longer counts")
+        assertFalse(shared.allows("category:primary"), "nor the default: the server spells it out")
+        assertFalse(
+            NotificationPrefs(server = emptySet()).allows("category:primary"),
+            "an empty list is nothing on",
+        )
+    }
+
     @Test
     fun `an explicit switch wins over the default in both directions`() {
         val chosen =

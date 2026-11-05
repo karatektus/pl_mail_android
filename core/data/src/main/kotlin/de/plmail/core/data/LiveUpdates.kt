@@ -60,6 +60,11 @@ constructor(
      */
     private val appearance: AppearanceRepository,
     /**
+     * The notification switches the user keeps on the server (pl_mail#369), read at the same two
+     * moments as [appearance] and for the same reason: they have no push and no `/changes`.
+     */
+    private val notificationSettings: NotificationSettingsRepository,
+    /**
      * Encrypted mail of accounts that keep a readable copy on the server (#9). Foreground is the
      * moment the web app does this too (on becoming visible): the catch-up above has just brought
      * in whatever arrived encrypted while the phone was away.
@@ -107,6 +112,10 @@ constructor(
             // being here is that the app is visible, and re-theming it is
             // never worth delaying the list that is on screen.
             appearance.refresh()
+
+            // The same, for the switches a browser may have changed. Swallows
+            // its own failures too.
+            notificationSettings.refresh()
 
             // Swallows its own failures, like the appearance above: the list
             // is already on screen, and this is work nobody is waiting for.
