@@ -20,15 +20,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.DriveFileMove
 import androidx.compose.material.icons.automirrored.outlined.Forward
 import androidx.compose.material.icons.automirrored.outlined.Reply
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.Archive
 import androidx.compose.material.icons.outlined.Delete
@@ -52,12 +56,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.content.FileProvider
@@ -76,6 +82,7 @@ import de.plmail.core.ui.asListDate
 import de.plmail.feature.mail.R
 import de.plmail.feature.mail.SnoozeMenu
 import de.plmail.feature.mail.SnoozePicker
+import de.plmail.jmap.mail.EmailAddress
 
 /**
  * The letter shown on a sender's avatar. Skips punctuation, so "+ada@…" is still an A.
@@ -635,6 +642,11 @@ private fun Message(
     val spacing = PlMailTheme.spacing
     val colors = PlMailTheme.colors
 
+    // #12: every recipient, one tap away. Per message and kept across
+    // rotation; closed again for a message the user collapses and reopens
+    // would be the same, so it is simply left as it was.
+    var showsRecipients by rememberSaveable(message.email.uid) { mutableStateOf(false) }
+
     // A card, in both layouts, and it is the one place this app boxes something
     // the flat layout would otherwise leave on the page. The reason is not
     // decoration: a message body is sender-authored paper with a background of
@@ -686,6 +698,13 @@ private fun Message(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (message.isExpanded && !message.recipients.isEmpty) {
+                    RecipientSummary(
+                        recipients = message.recipients,
+                        isOpen = showsRecipients,
+                        onToggle = { showsRecipients = !showsRecipients },
+                    )
+                }
                 if (!message.isExpanded) {
                     Text(
                         // An encrypted message's preview is blank by design: its
@@ -730,6 +749,8 @@ private fun Message(
         }
 
         if (!message.isExpanded) return@Column
+
+        if (showsRecipients) RecipientDetails(message)
 
         CryptoBanner(message = message, onRetry = onRetryDecryption)
 
@@ -971,3 +992,98 @@ private fun Context.openLink(url: Uri) {
         Toast.makeText(this, getString(R.string.link_no_handler), Toast.LENGTH_SHORT).show()
     }
 }
+
+/**
+ * "to Anna, Ben +3" under the sender of an open message (#12), and the way to the full list.
+ *
+ * Names only, as many as fit on the line; the count says how many more there are, so a mail sent to
+ * forty people does not read as one sent to two.
+ */
+@Composable
+private fun RecipientSummary(recipients: Recipients, isOpen: Boolean, onToggle: () -> Unit) {
+    val names = recipients.all.map { it.display }
+    val shown = names.take(SUMMARY_NAMES)
+    val more = names.size - shown.size
+    val text =
+        stringResource(R.string.reader_to_summary, shown.joinToString(", ")) +
+            if (more > 0) " " + stringResource(R.string.reader_more_recipients, more) else ""
+    val action =
+        stringResource(
+            if (isOpen) R.string.reader_hide_recipients else R.string.reader_show_recipients
+        )
+
+    Row(
+        modifier =
+            Modifier.clickable(onClickLabel = action, role = Role.Button, onClick = onToggle),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodySmall,
+            color = PlMailTheme.colors.inkMuted,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        Icon(
+            imageVector = if (isOpen) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
+            contentDescription = null,
+            tint = PlMailTheme.colors.inkMuted,
+        )
+    }
+}
+
+/** From, To, Cc and Bcc in full, name and address, one line per person. */
+@Composable
+private fun RecipientDetails(message: ReaderMessage) {
+    val spacing = PlMailTheme.spacing
+    val from =
+        listOfNotNull(
+            message.email.fromAddress?.let {
+                EmailAddress(message.email.fromName, it)
+            }
+        )
+
+    Column(
+        modifier =
+            Modifier.fillMaxWidth()
+                .padding(start = spacing.medium, end = spacing.medium, bottom = spacing.small),
+        verticalArrangement = Arrangement.spacedBy(spacing.tiny),
+    ) {
+        RecipientLine(stringResource(R.string.reader_from), from)
+        RecipientLine(stringResource(R.string.reader_to), message.recipients.to)
+        RecipientLine(stringResource(R.string.reader_cc), message.recipients.cc)
+        RecipientLine(stringResource(R.string.reader_bcc), message.recipients.bcc)
+    }
+}
+
+@Composable
+private fun RecipientLine(header: String, people: List<EmailAddress>) {
+    if (people.isEmpty()) return
+
+    Row(horizontalArrangement = Arrangement.spacedBy(PlMailTheme.spacing.small)) {
+        Text(
+            text = header,
+            style = MaterialTheme.typography.bodySmall,
+            color = PlMailTheme.colors.inkMuted,
+            modifier = Modifier.widthIn(min = PlMailTheme.spacing.touchTarget),
+        )
+        // Selectable, so an address can be copied out of the reader.
+        SelectionContainer {
+            Column {
+                people.forEach { person ->
+                    Text(
+                        text =
+                            if (person.name.isNullOrBlank()) person.email.orEmpty()
+                            else "${person.name} <${person.email.orEmpty()}>",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = PlMailTheme.colors.inkSoft,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** How many names the one-line summary spells out before it counts the rest. */
+private const val SUMMARY_NAMES = 3

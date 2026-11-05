@@ -410,16 +410,17 @@ constructor(
         accountKey: String,
         threadIds: Set<String>,
     ) {
-        val held =
-            threadIds.filter {
-                database.threads().byUid(StoreKey.objectKey(accountKey, it)) != null
-            }
+        val held = threadIds.filter {
+            database.threads().byUid(StoreKey.objectKey(accountKey, it)) != null
+        }
 
         held.chunked(HYDRATION_CHUNK).forEach { chunk ->
             val request = RequestBuilder()
             val threads = request.add(ThreadGet(accountId, ids = chunk.map(::ThreadId)))
             val emails =
-                request.add(EmailGet(accountId, idsReference = threads.reference("/list/*/emailIds")))
+                request.add(
+                    EmailGet(accountId, idsReference = threads.reference("/list/*/emailIds"))
+                )
 
             val results = client.send(request)
             val conversations = results.result(threads)

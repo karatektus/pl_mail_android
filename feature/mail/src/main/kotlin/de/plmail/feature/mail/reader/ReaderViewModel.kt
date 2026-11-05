@@ -22,10 +22,12 @@ import de.plmail.core.data.MailRepository
 import de.plmail.core.data.MessageDecryptor
 import de.plmail.core.data.MessageLoader
 import de.plmail.core.data.messagesShown
+import de.plmail.core.data.toEmailAddresses
 import de.plmail.core.database.AttachmentEntity
 import de.plmail.core.database.EmailEntity
 import de.plmail.core.database.StoreKey
 import de.plmail.crypto.EncryptedMessages
+import de.plmail.jmap.mail.EmailAddress
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -71,6 +73,19 @@ internal object DecryptedParts {
     }
 }
 
+/** A message's recipients, per header, in the order the header lists them. */
+data class Recipients(
+    val to: List<EmailAddress> = emptyList(),
+    val cc: List<EmailAddress> = emptyList(),
+    val bcc: List<EmailAddress> = emptyList(),
+) {
+    val all: List<EmailAddress>
+        get() = to + cc + bcc
+
+    val isEmpty: Boolean
+        get() = all.isEmpty()
+}
+
 /** One message as the reader shows it. */
 data class ReaderMessage(
     val email: EmailEntity,
@@ -88,6 +103,14 @@ data class ReaderMessage(
      * other. The decrypted content lives here, in memory, and nowhere else.
      */
     val encryption: MessageEncryption? = null,
+    /**
+     * Who else it went to (#12): To, Cc and — on the user's own mail, the only kind that carries it
+     * — Bcc.
+     *
+     * Cc from the body row where there is one, because a list page never asks for it and the next
+     * sync writes the message row without it; the reader's fetch stores it beside the body.
+     */
+    val recipients: Recipients = Recipients(),
 ) {
     /**
      * The document to render, or null when there is nothing to render.
@@ -375,6 +398,15 @@ constructor(
                             } else {
                                 null
                             },
+                        recipients =
+                            Recipients(
+                                to = email.toJson.toEmailAddresses(),
+                                cc =
+                                    body?.ccJson.toEmailAddresses().ifEmpty {
+                                        email.ccJson.toEmailAddresses()
+                                    },
+                                bcc = email.bccJson.toEmailAddresses(),
+                            ),
                     )
                 }
 

@@ -381,8 +381,7 @@ class InlineReplyNotificationTest {
                 Destinations,
                 ShadeActions(first = ShadeAction.NONE, second = ShadeAction.TRASH),
             )
-        val twice =
-            ShadeActions(first = ShadeAction.ARCHIVE, second = ShadeAction.ARCHIVE).shown
+        val twice = ShadeActions(first = ShadeAction.ARCHIVE, second = ShadeAction.ARCHIVE).shown
 
         assertEquals(2, actionsOf(shown).size)
         assertEquals(listOf(ShadeAction.ARCHIVE), twice)
