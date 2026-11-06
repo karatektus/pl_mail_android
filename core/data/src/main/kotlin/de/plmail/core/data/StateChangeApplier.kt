@@ -47,6 +47,7 @@ constructor(
      * cursor, not about end-to-end encryption.
      */
     private val decryptedMail: DecryptedMailKeeper? = null,
+    private val inboxes: UnifiedInboxRefresh = UnifiedInboxRefresh {},
 ) {
 
     /**
@@ -79,6 +80,10 @@ constructor(
         // the push path -- a query per account is a query per mailbox on every
         // notification, for a table that fits in a screenful.
         val accounts = database.accounts().all()
+
+        // Once for the whole push: every account names the type when the
+        // inboxes move, and every one of them answers with the same list.
+        if (changed.values.any { UNIFIED_INBOX_TYPE in it }) runCatching { inboxes.refresh() }
 
         changed.forEach { (accountId, states) ->
             accounts
@@ -119,5 +124,7 @@ constructor(
 
         /** The type a change to the reader's inbox tabs is announced under. */
         const val INBOX_TAB_TYPE = "InboxTab"
+
+        const val UNIFIED_INBOX_TYPE = "UnifiedInbox"
     }
 }

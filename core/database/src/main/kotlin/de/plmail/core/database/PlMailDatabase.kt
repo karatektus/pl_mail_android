@@ -50,10 +50,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
             CalendarEventEntity::class,
             CalendarOccurrenceEntity::class,
             InboxTabEntity::class,
+            UnifiedInboxEntity::class,
         ],
-    version = 12,
+    version = 13,
     exportSchema = true,
-    autoMigrations = [AutoMigration(from = 11, to = 12, spec = PlMailDatabase.FromV11::class)],
+    autoMigrations =
+        [
+            AutoMigration(from = 11, to = 12, spec = PlMailDatabase.FromV11::class),
+            AutoMigration(from = 12, to = 13),
+        ],
 )
 abstract class PlMailDatabase : RoomDatabase() {
 
@@ -74,6 +79,8 @@ abstract class PlMailDatabase : RoomDatabase() {
     abstract fun calendarEvents(): CalendarEventDao
 
     abstract fun inboxTabs(): InboxTabDao
+
+    abstract fun unifiedInboxes(): UnifiedInboxDao
 
     companion object {
         const val NAME = "plmail.db"

@@ -292,6 +292,26 @@ class InboxTabsTest {
         )
     }
 
+    /** The same move inside one unified inbox's lists (pl_mail#265), where they are paged. */
+    @Test
+    fun `moving into a tab moves the row in the unified inbox's own lists too`() = runTest {
+        seedTabbedInbox()
+        val promotions = scopedFeedId("1", MailCategory.PROMOTIONS.feedId)
+        val shipping = scopedFeedId("1", tabFeedId("c12"))
+        database.seedEntry(promotions, "t1")
+        database.seedCursor(promotions)
+        database.seedCursor(shipping)
+
+        actions(serving(threadSet(updated = true)))
+            .apply(
+                MailAction.MoveToTab(tab = "c12", from = MailCategory.PROMOTIONS.wire),
+                listOf(ActionTarget(testAccountKey, "t1")),
+            )
+
+        assertEquals(emptyList(), database.entryIds(promotions))
+        assertEquals(1, database.entryIds(shipping).size)
+    }
+
     /**
      * A tab the reader no longer has is refused by the server rather than read as Primary, and that
      * has to reach the user: the row has already moved on screen.

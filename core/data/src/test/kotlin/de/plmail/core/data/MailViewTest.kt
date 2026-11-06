@@ -185,4 +185,74 @@ class MailViewTest {
             mayDelete = role == null,
             bindings = listOf(LabelBinding("https://nas.local/1", key)),
         )
+
+    // -- unified inboxes (pl_mail#265) --------------------------------------
+
+    @Test
+    fun `a list of one unified inbox is kept apart from every account's`() {
+        val scoped = MailView.Category(MailCategory.PRIMARY, "12")
+
+        assertEquals("ui.12/category.primary", scoped.feedId)
+        assertEquals("category:primary@12", scoped.toKey())
+        assertEquals("ui.12/tab.c3", MailView.Tab("c3", "Kita", "12").feedId)
+    }
+
+    @Test
+    fun `with several inboxes the app opens on the first one's primary`() {
+        assertEquals(
+            MailView.Category(MailCategory.PRIMARY, "1"),
+            MailView.restore(null, emptyList(), inboxes = listOf("1", "2")),
+        )
+        assertEquals(MailView.START, MailView.home(emptyList()))
+    }
+
+    @Test
+    fun `a saved inbox tab comes back in its inbox`() {
+        assertEquals(
+            MailView.Category(MailCategory.SOCIAL, "2"),
+            MailView.restore("category:social@2", emptyList(), inboxes = listOf("1", "2")),
+        )
+    }
+
+    @Test
+    fun `an inbox that is gone opens the first one`() {
+        assertEquals(
+            MailView.Category(MailCategory.PRIMARY, "1"),
+            MailView.restore("category:social@9", emptyList(), inboxes = listOf("1", "2")),
+        )
+    }
+
+    @Test
+    fun `a tab saved for every account opens the first inbox once there are several`() {
+        assertEquals(
+            MailView.Category(MailCategory.PRIMARY, "1"),
+            MailView.restore("category:social", emptyList(), inboxes = listOf("1", "2")),
+        )
+    }
+
+    @Test
+    fun `an inbox tab saved before the inboxes went back to one is every account's again`() {
+        assertEquals(
+            MailView.Category(MailCategory.SOCIAL),
+            MailView.restore("category:social@2", emptyList()),
+        )
+    }
+
+    @Test
+    fun `labels stay across every account whatever the inboxes`() {
+        assertEquals(
+            MailView.Labelled(work),
+            MailView.restore("label:lbl-7", listOf(work), inboxes = listOf("1", "2")),
+        )
+    }
+
+    @Test
+    fun `only the first inbox's primary is home where there are several`() {
+        val home = MailView.home(listOf("1", "2"))
+
+        assertTrue(MailView.Category(MailCategory.PRIMARY, "1").isHome(home))
+        assertFalse(MailView.Category(MailCategory.PRIMARY, "2").isHome(home))
+        assertFalse(MailView.START.isHome(home))
+        assertTrue(MailView.START.isHome(MailView.START))
+    }
 }

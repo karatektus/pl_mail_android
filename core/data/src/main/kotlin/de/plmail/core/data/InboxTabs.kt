@@ -172,7 +172,9 @@ internal fun ThreadEntity.inboxFeedId(
 
 /** The lists the inbox is divided into: a built-in category's, or a tab of the reader's own. */
 private fun isInboxFeed(feedId: String): Boolean =
-    MailCategory.entries.any { it.feedId == feedId } || feedId.startsWith(TAB_FEED_PREFIX)
+    MailCategory.entries.any { it.feedId == feedId } ||
+        feedId.startsWith(TAB_FEED_PREFIX) ||
+        feedId.startsWith(INBOX_SCOPE_PREFIX)
 
 /**
  * Refreshes one account's tabs. A seam rather than the repository, for the reason

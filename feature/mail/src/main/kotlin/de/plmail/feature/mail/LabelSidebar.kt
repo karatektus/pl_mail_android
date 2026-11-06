@@ -60,12 +60,14 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import de.plmail.core.data.Label
 import de.plmail.core.data.MailCategory
 import de.plmail.core.data.MailTab
 import de.plmail.core.data.MailView
 import de.plmail.core.data.SidebarSections
+import de.plmail.core.data.within
 import de.plmail.core.designsystem.PlMailDivider
 import de.plmail.core.designsystem.PlMailLabelColor
 import de.plmail.core.designsystem.PlMailSurface
@@ -171,6 +173,8 @@ fun LabelSidebar(
     modifier: Modifier = Modifier,
     /** End-to-end encryption on this device (#9). Defaulted, so callers that predate it compile. */
     onEncryption: () -> Unit = {},
+    /** The unified inboxes, one row each; empty for one inbox over every account. */
+    inboxes: List<SidebarInbox> = emptyList(),
 ) {
     // The user's sidebar density, where they have chosen one that differs from the
     // overall setting. Wrapping the whole drawer rather than its rows: the group
@@ -182,6 +186,7 @@ fun LabelSidebar(
             sections = sections,
             showCategories = showCategories,
             tabs = tabs,
+            inboxes = inboxes,
             populatedTabs = populatedTabs,
             newTabs = newTabs,
             selected = selected,
@@ -225,6 +230,7 @@ private fun SidebarContent(
     onAccounts: () -> Unit,
     onEncryption: () -> Unit,
     modifier: Modifier,
+    inboxes: List<SidebarInbox>,
 ) {
     val theme = PlMailTheme.values
 
@@ -246,7 +252,15 @@ private fun SidebarContent(
         // no whole-inbox row beside them: that would be a sixth destination
         // holding the union of the other five, which is the list this navigation
         // was reorganised to stop opening on.
-        if (showCategories) {
+        if (inboxes.isNotEmpty()) {
+            inboxRows(
+                inboxes = inboxes,
+                showCategories = showCategories,
+                tabs = tabs,
+                selected = selected,
+                onSelect = onSelect,
+            )
+        } else if (showCategories) {
             items(
                 items = tabs.filter { it.key in populatedTabs || selected == it.view },
                 // The built-ins keep the keys they have always had, so a server
@@ -434,6 +448,60 @@ private fun SidebarContent(
  * `Column` of thirty labels inside one item is one item as far as the list is concerned, and it
  * composes all of them to draw the two that are on screen.
  */
+/**
+ * One row per unified inbox (pl_mail#265), in the reader's order, as the web's sidebar draws them.
+ *
+ * The row opens the inbox's Primary, which is the whole of it where there are no tabs. The open
+ * inbox's other tabs are listed under it, indented; the others fold theirs into the row's new-mail
+ * dot, so the drawer stays short however many inboxes there are.
+ */
+private fun LazyListScope.inboxRows(
+    inboxes: List<SidebarInbox>,
+    showCategories: Boolean,
+    tabs: List<MailTab>,
+    selected: MailView,
+    onSelect: (MailView) -> Unit,
+) {
+    inboxes.forEach { entry ->
+        val id = entry.inbox.id
+        val home = MailView.Category(MailCategory.PRIMARY, id)
+        val isOpen = selected.inbox == id
+
+        item(key = "inbox:$id") {
+            SidebarRow(
+                selected = selected == home,
+                onClick = { onSelect(home) },
+                icon = inboxIcon(entry.inbox.icon),
+                text = entry.inbox.displayName(),
+                badge = entry.unread,
+                hasNew = !isOpen && entry.newTabs.isNotEmpty(),
+            )
+        }
+
+        if (showCategories && isOpen) {
+            items(
+                items =
+                    tabs.filter {
+                        it.builtIn != MailCategory.PRIMARY &&
+                            (it.key in entry.populatedTabs || selected == it.view.within(id))
+                    },
+                key = { tab -> "inbox:$id:${tab.key}" },
+            ) { tab ->
+                val view = tab.view.within(id)
+
+                SidebarRow(
+                    selected = selected == view,
+                    onClick = { onSelect(view) },
+                    icon = tab.icon(),
+                    text = tab.displayName(),
+                    hasNew = tab.key in entry.newTabs,
+                    indent = PlMailTheme.spacing.large,
+                )
+            }
+        }
+    }
+}
+
 private fun LazyListScope.labelRows(
     labels: List<Label>,
     selected: MailView,
@@ -588,6 +656,8 @@ private fun SidebarRow(
     hasNew: Boolean = false,
     /** Replaces the badge entirely, for the star the editing mode puts there. */
     trailing: (@Composable () -> Unit)? = null,
+    /** How far in the row starts: a tab under its unified inbox. */
+    indent: Dp = 0.dp,
 ) {
     val theme = PlMailTheme.values
     val colored = tint?.let { theme.colors.labelColor(it) }
@@ -605,7 +675,8 @@ private fun SidebarRow(
 
     Row(
         modifier =
-            Modifier.fillMaxWidth()
+            Modifier.padding(start = indent)
+                .fillMaxWidth()
                 .clip(RoundedCornerShape(percent = 50))
                 .background(if (selected) theme.colors.accentSoft else Color.Transparent)
                 .clickable(onClick = onClick)
@@ -669,7 +740,8 @@ private fun SidebarRow(
 private fun MailView.selects(label: Label): Boolean =
     when (this) {
         is MailView.Labelled -> this.label.key == label.key
-        is MailView.Category -> category == MailCategory.PRIMARY && label.role == INBOX_ROLE
+        is MailView.Category ->
+            inbox == null && category == MailCategory.PRIMARY && label.role == INBOX_ROLE
         // A tab of the reader's own is never reached through a label row.
         is MailView.Tab -> false
     }

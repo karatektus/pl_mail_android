@@ -89,14 +89,25 @@ class CategoryDigest @Inject constructor(private val database: PlMailDatabase) {
      * only knows a tab once it was opened or new mail arrived in it, and a tab that is never listed
      * can never be opened.
      */
-    val populated: Flow<Set<String>> =
+    val populated: Flow<Set<String>> = populatedIn(null)
+
+    /**
+     * [populated] over some accounts only: one unified inbox's (pl_mail#265). Null is every
+     * account.
+     */
+    fun populatedIn(accounts: Set<String>?): Flow<Set<String>> =
         combine(database.threads().observeTabPlacements(), tabRows) { rows, tabs ->
                 val placed = placement(tabs)
 
-                rows.mapNotNullTo(mutableSetOf()) {
-                    tabKeyOf(it.inboxTab, it.category, placed[it.accountKey])
-                } +
-                    tabs.filter { it.isEnabled && it.hasMail }.map { it.tabId } +
+                rows
+                    .filter { accounts == null || it.accountKey in accounts }
+                    .mapNotNullTo(mutableSetOf()) {
+                        tabKeyOf(it.inboxTab, it.category, placed[it.accountKey])
+                    } +
+                    tabs
+                        .filter { accounts == null || it.accountKey in accounts }
+                        .filter { it.isEnabled && it.hasMail }
+                        .map { it.tabId } +
                     MailCategory.PRIMARY.wire
             }
             .distinctUntilChanged()
@@ -108,15 +119,29 @@ class CategoryDigest @Inject constructor(private val database: PlMailDatabase) {
      * "3 new in Primary" over three unread rows saying the same thing is the app talking to itself.
      * Its own rows carry the marker instead — see `ShownThreads`, which is what retires them.
      */
-    val arrivals: Flow<List<CategoryArrivals>> =
+    val arrivals: Flow<List<CategoryArrivals>> = arrivalsIn(null)
+
+    /**
+     * [arrivals] over some accounts only: the bundles above one unified inbox's Primary tell of
+     * that inbox's mail (pl_mail#265). Null is every account.
+     */
+    fun arrivalsIn(within: Set<String>?): Flow<List<CategoryArrivals>> =
         combine(database.threads().observeNew(), tabRows, database.accounts().observeAll()) {
                 new,
                 tabs,
                 accounts ->
                 // One list has no "elsewhere" for mail to have landed in: every
                 // inbox conversation is already on the list underneath.
-                if (accounts.wantInboxTabs()) digest(new, tabs) else emptyList()
+                if (accounts.wantInboxTabs())
+                    digest(new.filter { within == null || it.accountKey in within }, tabs)
+                else emptyList()
             }
+            .distinctUntilChanged()
+
+    /** Which tabs carry a new-mail dot in one unified inbox, by key. Null is every account. */
+    fun hasNewIn(within: Set<String>?): Flow<Set<String>> =
+        arrivalsIn(within)
+            .map { found -> found.mapTo(mutableSetOf()) { it.tab.key } }
             .distinctUntilChanged()
 
     /** Which tabs carry a dot, by key, which is [arrivals] asked as a yes or no. */

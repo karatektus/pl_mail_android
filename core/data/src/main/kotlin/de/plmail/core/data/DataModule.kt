@@ -79,6 +79,11 @@ abstract class DataModule {
     /** The one method of [InboxTabRepository] the push path needs. See [InboxTabRefresh]. */
     @Binds @Singleton abstract fun inboxTabRefresh(real: InboxTabRepository): InboxTabRefresh
 
+    /** The one method of [UnifiedInboxRepository] the push path needs. */
+    @Binds
+    @Singleton
+    abstract fun unifiedInboxRefresh(real: UnifiedInboxRepository): UnifiedInboxRefresh
+
     /**
      * The event editor's view of the calendar.
      *

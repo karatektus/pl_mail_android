@@ -90,6 +90,7 @@ constructor(
      */
     @ApplicationScope private val scope: CoroutineScope,
     private val repages: RepageSignal,
+    private val unifiedInboxes: UnifiedInboxRepository,
 ) : ReachableAccounts {
 
     private val _failures = MutableStateFlow<List<SourceFailure>>(emptyList())
@@ -194,8 +195,9 @@ constructor(
     fun category(
         category: MailCategory,
         pageSize: Int = PAGE_SIZE,
+        inbox: String? = null,
     ): Flow<PagingData<ThreadEntity>> =
-        feed(category.feedId, pageSize) { accountKey, _ ->
+        feed(MailView.Category(category, inbox).feedId, pageSize, inbox = inbox) { accountKey, _ ->
             val inbox =
                 database.mailboxes().byRole(accountKey, INBOX_ROLE)?.let {
                     EmailFilter.InMailbox(MailboxId(it.mailboxId))
@@ -241,7 +243,9 @@ constructor(
      * under a tab called "Shipping".
      */
     fun tab(view: MailView.Tab, pageSize: Int = PAGE_SIZE): Flow<PagingData<ThreadEntity>> =
-        feed(view.feedId, pageSize, skipAccountsWithoutFilter = true) { accountKey, _ ->
+        feed(view.feedId, pageSize, skipAccountsWithoutFilter = true, inbox = view.inbox) {
+            accountKey,
+            _ ->
             if (
                 !database.wantsInboxTabs(accountKey) ||
                     database.enabledTabKeys(accountKey)?.contains(view.key) != true
@@ -275,15 +279,21 @@ constructor(
     /** Whichever list the sidebar has selected. One entry point, so the caller has no `when`. */
     fun forView(view: MailView, pageSize: Int = PAGE_SIZE): Flow<PagingData<ThreadEntity>> =
         when (view) {
-            is MailView.Category -> category(view.category, pageSize)
+            is MailView.Category -> category(view.category, pageSize, view.inbox)
             is MailView.Labelled -> labelled(view.label, pageSize)
             is MailView.Tab -> tab(view, pageSize)
         }
 
+    /**
+     * [inbox] narrows the list to one unified inbox's accounts (pl_mail#265). An account outside it
+     * is dropped from the merge, never queried unfiltered — the same rule as a label's — and an
+     * inbox this device no longer knows lists nothing rather than everything.
+     */
     private fun feed(
         feedId: String,
         pageSize: Int,
         skipAccountsWithoutFilter: Boolean = false,
+        inbox: String? = null,
         filterFor: suspend (accountKey: String, accountId: AccountId) -> EmailFilter?,
     ): Flow<PagingData<ThreadEntity>> = flow {
         val connection = credentials.connection.first()
@@ -305,6 +315,13 @@ constructor(
                 }
 
         val server = connection.address.origin
+
+        val members = inbox?.let { unifiedInboxes.accountsOf(server, it).orEmpty() }
+        val skipOutside = skipAccountsWithoutFilter || members != null
+        val filterWithin: suspend (String, AccountId) -> EmailFilter? = { accountKey, accountId ->
+            if (members != null && accountKey !in members) null
+            else filterFor(accountKey, accountId)
+        }
 
         // The accounts this server has already been seen to have. Everything
         // needed to build a pager is in this row -- the JMAP account id and the
@@ -331,8 +348,8 @@ constructor(
                     pageSize = pageSize,
                     client = client,
                     accounts = cached.map { it.uid to AccountId(it.accountId) },
-                    skipAccountsWithoutFilter = skipAccountsWithoutFilter,
-                    filterFor = filterFor,
+                    skipAccountsWithoutFilter = skipOutside,
+                    filterFor = filterWithin,
                 )
             )
             return@flow
@@ -392,8 +409,8 @@ constructor(
                     session.accountIds.map {
                         StoreKey.account(server, it.value) to AccountId(it.value)
                     },
-                skipAccountsWithoutFilter = skipAccountsWithoutFilter,
-                filterFor = filterFor,
+                skipAccountsWithoutFilter = skipOutside,
+                filterFor = filterWithin,
             )
         )
     }
@@ -609,11 +626,19 @@ constructor(
         // are known (#52). A request per account, since each can carry fifteen
         // probes, but side by side rather than one after another.
         coroutineScope {
+            // The unified inboxes beside them (pl_mail#265): which accounts each
+            // inbox lists changes when an account is added or removed without a
+            // UnifiedInbox change, so they are read with every directory refresh,
+            // which is what follows the Session's accounts.
+            val inboxes = async { runCatching { unifiedInboxes.fetch(client, server, session) } }
+
             probing
                 .map { (accountKey, accountId) ->
                     async { database.probeInboxTabs(client, accountKey, accountId) }
                 }
                 .awaitAll()
+
+            inboxes.await()
         }
     }
 

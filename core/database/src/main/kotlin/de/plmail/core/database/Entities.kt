@@ -650,3 +650,26 @@ data class InboxTabEntity(
      */
     val hasMail: Boolean = false,
 )
+
+/**
+ * One of the reader's unified inboxes (pl_mail#265), as `UnifiedInbox/get` answered on [serverId].
+ *
+ * Kept per server rather than per account: every account answers with the same list. [accountKeys]
+ * are the store keys of the accounts whose Inbox it lists, comma-separated in the server's order.
+ * No rows for a server is a server older than the extension, and the app then draws one inbox over
+ * every account.
+ */
+@Entity(tableName = "unified_inboxes", indices = [Index("serverId")])
+data class UnifiedInboxEntity(
+    /** `serverId#inboxId`. */
+    @PrimaryKey val uid: String,
+    val serverId: String,
+    val inboxId: String,
+    /** The reader's name, or null for the app's own word. */
+    val name: String? = null,
+    /** A Font Awesome solid icon name. */
+    val icon: String = "inbox",
+    val sortOrder: Int = 0,
+    val isOther: Boolean = false,
+    val accountKeys: String = "",
+)

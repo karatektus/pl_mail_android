@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="inbox_title">Posteingang</string>
+    <!-- The automatic unified inbox for the accounts taken out of the reader's own. -->
+    <string name="unified_inbox_other">Sonstige</string>
     <string name="search">Suchen</string>
 
     <string name="inbox_empty">Hier ist noch nichts.</string>

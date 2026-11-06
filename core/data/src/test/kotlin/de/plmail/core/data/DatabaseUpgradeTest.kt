@@ -81,6 +81,25 @@ class DatabaseUpgradeTest {
      * would otherwise be found the day somebody migrates from it, against a schema that was never
      * true.
      */
+    /** Version 13 adds the unified inboxes (pl_mail#265) and keeps everything else. */
+    @Test
+    fun `the unified inboxes arrive without paging anything again`() = runTest {
+        seed(version = 12) {
+            execSQL(
+                """
+                INSERT INTO accounts (uid, serverId, accountId, name, isPersonal, isReadOnly,
+                  sortIndex, wantsInboxTabs, emailState, threadState)
+                VALUES ('a1', 's', '13', 'Me', 1, 0, 0, 0, 'e5', 't5')
+                """
+            )
+        }
+
+        val database = PlMailDatabase.create(context).also { opened = it }
+
+        assertEquals("e5", database.accounts().byUid("a1")?.emailState)
+        assertEquals(emptyList(), database.unifiedInboxes().forServer("s"))
+    }
+
     @Test
     fun `the exported schema is the one compiled`() = runTest {
         seed(version = CURRENT) {}
@@ -148,6 +167,6 @@ class DatabaseUpgradeTest {
         val SCHEMAS = File("../database/schemas/de.plmail.core.database.PlMailDatabase")
 
         /** The version the app opens at, which `PlMailDatabase` declares. */
-        const val CURRENT = 12
+        const val CURRENT = 13
     }
 }

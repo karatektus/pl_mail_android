@@ -12,17 +12,22 @@ import de.plmail.core.data.LabelRepository
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailActions
 import de.plmail.core.data.MailCategory
+import de.plmail.core.data.MailInbox
 import de.plmail.core.data.MailRepository
 import de.plmail.core.data.MailTab
 import de.plmail.core.data.SidebarSections
 import de.plmail.core.data.SidebarSettings
+import de.plmail.core.data.UnifiedInboxRepository
 import javax.inject.Inject
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -36,7 +41,45 @@ constructor(
     digest: CategoryDigest,
     tabs: InboxTabRepository,
     private val sidebar: SidebarSettings,
+    unifiedInboxes: UnifiedInboxRepository,
 ) : ViewModel() {
+
+    /**
+     * The unified inboxes the drawer draws, one row each (pl_mail#265), or empty where it draws one
+     * inbox over every account. Null until read, so the shell does not open on every account's
+     * Primary for the frame before it knows it should open on the first inbox's.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val inboxes: StateFlow<List<SidebarInbox>?> =
+        unifiedInboxes.navigable
+            .flatMapLatest { list ->
+                if (list.isEmpty()) return@flatMapLatest flowOf(emptyList())
+
+                val perInbox = list.map { inbox ->
+                    combine(
+                        digest.populatedIn(inbox.accountKeys),
+                        digest.hasNewIn(inbox.accountKeys),
+                    ) { populated, new ->
+                        populated to new
+                    }
+                }
+
+                combine(combine(perInbox) { it.toList() }, unifiedInboxes.unread) { tabs, unread ->
+                    list.mapIndexed { index, inbox ->
+                        SidebarInbox(
+                            inbox = inbox,
+                            unread = unread[inbox.id] ?: 0,
+                            populatedTabs = tabs[index].first,
+                            newTabs = tabs[index].second,
+                        )
+                    }
+                }
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+                initialValue = null,
+            )
 
     /**
      * Recomputed when either the mailboxes or the accounts change.
@@ -147,6 +190,17 @@ constructor(
 }
 
 /** What the label dialog is doing, and what the server said about it. */
+/**
+ * One unified inbox's row in the drawer: its unread count, and the tabs worth a row under it while
+ * it is the one open — counted over its own accounts only.
+ */
+data class SidebarInbox(
+    val inbox: MailInbox,
+    val unread: Int,
+    val populatedTabs: Set<String>,
+    val newTabs: Set<String>,
+)
+
 data class LabelEditorState(
     val isWorking: Boolean = false,
     val isDone: Boolean = false,

@@ -330,8 +330,10 @@ constructor(
                         if (before != null) {
                             val tabs = database.enabledTabKeys(target.accountKey)
 
-                            before.tabKey(tabs)?.let {
-                                database.feed().clearThread(tabFeedId(it), threadUid)
+                            before.tabKey(tabs)?.let { old ->
+                                withInboxCopies(target.accountKey, tabFeedId(old)).forEach {
+                                    database.feed().clearThread(it, threadUid)
+                                }
                             }
 
                             database.threads().setInboxTab(threadUid, action.tab)
@@ -340,7 +342,8 @@ constructor(
                                 database
                                     .feed()
                                     .upsertEntries(
-                                        listOf(entryFor(tabFeedId(action.tab), target, before))
+                                        withInboxCopies(target.accountKey, tabFeedId(action.tab))
+                                            .map { entryFor(it, target, before) }
                                     )
                             }
                         }
@@ -402,7 +405,27 @@ constructor(
         val thread = database.threads().byUid(threadUid) ?: return
 
         tabFeedOf(thread)?.let { database.feed().clearThread(it, threadUid) }
+
+        // And the unified inboxes' own lists, every one of which is an inbox list.
+        database
+            .feed()
+            .clearThreadFrom(
+                accountKey = thread.accountKey,
+                threadId = thread.threadId,
+                feedIds = emptyList(),
+                prefix = INBOX_SCOPE_PREFIX,
+            )
     }
+
+    /**
+     * [base] and each unified inbox's own copy of it that this account has been paged into
+     * (pl_mail#265): where a row put into or taken out of one inbox tab goes.
+     */
+    private suspend fun withInboxCopies(accountKey: String, base: String): List<String> =
+        listOf(base) +
+            database.feed().feedsPagedBy(accountKey).filter {
+                inboxOfFeed(it) != null && baseFeedId(it) == base
+            }
 
     /** The tab list an inbox conversation sits in, by [inboxFeedId] — the projection's rule. */
     private suspend fun tabFeedOf(thread: ThreadEntity): String? =
@@ -428,10 +451,8 @@ constructor(
         val thread = database.threads().byUid(threadUid) ?: return
 
         val feeds =
-            listOfNotNull(
-                Feed.UNIFIED_INBOX.id,
-                tabFeedOf(thread),
-            )
+            listOf(Feed.UNIFIED_INBOX.id) +
+                tabFeedOf(thread)?.let { withInboxCopies(thread.accountKey, it) }.orEmpty()
 
         database.feed().upsertEntries(feeds.map { feedId -> entryFor(feedId, target, thread) })
     }
@@ -943,5 +964,14 @@ internal suspend fun PlMailDatabase.clearFromInboxLists(accountKey: String, thre
             threadId = threadId,
             feedIds = listOf(Feed.UNIFIED_INBOX.id) + MailCategory.entries.map { it.feedId },
             prefix = TAB_FEED_PREFIX,
+        )
+
+    // Every unified inbox's own list is an inbox list.
+    feed()
+        .clearThreadFrom(
+            accountKey = accountKey,
+            threadId = threadId,
+            feedIds = emptyList(),
+            prefix = INBOX_SCOPE_PREFIX,
         )
 }

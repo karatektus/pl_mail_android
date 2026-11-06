@@ -76,6 +76,13 @@ object Capability {
      */
     const val NOTIFICATIONS = "urn:plmail:params:jmap:notifications"
 
+    /**
+     * The reader's unified inboxes (pl_mail#265): `UnifiedInbox/get` and `/changes`. Advertised at
+     * the top of the Session, with the `icons` an inbox can wear, and on every account. Its absence
+     * is a server older than the extension, and the app then draws one inbox over every account.
+     */
+    const val UNIFIED_INBOXES = "urn:plmail:params:jmap:unifiedinboxes"
+
     /** The usual declaration for a mail request. */
     val USING_MAIL = listOf(CORE, MAIL)
 
@@ -109,4 +116,7 @@ object Capability {
 
     /** For `NotificationSettings/get` and `/set`. Per user, like appearance. */
     val USING_NOTIFICATIONS = listOf(CORE, NOTIFICATIONS)
+
+    /** For `UnifiedInbox/get`. Only ever sent to an account that advertises [UNIFIED_INBOXES]. */
+    val USING_UNIFIED_INBOXES = listOf(CORE, MAIL, UNIFIED_INBOXES)
 }

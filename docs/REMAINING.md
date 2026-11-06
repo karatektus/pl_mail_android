@@ -29,6 +29,7 @@ Read this first, then `PLAN.md` for why anything is the way it is.
 | M8 Compose | **done** | scheduled send adopted 2026-08-06, see below |
 | M9 Organising (labels, snooze) | **done** | colour adopted 2026-08-01, see below |
 | Inbox categories (Gmail tabs) | **done, server merged** | `84c3f1b` on plMail `main`, verified on the wire — see below |
+| Several unified inboxes (#97) | **built**, server in plMail v0.4.2 (pl_mail#265) | one drawer row per inbox, the open one's tabs under it, lists kept per inbox (`ui.<id>/…` feeds); **not yet watched on a device** |
 | Design system | **done** | six themes, two layouts, three densities |
 | **M10 Appearance and settings** | **done** | see below |
 | **M11 Polish and ship-readiness** | **partial — roughly a third** | see below |

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import de.plmail.core.data.Label
 import de.plmail.core.data.MailCategory
+import de.plmail.core.data.MailInbox
 import de.plmail.core.data.MailTab
 import de.plmail.core.data.MailView
 
@@ -86,7 +87,21 @@ internal fun MailCategory.displayName(): String =
  * four.
  */
 @Composable
-internal fun MailView.displayTitle(hasCategories: Boolean): String =
+internal fun MailView.displayTitle(hasCategories: Boolean, inbox: MailInbox? = null): String {
+    val within = inbox?.displayName() ?: return unscopedTitle(hasCategories)
+
+    // One unified inbox's list (pl_mail#265): its name, and the tab after it
+    // where there are tabs, so Work's Primary and Personal's do not share a title.
+    return if (!hasCategories) within else "$within · ${unscopedTitle(hasCategories)}"
+}
+
+/** The reader's name for a unified inbox, or the app's word: "Inbox", or "Other". */
+@Composable
+internal fun MailInbox.displayName(): String =
+    name ?: stringResource(if (isOther) R.string.unified_inbox_other else R.string.inbox_title)
+
+@Composable
+private fun MailView.unscopedTitle(hasCategories: Boolean): String =
     when (this) {
         is MailView.Category ->
             if (category == MailCategory.PRIMARY && !hasCategories)
