@@ -71,9 +71,14 @@ sealed interface MailView {
     /** The feed id this view's rows are persisted under. */
     val feedId: String
 
-    data class Category(val category: MailCategory) : MailView {
+    /**
+     * [inbox] is the unified inbox this tab is shown for (pl_mail#265), or null for every account's
+     * — the only kind there is on a server without the extension, or with one inbox. See
+     * [scopedFeedId] for why it is a list of its own.
+     */
+    data class Category(val category: MailCategory, override val inbox: String? = null) : MailView {
         override val feedId: String
-            get() = category.feedId
+            get() = inbox?.let { scopedFeedId(it, category.feedId) } ?: category.feedId
     }
 
     data class Labelled(val label: Label) : MailView {
@@ -93,9 +98,10 @@ sealed interface MailView {
      * [name] rides along for the title over the list. Restored from the cached tabs rather than
      * saved, so a tab renamed on the web is titled by its new name — see [restore].
      */
-    data class Tab(val key: String, val name: String) : MailView {
+    data class Tab(val key: String, val name: String, override val inbox: String? = null) :
+        MailView {
         override val feedId: String
-            get() = tabFeedId(key)
+            get() = inbox?.let { scopedFeedId(it, tabFeedId(key)) } ?: tabFeedId(key)
     }
 
     /**
@@ -109,6 +115,10 @@ sealed interface MailView {
     val browsedLabel: Label?
         get() = (this as? Labelled)?.label
 
+    /** The unified inbox this list belongs to, or null for a list over every account. */
+    val inbox: String?
+        get() = null
+
     /**
      * A primitive that survives a process death, for `rememberSaveable`.
      *
@@ -118,15 +128,27 @@ sealed interface MailView {
      */
     fun toKey(): String =
         when (this) {
-            is Category -> CATEGORY_PREFIX + category.wire
+            is Category -> CATEGORY_PREFIX + category.wire + inbox.asSuffix()
             is Labelled -> LABEL_PREFIX + label.key
-            is Tab -> TAB_PREFIX + key
+            is Tab -> TAB_PREFIX + key + inbox.asSuffix()
         }
 
     companion object {
         private const val CATEGORY_PREFIX = "category:"
         private const val LABEL_PREFIX = "label:"
         private const val TAB_PREFIX = "tab:"
+
+        /** Between a tab and the unified inbox it is shown for: `category:social@12`. */
+        private const val INBOX_SEPARATOR = '@'
+
+        private fun String?.asSuffix(): String = this?.let { "$INBOX_SEPARATOR$it" }.orEmpty()
+
+        /**
+         * Where the app opens, given the unified inboxes the navigation draws: the first one's
+         * Primary, or [START] where it draws none.
+         */
+        fun home(inboxes: List<String>): MailView =
+            inboxes.firstOrNull()?.let { Category(MailCategory.PRIMARY, it) } ?: START
 
         /**
          * The key the retired whole-inbox destination was saved under.
@@ -167,6 +189,43 @@ sealed interface MailView {
             labels: List<Label>,
             tabs: List<MailTab> = emptyList(),
             tabbed: Boolean = true,
+            inboxes: List<String> = emptyList(),
+        ): MailView {
+            val home = home(inboxes)
+
+            if (key == null || !key.isInboxList()) {
+                return restoreOne(key, labels, tabs, tabbed).takeIf { it != START } ?: home
+            }
+
+            // An inbox list. Shown for one unified inbox where the navigation
+            // draws several, and for every account where it draws none: a key
+            // saved under the other arrangement is turned into this one's,
+            // and one naming an inbox that is gone opens the first.
+            val saved = key.substringAfter(INBOX_SEPARATOR, "").takeIf { it.isNotEmpty() }
+            val inbox =
+                when {
+                    inboxes.isEmpty() -> null
+                    saved in inboxes -> saved
+                    else -> return home
+                }
+
+            return when (
+                val view = restoreOne(key.substringBefore(INBOX_SEPARATOR), labels, tabs, tabbed)
+            ) {
+                is Category -> view.copy(inbox = inbox)
+                is Tab -> view.copy(inbox = inbox)
+                is Labelled -> view
+            }
+        }
+
+        private fun String.isInboxList(): Boolean =
+            startsWith(CATEGORY_PREFIX) || startsWith(TAB_PREFIX)
+
+        private fun restoreOne(
+            key: String?,
+            labels: List<Label>,
+            tabs: List<MailTab>,
+            tabbed: Boolean,
         ): MailView =
             when {
                 key == null || key == RETIRED_INBOX_KEY -> START
@@ -210,5 +269,22 @@ sealed interface MailView {
  */
 val MailView.isStartDestination: Boolean
     get() = this == MailView.START || (this is MailView.Labelled && label.role == START_ROLE)
+
+/**
+ * Whether this view is where the app opens, given that [home] is — see [MailView.home].
+ *
+ * Where the navigation draws several unified inboxes, the start is the first one's Primary and
+ * nothing else; where it draws none, it is [isStartDestination] with both its spellings.
+ */
+fun MailView.isHome(home: MailView): Boolean =
+    this == home || (home == MailView.START && isStartDestination)
+
+/** The same list, shown for one unified inbox — or for every account where [inbox] is null. */
+fun MailView.within(inbox: String?): MailView =
+    when (this) {
+        is MailView.Category -> copy(inbox = inbox)
+        is MailView.Tab -> copy(inbox = inbox)
+        is MailView.Labelled -> this
+    }
 
 private const val START_ROLE = "inbox"

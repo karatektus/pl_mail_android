@@ -94,6 +94,32 @@ class StateChangeApplierTest {
         assertTrue(transport.requests.any { it.url.endsWith("/jmap/api") })
     }
 
+    /** Every account names the type when the unified inboxes move; one read answers them all. */
+    @Test
+    fun `the unified inboxes are read once however many accounts name them`() = runTest {
+        database.seedAccount(emailState = "s5")
+        seedSecondAccount(emailState = "s5")
+
+        var refreshed = 0
+        val transport = quiet()
+
+        StateChangeApplier(
+                database,
+                syncStack(database, transport),
+                bodyPrefetcher(database, transport),
+                inboxes = { refreshed++ },
+            )
+            .apply(
+                mapOf(
+                    TEST_ACCOUNT_ID to mapOf("UnifiedInbox" to "u2", "Email" to "s5"),
+                    "14" to mapOf("UnifiedInbox" to "u2", "Email" to "s5"),
+                )
+            )
+
+        assertEquals(1, refreshed)
+        assertEquals(0, transport.calls, "nothing else moved")
+    }
+
     // -- helpers -----------------------------------------------------------
 
     private suspend fun applier(transport: RecordingTransport) =

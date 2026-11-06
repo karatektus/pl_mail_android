@@ -26,7 +26,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.window.core.layout.WindowSizeClass
 import de.plmail.core.data.ActionTarget
 import de.plmail.core.data.MailView
-import de.plmail.core.data.isStartDestination
+import de.plmail.core.data.isHome
 import de.plmail.core.designsystem.PlMailTheme
 import kotlinx.coroutines.launch
 
@@ -73,6 +73,7 @@ fun MailShell(
     val populatedTabs by viewModel.populatedTabs.collectAsStateWithLifecycle()
     val newTabs by viewModel.newTabs.collectAsStateWithLifecycle()
     val wantsTabs by viewModel.wantsTabs.collectAsStateWithLifecycle()
+    val inboxes by viewModel.inboxes.collectAsStateWithLifecycle()
 
     // The key rather than the MailView, because a Labelled view carries a Label,
     // and a Label carries its bindings and its counts -- both of which change
@@ -94,7 +95,13 @@ fun MailShell(
     // row navigating -- would be the app remembering the wrong thing.
     var rearranging by remember { mutableStateOf(false) }
 
-    val selected = MailView.restore(selectedKey, labels, tabs, tabbed = wantsTabs)
+    // The unified inboxes the drawer draws, by id (pl_mail#265). Where it draws
+    // several, the app opens on the first one's Primary.
+    val inboxIds = inboxes.orEmpty().map { it.inbox.id }
+    val home = MailView.home(inboxIds)
+
+    val selected =
+        MailView.restore(selectedKey, labels, tabs, tabbed = wantsTabs, inboxes = inboxIds)
 
     val isWide =
         currentWindowAdaptiveInfoV2()
@@ -112,7 +119,7 @@ fun MailShell(
     // selection -- all take the gesture first. Only from somewhere else: back on
     // Primary itself still leaves, because Primary is where the app opens and a
     // start destination that swallowed back would be a screen with no exit.
-    BackHandler(enabled = !selected.isStartDestination) { selectedKey = null }
+    BackHandler(enabled = !selected.isHome(home)) { selectedKey = null }
 
     val sidebar =
         @Composable {
@@ -120,6 +127,7 @@ fun MailShell(
                 sections = sections,
                 showCategories = hasCategories,
                 tabs = tabs,
+                inboxes = inboxes.orEmpty(),
                 populatedTabs = populatedTabs,
                 newTabs = newTabs,
                 selected = selected,
@@ -176,7 +184,12 @@ fun MailShell(
         }
 
     val content =
-        @Composable {
+        @Composable
+        content@{
+            // Not drawn until the inboxes are known: until then it is not known
+            // whether the app opens on every account's Primary or on one inbox's.
+            if (inboxes == null) return@content
+
             MailPane(
                 view = selected,
                 // Null where the sidebar is already on screen: a hamburger that

@@ -18,6 +18,8 @@ import de.plmail.core.data.LabelRepository
 import de.plmail.core.data.LabelSelection
 import de.plmail.core.data.MailAction
 import de.plmail.core.data.MailActions
+import de.plmail.core.data.MailCategory
+import de.plmail.core.data.MailInbox
 import de.plmail.core.data.MailRepository
 import de.plmail.core.data.MailTab
 import de.plmail.core.data.MailView
@@ -28,6 +30,7 @@ import de.plmail.core.data.ShownThreads
 import de.plmail.core.data.SwipeActions
 import de.plmail.core.data.SwipeActionsRepository
 import de.plmail.core.data.UndoableAction
+import de.plmail.core.data.UnifiedInboxRepository
 import de.plmail.core.data.isStartDestination
 import de.plmail.core.database.ThreadEntity
 import javax.inject.Inject
@@ -42,6 +45,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -111,7 +115,25 @@ constructor(
     private val connectivity: Connectivity,
     outbox: Outbox,
     accounts: AccountsRepository,
+    unifiedInboxes: UnifiedInboxRepository,
 ) : ViewModel() {
+
+    /**
+     * The unified inboxes the navigation draws (pl_mail#265), for the title over one of their
+     * lists. Empty where it draws one inbox over every account.
+     */
+    val inboxes: StateFlow<List<MailInbox>> =
+        unifiedInboxes.navigable.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
+            initialValue = emptyList(),
+        )
+
+    /** Which accounts each inbox lists, by id: what a list scoped to one is paged over. */
+    private val members: Flow<Map<String, Set<String>>> =
+        unifiedInboxes.inboxes
+            .map { all -> all.associate { it.id to it.accountKeys } }
+            .distinctUntilChanged()
 
     private val _isSyncing = MutableStateFlow(false)
 
@@ -477,9 +499,22 @@ constructor(
      * recomputed for every other list: the digest is about mail that is *elsewhere*, and elsewhere
      * has no meaning while the user is browsing a label.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     val arrivals: StateFlow<List<CategoryArrivals>> =
-        combine(shown, digest.arrivals) { view, found ->
-                if (view == MailView.START) found else emptyList()
+        shown
+            .flatMapLatest { view ->
+                val inbox = view.inbox
+
+                when {
+                    view == MailView.START -> digest.arrivals
+                    // One unified inbox's Primary tells of that inbox's mail only.
+                    inbox != null && view == MailView.Category(MailCategory.PRIMARY, inbox) ->
+                        members
+                            .map { it[inbox].orEmpty() }
+                            .distinctUntilChanged()
+                            .flatMapLatest { digest.arrivalsIn(it) }
+                    else -> flowOf(emptyList())
+                }
             }
             .stateIn(
                 scope = viewModelScope,
@@ -522,8 +557,17 @@ constructor(
         // on screen would go on paging Primary under the old filter -- and
         // refill it with the old filter's rows after the switch had cleared
         // them.
-        combine(shownFeed, inboxTabs.wantsTabs) { view, _ -> view }
-            .flatMapLatest { view -> feed.forView(view) }
+        // Built again when the accounts of the unified inbox on screen change,
+        // because its pager was built over the old ones.
+        combine(shownFeed, inboxTabs.wantsTabs, members) { view, wants, members ->
+                Triple(view, wants, view.inbox?.let { members[it] })
+            }
+            .distinctUntilChanged { old, new ->
+                old.first.feedId == new.first.feedId &&
+                    old.second == new.second &&
+                    old.third == new.third
+            }
+            .flatMapLatest { (view, _, _) -> feed.forView(view) }
             .cachedIn(viewModelScope)
 
     /**

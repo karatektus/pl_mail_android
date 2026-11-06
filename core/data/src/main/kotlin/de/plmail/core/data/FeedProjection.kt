@@ -141,7 +141,10 @@ constructor(
         val targets = targetFeeds(thread, inboxKey, classifies, tabs, wantsTabs)
 
         live.forEach { (feedId, cursor) ->
-            if (feedId !in targets) {
+            // A unified inbox's own list holds what the list it is a part of
+            // holds, for its accounts -- and an account is only ever paged into
+            // the lists of the inboxes that list it.
+            if (baseFeedId(feedId) !in targets) {
                 // Unconditional, unlike the insert below. A row that should not
                 // be there should go whether or not it is inside the window the
                 // list has paged -- it is already on screen if it is above it,

@@ -77,6 +77,7 @@ import de.plmail.core.data.SwipeActions
 import de.plmail.core.data.messagesShown
 import de.plmail.core.data.receivedShown
 import de.plmail.core.data.rowLabels
+import de.plmail.core.data.within
 import de.plmail.core.database.ThreadEntity
 import de.plmail.core.designsystem.PaneTone
 import de.plmail.core.designsystem.PlMailBanner
@@ -175,6 +176,7 @@ fun MailScreen(
     // off each row, because drawing the row is what retires the marker -- see
     // `MailViewModel.badgedNew`.
     val badgedNew by viewModel.badgedNew.collectAsStateWithLifecycle()
+    val inboxes by viewModel.inboxes.collectAsStateWithLifecycle()
 
     // Back clears a selection before it leaves the screen: a selection is a
     // mode, and leaving a mode is what back is for.
@@ -248,7 +250,14 @@ fun MailScreen(
                     // and "Work/Invoices" as a screen title is noise. A system
                     // role takes the app's word for it rather than the server's,
                     // which is English whatever the device is set to.
-                    title = { Text(view.displayTitle(hasCategories)) },
+                    title = {
+                        Text(
+                            view.displayTitle(
+                                hasCategories,
+                                inbox = inboxes.firstOrNull { it.id == view.inbox },
+                            )
+                        )
+                    },
                     colors =
                         TopAppBarDefaults.topAppBarColors(
                             // The bar is part of the page rather than a
@@ -435,7 +444,9 @@ fun MailScreen(
                     badgedNew = badgedNew,
                     swipes = swipes,
                     onMove = { thread -> viewModel.openMoveSheet(view, listOf(thread.target())) },
-                    onOpenCategory = onNavigate,
+                    // The bundles above one unified inbox's Primary open that
+                    // inbox's tab, not every account's.
+                    onOpenCategory = { onNavigate(it.within(view.inbox)) },
                     onShown = viewModel::threadsShown,
                     onRowsAtRest = viewModel::rowsAtRest,
                     onRowPressed = viewModel::rowPressed,

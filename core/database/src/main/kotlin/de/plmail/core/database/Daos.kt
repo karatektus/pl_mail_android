@@ -583,6 +583,23 @@ interface FeedDao {
     suspend fun clearCursor(feedId: String, accountKey: String)
 
     /**
+     * Empties every list whose id starts with [prefix], rows and cursors both: one unified inbox's
+     * lists, when the accounts it holds have changed. Compared with `substr` rather than `LIKE`, so
+     * an id holding `_` or `%` matches only itself.
+     */
+    @Transaction
+    suspend fun clearFeedsStartingWith(prefix: String) {
+        clearEntriesStartingWith(prefix)
+        clearCursorsStartingWith(prefix)
+    }
+
+    @Query("DELETE FROM feed_entries WHERE substr(feedId, 1, length(:prefix)) = :prefix")
+    suspend fun clearEntriesStartingWith(prefix: String)
+
+    @Query("DELETE FROM feed_cursors WHERE substr(feedId, 1, length(:prefix)) = :prefix")
+    suspend fun clearCursorsStartingWith(prefix: String)
+
+    /**
      * Every list this account has actually been paged into.
      *
      * What "live" means for a list that has to receive newly synced mail, and it keys on cursors
@@ -840,4 +857,25 @@ interface InboxTabDao {
 
     @Query("UPDATE inbox_tabs SET hasMail = :hasMail WHERE uid = :uid")
     suspend fun setHasMail(uid: String, hasMail: Boolean)
+}
+
+@Dao
+interface UnifiedInboxDao {
+    /** Every server's inboxes, in the reader's order. */
+    @Query("SELECT * FROM unified_inboxes ORDER BY sortOrder, inboxId")
+    fun observeAll(): Flow<List<UnifiedInboxEntity>>
+
+    @Query("SELECT * FROM unified_inboxes WHERE serverId = :serverId ORDER BY sortOrder, inboxId")
+    suspend fun forServer(serverId: String): List<UnifiedInboxEntity>
+
+    @Query("SELECT * FROM unified_inboxes WHERE serverId = :serverId AND inboxId = :inboxId")
+    suspend fun byId(serverId: String, inboxId: String): UnifiedInboxEntity?
+
+    @Query("SELECT * FROM unified_inboxes WHERE inboxId = :inboxId")
+    suspend fun withId(inboxId: String): List<UnifiedInboxEntity>
+
+    @Upsert suspend fun upsert(inboxes: List<UnifiedInboxEntity>)
+
+    @Query("DELETE FROM unified_inboxes WHERE serverId = :serverId")
+    suspend fun deleteForServer(serverId: String)
 }

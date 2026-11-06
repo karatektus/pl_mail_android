@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="inbox_title">Boîte de réception</string>
+    <!-- The automatic unified inbox for the accounts taken out of the reader's own. -->
+    <string name="unified_inbox_other">Autres</string>
     <string name="search">Rechercher</string>
     <string name="inbox_empty">Rien pour l’instant.</string>
     <string name="inbox_loading">Récupération de votre courrier…</string>

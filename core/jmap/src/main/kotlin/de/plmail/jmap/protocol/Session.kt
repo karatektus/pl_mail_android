@@ -133,6 +133,14 @@ data class Session(
     fun supportsInboxTabs(id: AccountId): Boolean =
         account(id)?.accountCapabilities?.containsKey(Capability.INBOX_TABS) == true
 
+    /**
+     * Whether this account answers `UnifiedInbox/get` — see [Capability.UNIFIED_INBOXES].
+     *
+     * Every account answers with the same inboxes, so the first one that says yes is asked.
+     */
+    fun supportsUnifiedInboxes(id: AccountId): Boolean =
+        account(id)?.accountCapabilities?.containsKey(Capability.UNIFIED_INBOXES) == true
+
     /** Whether this server exposes calendars at all, under either URN. */
     val supportsCalendars: Boolean
         get() = calendarDialect != null
