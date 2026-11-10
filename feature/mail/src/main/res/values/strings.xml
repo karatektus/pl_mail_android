@@ -21,6 +21,7 @@
     <string name="show_adapted">Show adapted</string>
     <string name="body_not_downloaded">This message has not been downloaded yet.</string>
     <string name="body_is_empty">This message has no text.</string>
+    <string name="body_is_clipped">This message is too long to show in full here. The rest is in its source.</string>
     <string name="action_archive">Archive</string>
     <string name="action_trash">Trash</string>
     <string name="action_star">Star</string>

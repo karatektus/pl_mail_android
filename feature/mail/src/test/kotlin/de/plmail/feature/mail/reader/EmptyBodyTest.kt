@@ -52,6 +52,18 @@ class EmptyBodyTest {
         assertEquals("<p>Hello.</p>", message(html = "<p>Hello.</p>", text = "Hello.").body)
     }
 
+    /**
+     * Plain text is shown, never read as markup. A security alert quoting a log line with
+     * `<script>` in it lost everything after that point on screen while the text went in raw.
+     */
+    @Test
+    fun `text is escaped rather than read as markup`() {
+        assertEquals(
+            "<pre>GET /?q=&lt;script&gt;alert(1)&lt;/script&gt; &amp; &lt;!-- &quot;x&quot;</pre>",
+            message(html = null, text = "GET /?q=<script>alert(1)</script> & <!-- \"x\"").body,
+        )
+    }
+
     private fun message(html: String?, text: String?): ReaderMessage =
         ReaderMessage(
             email = EmailEntity(uid = "u1", accountKey = "a1", emailId = "1"),

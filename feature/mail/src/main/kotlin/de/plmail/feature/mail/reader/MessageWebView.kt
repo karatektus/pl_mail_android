@@ -13,7 +13,6 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -22,7 +21,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
@@ -76,6 +77,11 @@ fun MessageWebView(
      * "scrolled nothing" is told apart from reading a wide table.
      */
     onSwipe: (next: Boolean) -> Unit = {},
+    /**
+     * Whether the document is taller than this view can be, so its end is cut off. See
+     * [fittedHeight]; the reader says so and points at the source, which holds the rest.
+     */
+    onClipped: (Boolean) -> Unit = {},
 ) {
     // Read through this rather than handed to the view in `update`: `update`
     // reloads the document, and a new lambda on every recomposition would
@@ -107,6 +113,7 @@ fun MessageWebView(
      * leave the item padded out to the taller rendering's height.
      */
     var contentHeight by remember(document) { mutableIntStateOf(0) }
+    val currentOnClipped by rememberUpdatedState(onClipped)
 
     AndroidView(
         modifier =
@@ -115,13 +122,11 @@ fun MessageWebView(
                 // Only once a height has been reported. Before that the view keeps
                 // WRAP_CONTENT and draws whatever it can, which is what makes the
                 // first frame of a cached message immediate rather than empty.
-                .then(
-                    if (contentHeight > 0) {
-                        Modifier.height(with(LocalDensity.current) { contentHeight.toDp() })
-                    } else {
-                        Modifier
-                    }
-                )
+                .then(if (contentHeight > 0) Modifier.fittedHeight(contentHeight) else Modifier)
+                // After layout, so the height compared is the one actually given.
+                .onSizeChanged { size ->
+                    currentOnClipped(contentHeight > 0 && size.height < contentHeight)
+                }
                 // clipToBounds because a WebView paints its own background across
                 // the area it has drawn, which in a LazyColumn is larger than the
                 // bounds it was laid out with -- it covers the sender row above it,
@@ -174,6 +179,34 @@ fun MessageWebView(
         },
     )
 }
+
+/**
+ * The document's height, or as much of it as Compose can lay out at this width.
+ *
+ * A plain `Modifier.height` was here, and a long message crashed the app the moment it was opened.
+ * [Constraints] packs width and height into one `Long`, so the height it can hold shrinks as the
+ * width grows: at a phone's 1080px it is 262,142px, which a plain-text mail of a few thousand lines
+ * passes (a Wazuh alert digest did). Past that, building the constraints throws
+ * `IllegalArgumentException` inside layout, where nothing can catch it.
+ *
+ * [Constraints.fitPrioritizingWidth] keeps the width and gives the height the room that is left, so
+ * the message is cut at that point instead. The cut is reported through `onClipped` and the reader
+ * says so, because a message that silently stops is worse than one that says it does.
+ */
+private fun Modifier.fittedHeight(heightPx: Int): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints.withHeight(heightPx))
+
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+}
+
+/** These constraints with a fixed height of [heightPx], shortened to what they can represent. */
+internal fun Constraints.withHeight(heightPx: Int): Constraints =
+    Constraints.fitPrioritizingWidth(
+        minWidth = minWidth,
+        maxWidth = maxWidth,
+        minHeight = heightPx,
+        maxHeight = heightPx,
+    )
 
 /**
  * A WebView that reports its height to Compose, and gives a vertical drag back to the list.

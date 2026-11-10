@@ -826,6 +826,10 @@ private fun Message(
         // the encryption; nothing else in the reader resolves them yet.
         val inline = (message.encryption as? MessageEncryption.Opened)?.content?.inlineImages
 
+        // Keyed on the body, so a message that is shorter in the other rendering
+        // does not keep the note.
+        var clipped by remember(body) { mutableStateOf(false) }
+
         MessageWebView(
             body = body,
             style = style,
@@ -835,7 +839,28 @@ private fun Message(
             inlineImage = { cid -> inline?.get(cid)?.let { InlineImage(it.bytes, it.type) } },
             onLink = context::openLink,
             onSwipe = onSwipe,
+            onClipped = { clipped = it },
         )
+
+        // Right where the text stops, which is where the reader notices it
+        // stopping. The source holds the whole message.
+        if (clipped) {
+            Text(
+                text = stringResource(R.string.body_is_clipped),
+                style = MaterialTheme.typography.bodySmall,
+                color = colors.inkMuted,
+                modifier = Modifier.padding(horizontal = spacing.medium, vertical = spacing.small),
+            )
+
+            if (message.email.blobId != null) {
+                TextButton(
+                    onClick = onShowSource,
+                    modifier = Modifier.padding(horizontal = spacing.small),
+                ) {
+                    Text(stringResource(R.string.source_show))
+                }
+            }
+        }
 
         // Under the body, which is where the eye arrives after reading: an
         // attachment list above the message competes with the message for the

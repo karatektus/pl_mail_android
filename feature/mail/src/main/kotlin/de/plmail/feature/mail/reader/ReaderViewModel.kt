@@ -13,6 +13,7 @@ import de.plmail.core.data.BlobStore
 import de.plmail.core.data.ComposeRepository
 import de.plmail.core.data.DecryptedContent
 import de.plmail.core.data.DecryptedFiles
+import de.plmail.core.data.DecryptedHtml
 import de.plmail.core.data.DecryptionProblem
 import de.plmail.core.data.DecryptionResult
 import de.plmail.core.data.LabelRepository
@@ -129,9 +130,13 @@ data class ReaderMessage(
                 // plain text escaped, because no server has seen either.
                 encryption is MessageEncryption.Opened -> encryption.content.html
                 email.needsDecryption -> null
+                // Plain text escaped here too: it is text, not markup. Wrapped
+                // as it was, a `<` in it started a tag, so a security alert
+                // quoting `<script>` or `<!--` from a log lost everything after
+                // it on screen.
                 else ->
                     html?.takeIf { it.isNotBlank() }
-                        ?: text?.takeIf { it.isNotBlank() }?.let { "<pre>$it</pre>" }
+                        ?: text?.takeIf { it.isNotBlank() }?.let(DecryptedHtml::fromText)
             }
 
     /**
