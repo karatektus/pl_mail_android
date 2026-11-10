@@ -8,7 +8,7 @@ targetSdk = "36"
 minSdk = "31"
 jdk = "21"
 
-agp = "9.5.0"
+agp = "9.5.1"
 kotlin = "2.4.21"
 # 2.3.12, not 2.3.13: on 2.3.13 a module's processing intermittently came out
 # empty (:feature:mail generated no Hilt bindings, so the app crashed on launch
@@ -73,7 +73,7 @@ bouncycastle = "1.86"
 mime4j = "0.8.15"
 # Sanitising decrypted HTML, which -- unlike every other body -- the server's
 # MailBodySanitizer has never seen.
-jsoup = "1.23.2"
+jsoup = "1.24.1"
 
 # Testing
 junit5 = "6.1.3"
@@ -85,7 +85,7 @@ androidxTestRunner = "1.7.0"
 espresso = "3.7.0"
 
 # Static analysis
-spotless = "8.10.4"
+spotless = "8.11.0"
 ktfmt = "0.64"
 
 [libraries]
