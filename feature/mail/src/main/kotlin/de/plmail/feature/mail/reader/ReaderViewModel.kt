@@ -529,7 +529,9 @@ constructor(
      */
     fun openAttachment(attachment: AttachmentEntity) {
         fetch(attachment, FailedAt.DOWNLOAD) { file ->
-            _open.tryEmit(OpenableFile(file = file, type = attachment.type))
+            _open.tryEmit(
+                OpenableFile(file = file, type = viewType(attachment.type, attachment.name))
+            )
         }
     }
 
