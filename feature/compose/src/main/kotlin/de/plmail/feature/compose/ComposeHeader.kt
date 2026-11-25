@@ -222,7 +222,8 @@ private fun SummaryRow(state: ComposeUiState, onExpand: () -> Unit) {
 
     // The address rather than `label`, and rather than Gmail's "me": the address
     // is the part that actually differs between two aliases whose display name
-    // is the same account's.
+    // is the same account's — or the name, where several identities share the
+    // address (see `summarySender`).
     //
     // Blank where naming the sender would say nothing — see `summaryNamesSender`.
     // The first version of this line always drew it, and on a phone the result
@@ -230,7 +231,7 @@ private fun SummaryRow(state: ComposeUiState, onExpand: () -> Unit) {
     // that could not change had eaten the two that could.
     val from =
         if (!state.summaryNamesSender) ""
-        else state.identity?.email ?: stringResource(R.string.compose_from_unknown)
+        else state.summarySender ?: stringResource(R.string.compose_from_unknown)
     val noSubject = stringResource(R.string.compose_no_subject)
     val summary = composeSummary(from, recipients, draft.subject, noSubject)
 
