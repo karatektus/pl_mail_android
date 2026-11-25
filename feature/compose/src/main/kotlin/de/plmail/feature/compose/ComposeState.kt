@@ -144,6 +144,27 @@ data class ComposeUiState(
                 identities.firstOrNull { it.accountKey == draft.accountKey }?.identityId !=
                     draft.identityId
 
+    /**
+     * How the collapsed header names the sender, when [summaryNamesSender] says it should.
+     *
+     * The address, because that is what differs between two aliases whose display name is the
+     * account's. Except where another identity of the same account shares the address: the server
+     * publishes one identity per name an address sends under ("A", "Arnaud" at one address), and
+     * there the address is the one thing they have in common, so the name is shown instead.
+     */
+    val summarySender: String?
+        get() {
+            val chosen = identity ?: return null
+            val sharesAddress = identities.any {
+                it.accountKey == chosen.accountKey &&
+                    it.identityId != chosen.identityId &&
+                    it.email.equals(chosen.email, ignoreCase = true)
+            }
+
+            return if (sharesAddress) chosen.name?.takeIf { it.isNotBlank() } ?: chosen.email
+            else chosen.email
+        }
+
     /** Whether "Send later" belongs in the menu at all. The session decides, not this client. */
     val canScheduleSend: Boolean
         get() = submission.supportsScheduledSend

@@ -95,6 +95,38 @@ class CachedOriginalTest {
         assertEquals(listOf("list@example.org"), original.replyTo.map { it.email })
     }
 
+    /**
+     * One address with two names: one's own mail answers as the name it was sent under, not as the
+     * address's first identity.
+     */
+    @Test
+    fun `one's own mail answers as the name it was sent under`() = runTest {
+        seedIdentity("i2", "a@example.org", name = "A")
+        seedIdentity("n2-1", "a@example.org", name = "Arnaud")
+        store(
+            read(to = "sven@example.org")
+                .copy(from = listOf(EmailAddress("Arnaud", "a@example.org")))
+        )
+
+        assertEquals(
+            "n2-1",
+            assertNotNull(database.cachedOriginal(testAccountKey, "m1")).replyFrom?.id?.value,
+        )
+    }
+
+    /** Mail from somebody else answers as the address's own name, whatever they called it. */
+    @Test
+    fun `received mail answers as the address's first identity`() = runTest {
+        seedIdentity("i2", "a@example.org", name = "A")
+        seedIdentity("n2-1", "a@example.org", name = "Arnaud")
+        store(read(to = "a@example.org").copy(to = listOf(EmailAddress("Arnaud", "a@example.org"))))
+
+        assertEquals(
+            "i2",
+            assertNotNull(database.cachedOriginal(testAccountKey, "m1")).replyFrom?.id?.value,
+        )
+    }
+
     private suspend fun store(email: Email) =
         MailRepository(database).storeEmails(testAccountKey, listOf(email), fetchedAt = 1)
 
@@ -114,7 +146,7 @@ class CachedOriginalTest {
             bodyValues = mapOf("1" to EmailBodyValue("<p>Hello</p>")),
         )
 
-    private suspend fun seedIdentity(id: String, email: String) {
+    private suspend fun seedIdentity(id: String, email: String, name: String? = null) {
         database
             .identities()
             .upsert(
@@ -123,6 +155,7 @@ class CachedOriginalTest {
                         uid = StoreKey.objectKey(testAccountKey, id),
                         accountKey = testAccountKey,
                         identityId = id,
+                        name = name,
                         email = email,
                     )
                 )

@@ -43,9 +43,22 @@ internal suspend fun PlMailDatabase.cachedOriginal(accountKey: String, emailId: 
             // Who it is answered as, by the rule the server's `replyFrom`
             // follows: the address that sent it, for one's own mail, and
             // otherwise the address it was sent to.
-            (from + to + cc + bcc).firstNotNullOfOrNull { address ->
-                own.firstOrNull { it.email.equals(address.email?.trim(), ignoreCase = true) }
+            //
+            // One address can have several identities, one per name it sends
+            // under ("A", "Arnaud"). One's own mail keeps the name it was sent
+            // under, as the server's `replyFrom` does; anything else answers as
+            // the address's first identity, which is its own name.
+            val sentAs = from.firstNotNullOfOrNull { address ->
+                own.firstOrNull {
+                    it.email.equals(address.email?.trim(), ignoreCase = true) &&
+                        !address.name.isNullOrBlank() &&
+                        it.name == address.name
+                }
             }
+            sentAs
+                ?: (from + to + cc + bcc).firstNotNullOfOrNull { address ->
+                    own.firstOrNull { it.email.equals(address.email?.trim(), ignoreCase = true) }
+                }
         } ?: return null
 
     val parts = buildList {
